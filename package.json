@@ -1,0 +1,28 @@
+{
+  "name": "darts",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && vue-tsc -p packages/frontend/tsconfig.json --noEmit",
+    "dev:bridge": "node --watch packages/bridge/src/main.ts",
+    "dev:server": "node --watch packages/server/src/main.ts",
+    "dev:frontend": "npm -w @darts/frontend run dev",
+    "achievements:backfill": "node packages/server/src/scripts/backfill.ts",
+    "build": "npm -w @darts/frontend run build",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  }
+}

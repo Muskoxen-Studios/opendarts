@@ -1,0 +1,57 @@
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    command: ["node", "packages/bridge/src/main.ts"]
+    environment:
+      # simulator | autodarts | replay
+      SOURCE: ${SOURCE:-simulator}
+      BOARD_URL: ${BOARD_URL:-http://192.168.120.40:3180}
+      BRIDGE_PORT: "8081"
+      # The board's motion channel runs at 30/s; only enable for debugging.
+      DEBUG_MOTION: ${DEBUG_MOTION:-0}
+      REPLAY_FILE: ${REPLAY_FILE:-recon/captures/live.ndjson}
+      REPLAY_SPEED: ${REPLAY_SPEED:-1}
+    volumes:
+      # Read-only: replay fixtures only.
+      - ./recon/captures:/app/recon/captures:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8081/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    command: ["node", "packages/server/src/main.ts"]
+    environment:
+      PORT: "8080"
+      DB_FILE: /data/darts.db
+      BRIDGE_WS: ws://bridge:8081/events
+      BRIDGE_HTTP: http://bridge:8081
+      # Coordinate-dependent achievements stay off until the board's throw
+      # payload is understood. Flipping this to 1 and running the backfill
+      # unlocks them retroactively across all history.
+      COORDS_ENABLED: ${COORDS_ENABLED:-0}
+    volumes:
+      - darts-data:/data
+    depends_on:
+      - bridge
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "${WEB_PORT:-8099}:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  darts-data:

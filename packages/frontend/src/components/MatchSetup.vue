@@ -1,0 +1,460 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { api, store, type GolfHandicap } from '../store.ts';
+
+const emit = defineEmits<{ (e: 'started'): void }>();
+
+type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf';
+
+const GAME_LABELS: Record<GameType, string> = {
+  x01: 'X01',
+  cricket: 'Cricket',
+  gotcha: 'Gotcha',
+  golf: 'Golf',
+};
+
+const gameType = ref<GameType>('x01');
+const selected = ref<string[]>([]);
+
+// X01
+const startScore = ref(501);
+const inMode = ref<'straight' | 'double' | 'master'>('straight');
+const outMode = ref<'straight' | 'double' | 'master'>('double');
+const legsToWin = ref(1);
+const setsToWin = ref(1);
+const legEnd = ref<'first' | 'all-but-one'>('first');
+
+/** Per-player handicaps: an override of start score and/or in-out rules. */
+const handicaps = ref<Record<string, { startScore?: number; inMode?: string; outMode?: string }>>({});
+
+// Cricket
+const variant = ref<'standard' | 'cutthroat'>('standard');
+
+// Golf
+const holes = ref(18);
+/**
+ * Each player's handicap, as computed from their past rounds. Fetched rather
+ * than guessed, and editable -- the number sent with the match is what the
+ * round is played off, and the server fills in anyone left out.
+ */
+const golfHandicaps = ref<Record<string, number>>({});
+const golfHistory = ref<Record<string, GolfHandicap>>({});
+
+// Gotcha
+const target = ref(301);
+const knockback = ref<'zero' | 'previousTurn'>('zero');
+const exactFinish = ref(true);
+
+const busy = ref(false);
+const error = ref<string | null>(null);
+
+const canStart = computed(() => selected.value.length > 0 && !busy.value);
+
+function toggle(id: string): void {
+  const i = selected.value.indexOf(id);
+  if (i >= 0) {
+    selected.value.splice(i, 1);
+    delete handicaps.value[id];
+  } else {
+    selected.value.push(id);
+  }
+}
+
+/**
+ * Look up the golf handicaps of everyone selected.
+ *
+ * Done here rather than at start time so the players can see what they will be
+ * playing off -- and adjust it -- before a dart is thrown.
+ */
+async function loadHandicaps(): Promise<void> {
+  if (gameType.value !== 'golf') return;
+  await Promise.all(
+    selected.value.map(async (id) => {
+      if (golfHistory.value[id]) return;
+      try {
+        const h = await api.handicap(id);
+        golfHistory.value[id] = h;
+        golfHandicaps.value[id] ??= h.handicap;
+      } catch {
+        // A handicap we cannot fetch simply falls back to the newcomer's 36,
+        // which the server applies anyway.
+      }
+    }),
+  );
+}
+
+watch([gameType, selected], loadHandicaps, { deep: true, immediate: true });
+
+// -- reusing the previous match's settings ---------------------------------
+
+const lastError = ref<string | null>(null);
+
+/**
+ * Fill the form from the last match played, players included.
+ *
+ * Everything is dropped into the same fields rather than started directly, so
+ * the settings can still be adjusted before the throw.
+ */
+async function useLastSettings(): Promise<void> {
+  lastError.value = null;
+  try {
+    const setup = await api.matchSetup('last');
+    const cfg = setup.config as Record<string, unknown>;
+    gameType.value = setup.gameType as GameType;
+    selected.value = setup.playerIds.filter((id) => store.profiles.some((p) => p.id === id));
+
+    legsToWin.value = Number(cfg.legsToWin ?? 1);
+    setsToWin.value = Number(cfg.setsToWin ?? 1);
+
+    if (setup.gameType === 'x01') {
+      startScore.value = Number(cfg.startScore ?? 501);
+      inMode.value = (cfg.inMode as typeof inMode.value) ?? 'straight';
+      outMode.value = (cfg.outMode as typeof outMode.value) ?? 'double';
+      legEnd.value = (cfg.legEnd as typeof legEnd.value) ?? 'first';
+      handicaps.value = { ...((cfg.perPlayer as Record<string, never>) ?? {}) };
+    }
+    if (setup.gameType === 'cricket') variant.value = (cfg.variant as typeof variant.value) ?? 'standard';
+    if (setup.gameType === 'gotcha') {
+      target.value = Number(cfg.target ?? 301);
+      knockback.value = (cfg.knockback as typeof knockback.value) ?? 'zero';
+      exactFinish.value = cfg.exactFinish !== false;
+    }
+    if (setup.gameType === 'golf') {
+      holes.value = Number(cfg.holes ?? 18);
+      // Handicaps are deliberately NOT carried over: they move with each round
+      // played, and reusing a stale one would misprice the game.
+      golfHandicaps.value = {};
+      golfHistory.value = {};
+      await loadHandicaps();
+    }
+  } catch (err) {
+    lastError.value = (err as Error).message;
+  }
+}
+
+function handicapFor(id: string) {
+  handicaps.value[id] ??= {};
+  return handicaps.value[id]!;
+}
+
+function buildConfig(): unknown {
+  if (gameType.value === 'cricket') {
+    return {
+      gameType: 'cricket',
+      variant: variant.value,
+      targets: [20, 19, 18, 17, 16, 15, 25],
+      scoring: true,
+      legsToWin: legsToWin.value,
+      setsToWin: setsToWin.value,
+    };
+  }
+  if (gameType.value === 'golf') {
+    return {
+      gameType: 'golf',
+      holes: holes.value,
+      par: 4,
+      handicaps: Object.fromEntries(
+        selected.value
+          .filter((id) => typeof golfHandicaps.value[id] === 'number')
+          .map((id) => [id, golfHandicaps.value[id]]),
+      ),
+      legsToWin: 1,
+      setsToWin: 1,
+    };
+  }
+  if (gameType.value === 'gotcha') {
+    return {
+      gameType: 'gotcha',
+      target: target.value,
+      knockback: knockback.value,
+      exactFinish: exactFinish.value,
+      legsToWin: legsToWin.value,
+      setsToWin: setsToWin.value,
+    };
+  }
+
+  const perPlayer: Record<string, unknown> = {};
+  for (const id of selected.value) {
+    const h = handicaps.value[id];
+    if (!h) continue;
+    const entry: Record<string, unknown> = {};
+    if (h.startScore) entry.startScore = h.startScore;
+    if (h.inMode) entry.inMode = h.inMode;
+    if (h.outMode) entry.outMode = h.outMode;
+    if (Object.keys(entry).length > 0) perPlayer[id] = entry;
+  }
+
+  return {
+    gameType: 'x01',
+    startScore: startScore.value,
+    inMode: inMode.value,
+    outMode: outMode.value,
+    legsToWin: legsToWin.value,
+    setsToWin: setsToWin.value,
+    legEnd: legEnd.value,
+    perPlayer,
+  };
+}
+
+async function start(): Promise<void> {
+  busy.value = true;
+  error.value = null;
+  try {
+    await api.startMatch(buildConfig(), selected.value);
+    emit('started');
+  } catch (err) {
+    error.value = (err as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+</script>
+
+<template>
+  <section class="setup">
+    <div class="head">
+      <h2>New match</h2>
+      <button class="ghost" @click="useLastSettings">Use last game's settings</button>
+    </div>
+    <p v-if="lastError" class="hint">Could not load the last match: {{ lastError }}</p>
+
+    <div class="field">
+      <label>Game</label>
+      <div class="tabs">
+        <button
+          v-for="g in (['x01', 'cricket', 'gotcha', 'golf'] as GameType[])"
+          :key="g"
+          :class="{ on: gameType === g }"
+          @click="gameType = g"
+        >{{ GAME_LABELS[g] }}</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Players</label>
+      <p v-if="store.profiles.length === 0" class="hint">
+        No profiles yet &mdash; add one below.
+      </p>
+      <div class="chips">
+        <button
+          v-for="p in store.profiles"
+          :key="p.id"
+          class="chip"
+          :class="{ on: selected.includes(p.id) }"
+          :style="{ '--accent': p.color }"
+          @click="toggle(p.id)"
+        >{{ p.name }}</button>
+      </div>
+    </div>
+
+    <!-- X01 -->
+    <template v-if="gameType === 'x01'">
+      <div class="grid">
+        <div class="field">
+          <label>Start score</label>
+          <select v-model.number="startScore">
+            <option :value="301">301</option>
+            <option :value="501">501</option>
+            <option :value="701">701</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>In</label>
+          <select v-model="inMode">
+            <option value="straight">Straight</option>
+            <option value="double">Double</option>
+            <option value="master">Master</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Out</label>
+          <select v-model="outMode">
+            <option value="straight">Straight</option>
+            <option value="double">Double</option>
+            <option value="master">Master</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Leg ends</label>
+        <select v-model="legEnd">
+          <option value="first">When the first player checks out</option>
+          <option value="all-but-one">When all but one player has checked out</option>
+        </select>
+        <p v-if="legEnd === 'all-but-one'" class="hint">
+          Play continues after the first checkout so everyone gets a finishing
+          place. The leg is still won by whoever went out first. With two
+          players this makes no difference.
+        </p>
+      </div>
+
+      <details v-if="selected.length > 0" class="handicaps">
+        <summary>Per-player handicaps</summary>
+        <p class="hint">
+          Override the start score or the in/out rule for individual players, so a
+          stronger player can play 501 double-out against 301 straight-out.
+        </p>
+        <div
+          v-for="id in selected"
+          :key="id"
+          class="handicap-row"
+        >
+          <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+          <select v-model.number="handicapFor(id).startScore">
+            <option :value="undefined">default ({{ startScore }})</option>
+            <option :value="301">301</option>
+            <option :value="501">501</option>
+            <option :value="701">701</option>
+          </select>
+          <select v-model="handicapFor(id).inMode">
+            <option :value="undefined">in: default</option>
+            <option value="straight">in: straight</option>
+            <option value="double">in: double</option>
+            <option value="master">in: master</option>
+          </select>
+          <select v-model="handicapFor(id).outMode">
+            <option :value="undefined">out: default</option>
+            <option value="straight">out: straight</option>
+            <option value="double">out: double</option>
+            <option value="master">out: master</option>
+          </select>
+        </div>
+      </details>
+    </template>
+
+    <!-- Cricket -->
+    <div v-else-if="gameType === 'cricket'" class="field">
+      <label>Variant</label>
+      <select v-model="variant">
+        <option value="standard">Standard &mdash; highest score wins</option>
+        <option value="cutthroat">Cut-throat &mdash; points go to opponents, lowest wins</option>
+      </select>
+    </div>
+
+    <!-- Golf -->
+    <template v-else-if="gameType === 'golf'">
+      <div class="field">
+        <label>Holes</label>
+        <select v-model.number="holes">
+          <option :value="9">9 holes</option>
+          <option :value="18">18 holes</option>
+        </select>
+        <p class="hint">
+          Hole 1 is the board's 1, hole 2 the 2, and so on. Every dart is a
+          stroke and the hole is holed the moment you hit that number in any
+          ring. Par is 4, plus your handicap strokes; one over par abandons the
+          hole for nothing.
+        </p>
+      </div>
+
+      <div v-if="selected.length" class="field">
+        <label>Handicaps</label>
+        <p class="hint">
+          From the best of each player's recent rounds &mdash; the best 8 of the
+          last 20, or a proportional slice while there are fewer. A player with
+          no rounds behind them starts on 36, which is what playing every hole
+          to par is worth.
+        </p>
+        <div v-for="id in selected" :key="id" class="handicap-row golf-row">
+          <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+          <input
+            v-model.number="golfHandicaps[id]"
+            type="number"
+            min="0"
+            max="36"
+            :placeholder="String(golfHistory[id]?.handicap ?? 36)"
+          />
+          <span class="hint">
+            <template v-if="golfHistory[id]?.rounds">
+              {{ golfHistory[id]?.counted }} of {{ golfHistory[id]?.rounds }} rounds counted
+            </template>
+            <template v-else>no rounds yet &mdash; starts on 36</template>
+          </span>
+        </div>
+      </div>
+    </template>
+
+    <!-- Gotcha -->
+    <template v-else>
+      <div class="grid">
+        <div class="field">
+          <label>Target</label>
+          <select v-model.number="target">
+            <option :value="201">201</option>
+            <option :value="301">301</option>
+            <option :value="501">501</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Knock-back</label>
+          <select v-model="knockback">
+            <option value="zero">Back to zero</option>
+            <option value="previousTurn">Back to previous turn</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Finish</label>
+          <select v-model="exactFinish">
+            <option :value="true">Exact target</option>
+            <option :value="false">Reach or pass</option>
+          </select>
+        </div>
+      </div>
+    </template>
+
+    <div v-if="gameType !== 'golf'" class="grid">
+      <div class="field">
+        <label>Legs to win</label>
+        <input v-model.number="legsToWin" type="number" min="1" max="21" />
+      </div>
+      <div class="field">
+        <label>Sets to win</label>
+        <input v-model.number="setsToWin" type="number" min="1" max="11" />
+      </div>
+    </div>
+
+    <p v-if="error" class="error">{{ error }}</p>
+    <button class="primary" :disabled="!canStart" @click="start">Start match</button>
+  </section>
+</template>
+
+<style scoped>
+.setup { display: flex; flex-direction: column; gap: 1rem; }
+h2 { margin: 0; font-size: 1.1rem; }
+.head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.head .ghost {
+  margin-left: auto; background: none; border: 1px solid #333b49; color: #cdd3dc;
+  border-radius: 999px; padding: 0.3rem 0.85rem; cursor: pointer; font: inherit; font-size: 0.8rem;
+}
+.head .ghost:hover { border-color: #4f8ef7; color: #fff; }
+.golf-row { grid-template-columns: 7rem 5rem 1fr; }
+.field { display: flex; flex-direction: column; gap: 0.35rem; }
+label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: #8b93a1; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; }
+.hint { margin: 0; font-size: 0.8rem; color: #8b93a1; }
+.tabs, .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.tabs button, .chip {
+  background: #14171c; border: 1px solid #262b33; color: #cdd3dc;
+  border-radius: 999px; padding: 0.4rem 0.9rem; cursor: pointer;
+}
+.tabs button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
+.chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, #14171c); color: #fff; }
+select, input {
+  background: #14171c; border: 1px solid #262b33; color: #e8e6e1;
+  border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit;
+}
+.handicaps { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem; }
+summary { cursor: pointer; font-size: 0.9rem; }
+.handicap-row {
+  display: grid; grid-template-columns: 7rem repeat(3, 1fr);
+  gap: 0.5rem; align-items: center; margin-top: 0.6rem;
+}
+.who { font-weight: 600; }
+.primary {
+  background: #4f8ef7; border: none; color: #fff; font-weight: 600;
+  border-radius: 8px; padding: 0.7rem 1rem; cursor: pointer; font-size: 1rem;
+}
+.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.error { color: #d8453f; margin: 0; font-size: 0.85rem; }
+</style>
