@@ -1,6 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { CoordsSchema, GameConfigSchema, MatchCommandSchema, SegmentSchema } from '@darts/schema';
+import {
+  CoordsSchema,
+  GameConfigSchema,
+  MatchCommandSchema,
+  SegmentSchema,
+  type GameConfig,
+  type GameType,
+} from '@darts/schema';
 import { CATALOGUE } from '@darts/stats';
 import { connectToBridge } from './bridgeClient.ts';
 import { openDatabase } from './db.ts';
@@ -118,10 +125,30 @@ route('GET', '/api/profiles/:id/heatmap', (_req, res, params) =>
   json(res, 200, store.heatmapFor(params.id ?? '')),
 );
 
-/** The Stableford handicap this player would carry into their next golf round. */
-route('GET', '/api/profiles/:id/handicap', (_req, res, params) =>
-  json(res, 200, store.golfHandicapFor(params.id ?? '')),
-);
+/**
+ * The handicap this player would carry into their next match of `gameType`.
+ *
+ * `base` is an optional query param carrying the match's own configured start
+ * score / target / lives -- X01/Gotcha/Killer's suggestions are mapped onto
+ * that, not a stored historical value. Golf ignores it; its own base is
+ * always the fixed 36-point Stableford scale.
+ */
+route('GET', '/api/profiles/:id/handicap/:gameType', (req, res, params) => {
+  const gameType = params.gameType as GameType;
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  const rawBase = url.searchParams.get('base');
+  const base = rawBase !== null && rawBase !== '' ? Number(rawBase) : undefined;
+  try {
+    const profileId = params.id ?? '';
+    const result =
+      gameType === 'golf'
+        ? store.handicapFor(profileId, gameType, base)
+        : store.handicapFor(profileId, gameType, base);
+    json(res, 200, result);
+  } catch (err) {
+    json(res, 400, { error: (err as Error).message });
+  }
+});
 
 route('GET', '/api/profiles/:id/achievements', (_req, res, params) => {
   const rows = new Map(store.readAchievements(params.id ?? '').map((a) => [a.achievementId, a]));
@@ -202,23 +229,43 @@ route('POST', '/api/matches', (_req, res, _p, body) => {
   const players = ids.map((id) => store.getProfile(id)).filter((p) => p !== null);
   if (players.length !== ids.length) return json(res, 400, { error: 'unknown profile id' });
 
-  // Golf is played off a handicap derived from past rounds. It is resolved
-  // here and written into the match config, so the round stays reproducible
-  // from its own record even after the player's handicap has moved on.
-  const resolved =
-    config.data.gameType === 'golf'
-      ? {
-          ...config.data,
-          handicaps: Object.fromEntries(
-            players.map((p) => [
-              p.id,
-              config.data.gameType === 'golf' && config.data.handicaps[p.id] !== undefined
-                ? (config.data.handicaps[p.id] as number)
-                : store.golfHandicapFor(p.id).handicap,
-            ]),
-          ),
-        }
-      : config.data;
+  // Golf is always played off a handicap derived from past rounds; Gotcha and
+  // Killer's are opt-in, signalled by the config actually carrying a
+  // `handicaps` entry for someone. Either way, any gap is resolved here and
+  // written into the match config, so the match stays reproducible from its
+  // own record even after a player's handicap has moved on. X01's handicap is
+  // just its ordinary `perPlayer.startScore` override -- rulesFor() already
+  // falls back to the base start score for anyone left out, so it needs no
+  // separate resolution step.
+  let resolved: GameConfig = config.data;
+  if (config.data.gameType === 'golf') {
+    const data = config.data;
+    resolved = {
+      ...data,
+      handicaps: Object.fromEntries(
+        players.map((p) => [p.id, data.handicaps[p.id] ?? store.handicapFor(p.id, 'golf').handicap]),
+      ),
+    };
+  } else if (config.data.gameType === 'gotcha' && Object.keys(config.data.handicaps).length > 0) {
+    const data = config.data;
+    resolved = {
+      ...data,
+      handicaps: Object.fromEntries(
+        players.map((p) => [p.id, data.handicaps[p.id] ?? store.handicapFor(p.id, 'gotcha', data.target).handicap]),
+      ),
+    };
+  } else if (config.data.gameType === 'killer' && Object.keys(config.data.handicaps).length > 0) {
+    const data = config.data;
+    resolved = {
+      ...data,
+      handicaps: Object.fromEntries(
+        players.map((p) => [
+          p.id,
+          data.handicaps[p.id] ?? store.handicapFor(p.id, 'killer', data.startingLives).handicap,
+        ]),
+      ),
+    };
+  }
 
   const view = manager.start(
     resolved,

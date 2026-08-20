@@ -69,7 +69,7 @@ function seatPlayer(state: KillerState, playerId: string, cfg: KillerConfig): vo
   state.players[playerId] = {
     number: null,
     isKiller: false,
-    lives: cfg.startingLives,
+    lives: cfg.handicaps[playerId] ?? cfg.startingLives,
     eliminated: false,
   };
 }

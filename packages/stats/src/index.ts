@@ -1,6 +1,7 @@
 export * from './analysis.ts';
 export * from './career.ts';
 export * from './golf.ts';
+export * from './handicap.ts';
 export * from './leaderboard.ts';
 export * from './summary.ts';
 export * from './achievements/types.ts';

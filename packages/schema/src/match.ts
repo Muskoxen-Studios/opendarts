@@ -69,6 +69,12 @@ export const GotchaConfigSchema = z.object({
   knockback: z.enum(['zero', 'previousTurn']).default('zero'),
   /** Overshooting the target busts the turn and requires an exact finish. */
   exactFinish: z.boolean().default(true),
+  /**
+   * Optional per-player head start, opted into and pre-filled from match
+   * history but stored here so the match stays reproducible from its own
+   * record. A missing entry starts a player at zero, same as today.
+   */
+  handicaps: z.record(z.string(), z.number().int().min(0)).default({}),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
 });
@@ -118,6 +124,12 @@ export const KillerConfigSchema = z.object({
   startingLives: z.number().int().min(1).max(9).default(3),
   /** When true, a killer hitting their own double after becoming one costs them a life too. */
   friendlyFire: z.boolean().default(false),
+  /**
+   * Optional per-player starting lives, opted into and pre-filled from match
+   * history but stored here so the match stays reproducible from its own
+   * record. A missing entry starts a player on `startingLives`, same as today.
+   */
+  handicaps: z.record(z.string(), z.number().int().min(1).max(9)).default({}),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
 });

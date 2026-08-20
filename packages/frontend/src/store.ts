@@ -67,6 +67,13 @@ export interface GolfHandicap {
   }>;
 }
 
+/** X01/Gotcha/Killer's opt-in handicap: a single suggested value plus how much history backs it. */
+export interface ModeHandicap {
+  handicap: number;
+  matches: number;
+  counted: number;
+}
+
 export interface PlayerReport {
   playerId: string;
   name: string;
@@ -420,8 +427,12 @@ export const api = {
   heatmap(profileId: string): Promise<Heatmap> {
     return request<Heatmap>(`/api/profiles/${profileId}/heatmap`);
   },
-  handicap(profileId: string): Promise<GolfHandicap> {
-    return request<GolfHandicap>(`/api/profiles/${profileId}/handicap`);
+  /** Golf's own handicap; use `modeHandicap` for X01/Gotcha/Killer's opt-in one. */
+  handicap(profileId: string, gameType: 'golf' = 'golf'): Promise<GolfHandicap> {
+    return request<GolfHandicap>(`/api/profiles/${profileId}/handicap/${gameType}`);
+  },
+  modeHandicap(profileId: string, gameType: 'x01' | 'gotcha' | 'killer', base: number): Promise<ModeHandicap> {
+    return request<ModeHandicap>(`/api/profiles/${profileId}/handicap/${gameType}?base=${base}`);
   },
 
   // -- roster changes during a match ---------------------------------------

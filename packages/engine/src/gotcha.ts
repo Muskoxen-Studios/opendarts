@@ -37,10 +37,16 @@ function beginTurn(state: GotchaState): void {
   state.turnStartScore[p.id] = state.scores[p.id] ?? 0;
 }
 
-function resetLeg(state: GotchaState): void {
+/** A player's optional handicap head start, clamped into the valid range for this target. */
+function startingScore(cfg: GotchaConfig, playerId: string): number {
+  const h = cfg.handicaps[playerId] ?? 0;
+  return Math.max(0, Math.min(cfg.target - 1, h));
+}
+
+function resetLeg(state: GotchaState, cfg: GotchaConfig): void {
   for (const p of state.base.players) {
-    state.scores[p.id] = 0;
-    state.turnStartScore[p.id] = 0;
+    state.scores[p.id] = startingScore(cfg, p.id);
+    state.turnStartScore[p.id] = state.scores[p.id]!;
   }
 }
 
@@ -57,7 +63,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
       scores: {},
       turnStartScore: {},
     };
-    resetLeg(state);
+    resetLeg(state, cfg);
     return state;
   },
 
@@ -104,8 +110,8 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
 
       case 'ADD_PLAYER': {
         if (!addPlayerToBase(base, cmd.player)) return { state: prev, events: [] };
-        state.scores[cmd.player.id] = 0;
-        state.turnStartScore[cmd.player.id] = 0;
+        state.scores[cmd.player.id] = startingScore(cfg, cmd.player.id);
+        state.turnStartScore[cmd.player.id] = state.scores[cmd.player.id]!;
         events.push({ type: 'player.joined', playerId: cmd.player.id, name: cmd.player.name });
         return { state, events };
       }
@@ -131,7 +137,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
         base.turn = [];
         base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
-        resetLeg(state);
+        resetLeg(state, cfg);
         beginTurn(state);
         return { state, events };
       }
@@ -214,7 +220,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
           });
           events.push(
             ...awardLeg(base, player.id, cfg.legsToWin, cfg.setsToWin, () => {
-              resetLeg(state);
+              resetLeg(state, cfg);
               beginTurn(state);
             }),
           );

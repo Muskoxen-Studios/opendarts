@@ -47,6 +47,32 @@ describe('Gotcha counting up', () => {
   });
 });
 
+describe('Gotcha handicaps', () => {
+  it('starts a player with a handicap on their head start instead of zero', () => {
+    const m = newMatch({ target: 200, handicaps: { alice: 50 } });
+    expect(scoreOf(m, ALICE)).toBe(50);
+    expect(scoreOf(m, BOB)).toBe(0);
+  });
+
+  it('clamps a head start into the valid range for the target', () => {
+    const m = newMatch({ target: 200, handicaps: { alice: 500 } });
+    expect(scoreOf(m, ALICE)).toBe(199);
+  });
+
+  it('reverts a bust back to the handicap head start, not zero', () => {
+    const m = newMatch({ target: 100, handicaps: { alice: 50 } });
+    play(m, 'T20'); // 50 + 60 = 110 > 100, busts
+    expect(scoreOf(m, ALICE)).toBe(50);
+  });
+
+  it('restores the handicap head start on a leg restart', () => {
+    const m = newMatch({ target: 200, handicaps: { alice: 50 } });
+    play(m, 'T20', 'MISS', 'MISS'); // 110
+    m.apply({ type: 'RESTART_LEG' });
+    expect(scoreOf(m, ALICE)).toBe(50);
+  });
+});
+
 describe('Gotcha busting', () => {
   it('busts on overshoot and restores the turn-start score', () => {
     const m = newMatch({ target: 50 });

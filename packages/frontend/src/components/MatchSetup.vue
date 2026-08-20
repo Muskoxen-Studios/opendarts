@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { api, store, type GolfHandicap } from '../store.ts';
+import { api, store, type GolfHandicap, type ModeHandicap } from '../store.ts';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
@@ -41,6 +41,9 @@ const legEnd = ref<'first' | 'all-but-one'>('first');
 
 /** Per-player handicaps: an override of start score and/or in-out rules. */
 const handicaps = ref<Record<string, { startScore?: number; inMode?: string; outMode?: string }>>({});
+/** Opt-in: pre-fill each selected player's startScore from their X01 skill handicap. */
+const useX01Handicaps = ref(false);
+const x01History = ref<Record<string, ModeHandicap>>({});
 
 // Cricket
 const variant = ref<'standard' | 'cutthroat'>('standard');
@@ -59,6 +62,10 @@ const golfHistory = ref<Record<string, GolfHandicap>>({});
 const target = ref(301);
 const knockback = ref<'zero' | 'previousTurn'>('zero');
 const exactFinish = ref(true);
+/** Opt-in: pre-fill each selected player's head start from their Gotcha skill handicap. */
+const useGotchaHandicaps = ref(false);
+const gotchaHandicaps = ref<Record<string, number>>({});
+const gotchaHistory = ref<Record<string, ModeHandicap>>({});
 
 // Shanghai
 const startRound = ref(1);
@@ -68,6 +75,10 @@ const instantWin = ref(true);
 // Killer
 const startingLives = ref(3);
 const friendlyFire = ref(false);
+/** Opt-in: pre-fill each selected player's starting lives from their Killer skill handicap. */
+const useKillerHandicaps = ref(false);
+const killerHandicaps = ref<Record<string, number>>({});
+const killerHistory = ref<Record<string, ModeHandicap>>({});
 
 const busy = ref(false);
 const error = ref<string | null>(null);
@@ -107,7 +118,55 @@ async function loadHandicaps(): Promise<void> {
   );
 }
 
+/**
+ * Look up the opt-in X01/Gotcha/Killer skill handicap of everyone selected,
+ * mapped onto that mode's own knob using its currently configured base value.
+ */
+async function loadModeHandicaps(
+  enabled: boolean,
+  mode: 'x01' | 'gotcha' | 'killer',
+  base: number,
+  history: Record<string, ModeHandicap>,
+  apply: (id: string, h: ModeHandicap) => void,
+): Promise<void> {
+  if (!enabled) return;
+  await Promise.all(
+    selected.value.map(async (id) => {
+      if (history[id]) return;
+      try {
+        const h = await api.modeHandicap(id, mode, base);
+        history[id] = h;
+        apply(id, h);
+      } catch {
+        // A handicap we cannot fetch simply leaves that player at the mode's
+        // own default -- the same as not opting in at all.
+      }
+    }),
+  );
+}
+
+async function loadX01Handicaps(): Promise<void> {
+  await loadModeHandicaps(useX01Handicaps.value, 'x01', startScore.value, x01History.value, (id, h) => {
+    handicapFor(id).startScore ??= h.handicap;
+  });
+}
+
+async function loadGotchaHandicaps(): Promise<void> {
+  await loadModeHandicaps(useGotchaHandicaps.value, 'gotcha', target.value, gotchaHistory.value, (id, h) => {
+    gotchaHandicaps.value[id] ??= h.handicap;
+  });
+}
+
+async function loadKillerHandicaps(): Promise<void> {
+  await loadModeHandicaps(useKillerHandicaps.value, 'killer', startingLives.value, killerHistory.value, (id, h) => {
+    killerHandicaps.value[id] ??= h.handicap;
+  });
+}
+
 watch([gameType, selected], loadHandicaps, { deep: true, immediate: true });
+watch([useX01Handicaps, selected], loadX01Handicaps, { deep: true });
+watch([useGotchaHandicaps, selected], loadGotchaHandicaps, { deep: true });
+watch([useKillerHandicaps, selected], loadKillerHandicaps, { deep: true });
 
 // -- reusing the previous match's settings ---------------------------------
 
@@ -136,12 +195,18 @@ async function useLastSettings(): Promise<void> {
       outMode.value = (cfg.outMode as typeof outMode.value) ?? 'double';
       legEnd.value = (cfg.legEnd as typeof legEnd.value) ?? 'first';
       handicaps.value = { ...((cfg.perPlayer as Record<string, never>) ?? {}) };
+      // Handicaps are opt-in per match, not carried over -- see the Golf note below.
+      useX01Handicaps.value = false;
+      x01History.value = {};
     }
     if (setup.gameType === 'cricket') variant.value = (cfg.variant as typeof variant.value) ?? 'standard';
     if (setup.gameType === 'gotcha') {
       target.value = Number(cfg.target ?? 301);
       knockback.value = (cfg.knockback as typeof knockback.value) ?? 'zero';
       exactFinish.value = cfg.exactFinish !== false;
+      useGotchaHandicaps.value = false;
+      gotchaHandicaps.value = {};
+      gotchaHistory.value = {};
     }
     if (setup.gameType === 'shanghai') {
       startRound.value = Number(cfg.startRound ?? 1);
@@ -151,6 +216,9 @@ async function useLastSettings(): Promise<void> {
     if (setup.gameType === 'killer') {
       startingLives.value = Number(cfg.startingLives ?? 3);
       friendlyFire.value = cfg.friendlyFire === true;
+      useKillerHandicaps.value = false;
+      killerHandicaps.value = {};
+      killerHistory.value = {};
     }
     if (setup.gameType === 'golf') {
       holes.value = Number(cfg.holes ?? 18);
@@ -201,6 +269,13 @@ function buildConfig(): unknown {
       target: target.value,
       knockback: knockback.value,
       exactFinish: exactFinish.value,
+      handicaps: useGotchaHandicaps.value
+        ? Object.fromEntries(
+            selected.value
+              .filter((id) => typeof gotchaHandicaps.value[id] === 'number')
+              .map((id) => [id, gotchaHandicaps.value[id]]),
+          )
+        : {},
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
     };
@@ -220,6 +295,13 @@ function buildConfig(): unknown {
       gameType: 'killer',
       startingLives: startingLives.value,
       friendlyFire: friendlyFire.value,
+      handicaps: useKillerHandicaps.value
+        ? Object.fromEntries(
+            selected.value
+              .filter((id) => typeof killerHandicaps.value[id] === 'number')
+              .map((id) => [id, killerHandicaps.value[id]]),
+          )
+        : {},
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
     };
@@ -361,6 +443,10 @@ async function start(): Promise<void> {
 
       <details v-if="selected.length > 0" class="handicaps">
         <summary>Per-player handicaps</summary>
+        <label class="use-handicaps">
+          <input v-model="useX01Handicaps" type="checkbox" />
+          Suggest a start score from each player's recent X01 average
+        </label>
         <p class="hint">
           Override the start score or the in/out rule for individual players, so a
           stronger player can play 501 double-out against 301 straight-out.
@@ -389,6 +475,13 @@ async function start(): Promise<void> {
             <option value="double">out: double</option>
             <option value="master">out: master</option>
           </select>
+          <span v-if="useX01Handicaps" class="hint">
+            <template v-if="x01History[id]?.matches">
+              suggested {{ x01History[id]?.handicap }} ({{ x01History[id]?.counted }} of
+              {{ x01History[id]?.matches }} matches)
+            </template>
+            <template v-else>no matches yet &mdash; no adjustment</template>
+          </span>
         </div>
       </details>
     </template>
@@ -490,6 +583,32 @@ async function start(): Promise<void> {
         to become a killer before knocking lives off opponents' doubles. Last
         player standing wins.
       </p>
+
+      <details v-if="selected.length > 0" class="handicaps">
+        <summary>Per-player handicaps</summary>
+        <label class="use-handicaps">
+          <input v-model="useKillerHandicaps" type="checkbox" />
+          Suggest extra starting lives for weaker players, from their recent Killer average
+        </label>
+        <template v-if="useKillerHandicaps">
+          <div v-for="id in selected" :key="id" class="handicap-row golf-row">
+            <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+            <input
+              v-model.number="killerHandicaps[id]"
+              type="number"
+              min="1"
+              max="9"
+              :placeholder="String(killerHistory[id]?.handicap ?? startingLives)"
+            />
+            <span class="hint">
+              <template v-if="killerHistory[id]?.matches">
+                {{ killerHistory[id]?.counted }} of {{ killerHistory[id]?.matches }} matches counted
+              </template>
+              <template v-else>no matches yet &mdash; no adjustment</template>
+            </span>
+          </div>
+        </template>
+      </details>
     </template>
 
     <!-- Gotcha -->
@@ -518,6 +637,32 @@ async function start(): Promise<void> {
           </select>
         </div>
       </div>
+
+      <details v-if="selected.length > 0" class="handicaps">
+        <summary>Per-player handicaps</summary>
+        <label class="use-handicaps">
+          <input v-model="useGotchaHandicaps" type="checkbox" />
+          Suggest a head start for weaker players, from their recent Gotcha average
+        </label>
+        <template v-if="useGotchaHandicaps">
+          <div v-for="id in selected" :key="id" class="handicap-row golf-row">
+            <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+            <input
+              v-model.number="gotchaHandicaps[id]"
+              type="number"
+              min="0"
+              :max="target - 1"
+              :placeholder="String(gotchaHistory[id]?.handicap ?? 0)"
+            />
+            <span class="hint">
+              <template v-if="gotchaHistory[id]?.matches">
+                {{ gotchaHistory[id]?.counted }} of {{ gotchaHistory[id]?.matches }} matches counted
+              </template>
+              <template v-else>no matches yet &mdash; no adjustment</template>
+            </span>
+          </div>
+        </template>
+      </details>
     </template>
 
     <div v-if="gameType !== 'golf'" class="grid">
@@ -570,6 +715,10 @@ select, input {
 }
 .handicaps { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem; }
 summary { cursor: pointer; font-size: 0.9rem; }
+.use-handicaps {
+  display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem;
+  font-size: 0.85rem; cursor: pointer;
+}
 .handicap-row {
   display: grid; grid-template-columns: 7rem repeat(3, 1fr);
   gap: 0.5rem; align-items: center; margin-top: 0.6rem;

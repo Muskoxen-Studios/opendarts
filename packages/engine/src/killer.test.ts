@@ -84,3 +84,22 @@ describe('Killer play', () => {
     expect(events).toContainEqual({ type: 'killer.becameKiller', playerId: ALICE });
   });
 });
+
+describe('Killer handicaps', () => {
+  it('seats a player with their handicap lives instead of the default', () => {
+    const m = newMatch({ startingLives: 3, handicaps: { alice: 5 } });
+    expect(detail(m, ALICE).lives).toBe(5);
+    expect(detail(m, BOB).lives).toBe(3);
+  });
+
+  it('restores the handicap lives on a leg restart', () => {
+    const m = newMatch({ startingLives: 3, handicaps: { alice: 5 } });
+    play(m, 'S5');
+    play(m, 'S6');
+    play(m, 'D5', 'D6', 'MISS'); // Alice becomes killer, Bob loses a life
+    expect(detail(m, BOB).lives).toBe(2);
+    m.apply({ type: 'RESTART_LEG' });
+    expect(detail(m, ALICE).lives).toBe(5);
+    expect(detail(m, BOB).lives).toBe(3);
+  });
+});

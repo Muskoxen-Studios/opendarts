@@ -1,5 +1,7 @@
 # darts
 
+
+
 A self-hosted darts game server and scoreboard built on Autodarts camera
 hardware, using the Autodarts Board Manager purely as a **local detection
 source**. No dependency on `api.autodarts.io` and no cloud game service.

@@ -6,7 +6,10 @@ import {
   buildHeatmap,
   computeCareer,
   computeGolfHandicap,
+  computeGotchaHandicap,
+  computeKillerHandicap,
   computeLeaderboard,
+  computeX01Handicap,
   condenseRow,
   summarizeMatch,
   type ArchivedRow,
@@ -17,8 +20,20 @@ import {
   type MatchAnalysis,
   type MatchRecord,
   type MatchReport,
+  type ModeHandicap,
 } from '@darts/stats';
 import type { GameConfig, GameType, MatchCommand, Player } from '@darts/schema';
+
+/**
+ * The knob each mode's handicap defaults to when no base value is supplied,
+ * matching that mode's own schema default: a match set up with nothing
+ * overridden gets the same suggestion whether or not the client passes one.
+ */
+const HANDICAP_BASE_DEFAULT: Partial<Record<GameType, number>> = {
+  x01: 501,
+  gotcha: 301,
+  killer: 3,
+};
 
 export interface Profile {
   id: string;
@@ -434,9 +449,32 @@ export class Store {
     );
   }
 
-  /** The Stableford handicap this player carries into their next round. */
-  golfHandicapFor(profileId: string): GolfHandicap {
-    return computeGolfHandicap(profileId, this.loadFinishedMatches().map(analyzeMatch));
+  /**
+   * The handicap this player carries into their next match of `gameType`.
+   *
+   * Golf's is always-on and Stableford-shaped; X01/Gotcha/Killer's are opt-in
+   * suggestions mapped from the same underlying skill signal onto that mode's
+   * own knob, using `base` (the match's own configured start score / target /
+   * lives) rather than a stored historical one -- skill is portable across
+   * differently sized games, only the mapping step needs today's base value.
+   */
+  handicapFor(profileId: string, gameType: 'golf', base?: number): GolfHandicap;
+  handicapFor(profileId: string, gameType: Exclude<GameType, 'golf'>, base?: number): ModeHandicap;
+  handicapFor(profileId: string, gameType: GameType, base?: number): GolfHandicap | ModeHandicap {
+    const analyses = this.loadFinishedMatches().map(analyzeMatch);
+    const resolvedBase = base ?? HANDICAP_BASE_DEFAULT[gameType];
+    switch (gameType) {
+      case 'golf':
+        return computeGolfHandicap(profileId, analyses);
+      case 'x01':
+        return computeX01Handicap(profileId, analyses, resolvedBase!);
+      case 'gotcha':
+        return computeGotchaHandicap(profileId, analyses, resolvedBase!);
+      case 'killer':
+        return computeKillerHandicap(profileId, analyses, resolvedBase!);
+      default:
+        throw new Error(`no handicap for game type ${gameType}`);
+    }
   }
 
   // -- leaderboard ----------------------------------------------------------

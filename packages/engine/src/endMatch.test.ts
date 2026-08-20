@@ -76,6 +76,7 @@ describe('ending a match early', () => {
       target: 301,
       knockback: 'zero',
       exactFinish: true,
+      handicaps: {},
       legsToWin: 1,
       setsToWin: 1,
     });

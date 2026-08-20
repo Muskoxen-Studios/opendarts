@@ -152,7 +152,7 @@ describe('career statistics', () => {
 
   it('counts gotcha knockbacks on both sides', () => {
     const cfg: GameConfig = {
-      gameType: 'gotcha', target: 200, knockback: 'zero', exactFinish: true,
+      gameType: 'gotcha', target: 200, knockback: 'zero', exactFinish: true, handicaps: {},
       legsToWin: 1, setsToWin: 1,
     };
     const a = analyzeMatch(record(cfg, [

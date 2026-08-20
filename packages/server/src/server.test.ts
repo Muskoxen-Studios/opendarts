@@ -714,8 +714,8 @@ describe('golf', () => {
 
   it('starts a newcomer on a handicap of 36', () => {
     const [alice] = seedPlayers();
-    expect(store.golfHandicapFor(alice.id).handicap).toBe(36);
-    expect(store.golfHandicapFor(alice.id).rounds).toBe(0);
+    expect(store.handicapFor(alice.id, 'golf').handicap).toBe(36);
+    expect(store.handicapFor(alice.id, 'golf').rounds).toBe(0);
   });
 
   it('moves the handicap once a round has been played', () => {
@@ -728,7 +728,7 @@ describe('golf', () => {
 
     // Two holes are judged against a par target of 4, and ten points off a
     // scratch handicap is far better than that -- so it floors at 0.
-    const handicap = store.golfHandicapFor(alice.id);
+    const handicap = store.handicapFor(alice.id, 'golf');
     expect(handicap.rounds).toBe(1);
     expect(handicap.counted).toBe(1);
     expect(handicap.recent[0]?.parTarget).toBe(4);
@@ -901,7 +901,7 @@ describe('resetting the leaderboard', () => {
     );
     throwAt('S1');
     throwAt('S2');
-    const earned = store.golfHandicapFor(alice.id).handicap;
+    const earned = store.handicapFor(alice.id, 'golf').handicap;
 
     // That round is now in the archive, so the new season knows nothing of it.
     store.resetLeaderboard();
