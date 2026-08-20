@@ -9,6 +9,11 @@ on:
         description: 'Tag to build and attach the release to (e.g. v0.1.0)'
         required: true
 
+# The default GITHUB_TOKEN is read-only, so creating and uploading to the
+# release needs contents: write.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
