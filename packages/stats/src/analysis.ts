@@ -92,6 +92,8 @@ export interface MatchAnalysis {
   cutthroatTurnPoints: Record<string, number[]>;
   /** Golf only; null for every other game. */
   golf: GolfAnalysis | null;
+  /** Shanghai only; the round's score, per player, per round played. */
+  shanghai: Record<string, number[]> | null;
   /** True when the match was stopped early and awarded to whoever led. */
   conceded: boolean;
 }
@@ -123,6 +125,7 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
     cricketMarks: Object.fromEntries(record.players.map((p) => [p.id, 0])),
     cutthroatTurnPoints: Object.fromEntries(record.players.map((p) => [p.id, []])),
     golf: null,
+    shanghai: null,
     conceded: false,
   };
 
@@ -236,6 +239,17 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
       golf.holesPlayed = Math.max(golf.holesPlayed, holes.length);
     }
     analysis.golf = golf;
+  }
+
+  if (record.gameType === 'shanghai') {
+    // Read off the final view, same reasoning as golf: the engine already
+    // publishes each player's round-by-round card.
+    const finalView = match.view;
+    const shanghai: Record<string, number[]> = {};
+    for (const p of finalView.players) {
+      shanghai[p.playerId] = (p.detail.results as number[] | undefined) ?? [];
+    }
+    analysis.shanghai = shanghai;
   }
 
   if (record.gameType === 'cricket') {

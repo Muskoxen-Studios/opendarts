@@ -2,6 +2,8 @@ import type { GameConfig, GameType } from '@darts/schema';
 import { cricketEngine } from './cricket.ts';
 import { golfEngine } from './golf.ts';
 import { gotchaEngine } from './gotcha.ts';
+import { killerEngine } from './killer.ts';
+import { shanghaiEngine } from './shanghai.ts';
 import type { GameEngine } from './types.ts';
 import { x01Engine } from './x01.ts';
 
@@ -18,6 +20,8 @@ export const engines: Record<GameType, AnyEngine> = {
   cricket: cricketEngine as unknown as AnyEngine,
   gotcha: gotchaEngine as unknown as AnyEngine,
   golf: golfEngine as unknown as AnyEngine,
+  shanghai: shanghaiEngine as unknown as AnyEngine,
+  killer: killerEngine as unknown as AnyEngine,
 };
 
 export function engineFor(gameType: GameType): AnyEngine {

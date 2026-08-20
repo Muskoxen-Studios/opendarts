@@ -275,6 +275,39 @@ route('DELETE', '/api/match/players/:profileId', (_req, res, params) => {
   view ? json(res, 200, view) : json(res, 409, { error: 'no active match' });
 });
 
+// -- leaderboard ------------------------------------------------------------
+
+/**
+ * The table of every player, ranked over the current season.
+ *
+ * A season is a window on the command log, not a separate store: resetting the
+ * leaderboard moves the timestamp it counts from, and nothing is deleted.
+ */
+route('GET', '/api/leaderboard', (_req, res) => json(res, 200, store.leaderboard()));
+
+/**
+ * Archive the current table and start a new one.
+ *
+ * Confirmed by the client, not here: this is not destructive -- every match
+ * stays in the log -- but it does change what everyone sees on the front page.
+ */
+route('POST', '/api/leaderboard/reset', (_req, res, _p, body) => {
+  const label = (body as { label?: unknown })?.label;
+  json(res, 201, store.resetLeaderboard(typeof label === 'string' ? label : undefined));
+});
+
+route('GET', '/api/leaderboard/archives', (_req, res) => json(res, 200, store.listArchives()));
+
+route('GET', '/api/leaderboard/archives/:id', (_req, res, params) => {
+  const archive = store.getArchive(params.id ?? '');
+  archive ? json(res, 200, archive) : json(res, 404, { error: 'no such archive' });
+});
+
+route('DELETE', '/api/leaderboard/archives/:id', (_req, res, params) => {
+  const ok = store.deleteArchive(params.id ?? '');
+  json(res, ok ? 204 : 404, ok ? {} : { error: 'no such archive' });
+});
+
 // -- bridge source ----------------------------------------------------------
 
 /**
@@ -348,6 +381,45 @@ route('POST', '/api/bridge/test', async (_req, res, _p, body) => {
     json(res, upstream.status, await upstream.json());
   } catch (err) {
     json(res, 502, { error: `bridge unreachable: ${(err as Error).message}` });
+  }
+});
+
+// -- board controls ---------------------------------------------------------
+
+/**
+ * Start, stop, reset and calibrate the board itself.
+ *
+ * Proxied straight through to the bridge, which proxies straight through to the
+ * Board Manager's local API. No game state is touched on the way: stopping
+ * detection stops darts arriving, it does not end the match.
+ */
+const BOARD_ACTIONS = ['start', 'stop', 'reset', 'calibrate'] as const;
+
+route('GET', '/api/board/state', async (_req, res) => {
+  try {
+    const upstream = await fetch(`${BRIDGE_HTTP}/board/state`);
+    // Always 200: whether the board answered is reported in the body, so the
+    // client can tell "no board configured" from "board did not answer" from
+    // "the bridge itself is down" -- three different things to say to a person.
+    json(res, 200, {
+      ...((await upstream.json()) as object),
+      boardOnline: manager.isBoardOnline,
+    });
+  } catch (err) {
+    json(res, 502, { ok: false, error: `bridge unreachable: ${(err as Error).message}` });
+  }
+});
+
+route('POST', '/api/board/:action', async (_req, res, params) => {
+  const action = params.action ?? '';
+  if (!(BOARD_ACTIONS as readonly string[]).includes(action)) {
+    return json(res, 404, { ok: false, error: `unknown board action "${action}"` });
+  }
+  try {
+    const upstream = await fetch(`${BRIDGE_HTTP}/board/${action}`, { method: 'POST' });
+    json(res, 200, await upstream.json());
+  } catch (err) {
+    json(res, 502, { ok: false, error: `bridge unreachable: ${(err as Error).message}` });
   }
 });
 

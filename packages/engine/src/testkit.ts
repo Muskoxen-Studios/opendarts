@@ -47,9 +47,19 @@ export function throwCmd(label: string): MatchCommand {
   return { type: 'THROW', throw: dart(label) };
 }
 
-/** Apply a sequence of dart labels to a match. */
+/**
+ * Apply a sequence of dart labels to a match.
+ *
+ * A turn that ends is held for takeout (BaseState.turnEnded) rather than
+ * handing over immediately -- real hardware waits for the darts to be pulled
+ * out. Tests play like the simulator does: nothing physical to wait for, so
+ * the handover is released the instant the turn ends.
+ */
 export function play(match: Match, ...labels: string[]): void {
-  for (const l of labels) match.apply(throwCmd(l));
+  for (const l of labels) {
+    match.apply(throwCmd(l));
+    if (match.view.awaitingTakeout) match.apply({ type: 'ADVANCE_TURN' });
+  }
 }
 
 export function players(...names: string[]): Player[] {

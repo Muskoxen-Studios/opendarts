@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { Coords, Segment } from '@darts/schema';
+import { parseSegmentLabel, type Coords, type Segment } from '@darts/schema';
 import {
   boardCells,
   BULL_INNER_R,
   BULL_OUTER_R,
   C,
+  mmToSvg,
   NUMBERS,
   r,
+  segmentCentre,
   SIZE,
   svgToMm,
 } from '../boardGeometry.ts';
@@ -21,6 +23,16 @@ const props = defineProps<{
   highlight?: Segment[];
   /** Whole numbers to light up, for games that aim at a number, not a ring. */
   highlightNumbers?: number[];
+  /**
+   * Darts already thrown this turn, plotted on the board. Lands at the real
+   * coordinates when the source reported them, and at the centre of the
+   * segment it scored otherwise. Stays put -- including through a bust or a
+   * finish -- until the turn is released (see `MatchView.awaitingTakeout`),
+   * which is what lets a player see their own three darts before the
+   * highlight moves on.
+   */
+  marks?: readonly { readonly label: string; readonly coords: { readonly x: number; readonly y: number } | null }[];
+  markColor?: string;
 }>();
 
 const emit = defineEmits<{ (e: 'throw', payload: { segment: Segment; coords: Coords }): void }>();
@@ -88,6 +100,14 @@ function coordsFrom(ev: MouseEvent): Coords {
 function fire(segment: Segment, ev: MouseEvent): void {
   emit('throw', { segment, coords: coordsFrom(ev) });
 }
+
+const dartMarks = computed(() =>
+  (props.marks ?? []).map((m) => {
+    if (m.coords) return { ...mmToSvg(m.coords), label: m.label };
+    const segment = parseSegmentLabel(m.label);
+    return { ...(segment ? segmentCentre(segment) : { x: C, y: C }), label: m.label };
+  }),
+);
 </script>
 
 <template>
@@ -148,6 +168,11 @@ function fire(segment: Segment, ev: MouseEvent): void {
       text-anchor="middle"
       dominant-baseline="central"
     >{{ n.number }}</text>
+
+    <g v-for="(m, i) in dartMarks" :key="`mark-${i}`" class="dart-mark">
+      <circle :cx="m.x" :cy="m.y" :r="24" class="halo" :fill="props.markColor ?? '#ffd166'" />
+      <circle :cx="m.x" :cy="m.y" :r="10" :fill="props.markColor ?? '#ffd166'" stroke="#0c0e12" stroke-width="3" />
+    </g>
   </svg>
 </template>
 
@@ -173,6 +198,9 @@ function fire(segment: Segment, ev: MouseEvent): void {
 /* The dart to throw now, and the rest of the route behind it. */
 .wedge.target { filter: brightness(1.5) saturate(1.2); }
 .wedge.target-later { filter: brightness(1.2); }
+
+.dart-mark { pointer-events: none; }
+.dart-mark .halo { opacity: 0.22; }
 
 .outline { fill: none; pointer-events: none; }
 .outline.now { stroke: #ffd166; stroke-width: 5; }

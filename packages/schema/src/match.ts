@@ -101,11 +101,35 @@ export const GolfConfigSchema = z.object({
 });
 export type GolfConfig = z.infer<typeof GolfConfigSchema>;
 
+export const ShanghaiConfigSchema = z.object({
+  gameType: z.literal('shanghai'),
+  /** Rounds are played in order from startRound to endRound; each round's number is the target. */
+  startRound: z.number().int().min(1).max(20).default(1),
+  endRound: z.number().int().min(1).max(20).default(7),
+  /** A single, double and triple of the round's number in one turn wins instantly. */
+  instantWin: z.boolean().default(true),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+});
+export type ShanghaiConfig = z.infer<typeof ShanghaiConfigSchema>;
+
+export const KillerConfigSchema = z.object({
+  gameType: z.literal('killer'),
+  startingLives: z.number().int().min(1).max(9).default(3),
+  /** When true, a killer hitting their own double after becoming one costs them a life too. */
+  friendlyFire: z.boolean().default(false),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+});
+export type KillerConfig = z.infer<typeof KillerConfigSchema>;
+
 export const GameConfigSchema = z.discriminatedUnion('gameType', [
   X01ConfigSchema,
   CricketConfigSchema,
   GotchaConfigSchema,
   GolfConfigSchema,
+  ShanghaiConfigSchema,
+  KillerConfigSchema,
 ]);
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 export type GameType = GameConfig['gameType'];
@@ -133,6 +157,14 @@ export const MatchCommandSchema = z.discriminatedUnion('type', [
   }),
   /** End the current turn early (e.g. player threw fewer than three darts). */
   z.object({ type: z.literal('NEXT_PLAYER') }),
+  /**
+   * Release a turn that ended (3 darts, a bust, a finish) but is being held
+   * for takeout -- see `BaseState.turnEnded`. Sent once the board's own
+   * darts have actually been pulled out, or synthesised immediately for
+   * sources with no physical takeout to wait for (the simulator, manual
+   * entry). A no-op if no turn is currently being held.
+   */
+  z.object({ type: z.literal('ADVANCE_TURN') }),
   /**
    * Stop the match where it stands and award it to whoever is closest to
    * winning. Each engine decides what "closest" means for its own game, because
@@ -180,6 +212,14 @@ export type DomainEvent =
       /** False when the hole was abandoned at par + 1 without a hit. */
       holed: boolean;
     }
+  /** A Shanghai round (a shared target number) has finished for every player. */
+  | { type: 'shanghai.round'; round: number }
+  /** Single, double and triple of the round's number in one turn: instant win. */
+  | { type: 'shanghai.win'; playerId: string; round: number }
+  | { type: 'killer.assigned'; playerId: string; number: number; auto: boolean }
+  | { type: 'killer.becameKiller'; playerId: string }
+  | { type: 'killer.hit'; byPlayerId: string; victimPlayerId: string; livesLeft: number }
+  | { type: 'killer.eliminated'; playerId: string }
   /** The match was stopped early and awarded to whoever led. */
   | { type: 'match.conceded'; playerId: string };
 
@@ -210,7 +250,7 @@ export interface PlayerView {
 }
 
 export interface TurnView {
-  throws: Array<{ id: string; label: string; value: number }>;
+  throws: Array<{ id: string; label: string; value: number; coords: { x: number; y: number } | null }>;
   total: number;
   dartsRemaining: number;
   /**
@@ -236,6 +276,13 @@ export interface MatchView {
   status: 'idle' | 'playing' | 'finished';
   players: PlayerView[];
   activePlayerId: string | null;
+  /**
+   * The active player's turn is over but held for takeout: their finished
+   * darts are still shown (`turn`) and they are still `isActive`, but no more
+   * darts will be accepted until the board (or the simulator, immediately)
+   * confirms the takeout.
+   */
+  awaitingTakeout: boolean;
   turn: TurnView;
   leg: number;
   set: number;

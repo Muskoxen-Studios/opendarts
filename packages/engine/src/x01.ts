@@ -127,6 +127,13 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
 
       case 'NEXT_PLAYER': {
         if (base.status !== 'playing') return { state: prev, events: [] };
+        // A turn already held for takeout has already had its turn.completed
+        // event: this button now means "the darts are out", i.e. ADVANCE_TURN.
+        if (base.turnEnded) {
+          advanceTurn(base, makeSkip(state, cfg));
+          beginTurn(state);
+          return { state, events };
+        }
         const p = activePlayer(base);
         events.push({
           type: 'turn.completed',
@@ -135,6 +142,13 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
           darts: base.turn.length,
           busted: false,
         });
+        advanceTurn(base, makeSkip(state, cfg));
+        beginTurn(state);
+        return { state, events };
+      }
+
+      case 'ADVANCE_TURN': {
+        if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base, makeSkip(state, cfg));
         beginTurn(state);
         return { state, events };
@@ -182,13 +196,14 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
       case 'RESTART_LEG': {
         base.activeIndex = base.legStartIndex;
         base.turn = [];
+        base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
         resetLegScores(state, cfg);
         return { state, events };
       }
 
       case 'THROW': {
-        if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.status !== 'playing' || base.turnEnded) return { state: prev, events: [] };
 
         const player = activePlayer(base);
         const rules = rulesFor(cfg, player.id);
@@ -257,8 +272,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
             darts: base.turn.length,
             busted: true,
           });
-          advanceTurn(base, makeSkip(state, cfg));
-          beginTurn(state);
+          base.turnEnded = true;
           return { state, events };
         }
 
@@ -287,8 +301,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
           // Playing to places: carry on until only one player is left in.
           const stillIn = base.players.filter((p) => !state.places.includes(p.id));
           if (cfg.legEnd === 'all-but-one' && stillIn.length > 1) {
-            advanceTurn(base, makeSkip(state, cfg));
-            beginTurn(state);
+            base.turnEnded = true;
             return { state, events };
           }
 
@@ -310,8 +323,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
             darts: base.turn.length,
             busted: false,
           });
-          advanceTurn(base, makeSkip(state, cfg));
-          beginTurn(state);
+          base.turnEnded = true;
         }
 
         return { state, events };
@@ -368,8 +380,9 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
       status: base.status,
       players,
       activePlayerId: base.status === 'playing' ? (active?.id ?? null) : null,
+      awaitingTakeout: base.turnEnded,
       turn: {
-        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value })),
+        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value, coords: t.coords })),
         total: base.turn.reduce((a, t) => a + t.value, 0),
         dartsRemaining: dartsLeft,
         hints,

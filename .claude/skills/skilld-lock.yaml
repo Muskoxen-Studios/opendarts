@@ -1,0 +1,8 @@
+skills:
+  vitest-skilld:
+    packageName: vitest
+    version: 3.2.7
+    repo: vitest-dev/vitest
+    source: "https://github.com/vitest-dev/vitest/tree/v3.2.7/docs"
+    syncedAt: 2026-08-20
+    generator: skilld

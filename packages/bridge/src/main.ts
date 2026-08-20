@@ -3,6 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { CoordsSchema, SegmentSchema, type BoardEvent } from '@darts/schema';
 import { configFromEnv, describeSource, SourceConfigSchema } from './sourceConfig.ts';
 import { describeFetchError } from './fetchError.ts';
+import { boardCommand, boardState, isBoardAction } from './boardControl.ts';
 import { SourceManager } from './sourceManager.ts';
 
 const PORT = Number(process.env.BRIDGE_PORT ?? 8081);
@@ -123,6 +124,48 @@ const server = createServer(async (req, res) => {
       const base = url.replace(/\/$/, '');
       json(res, 200, { ok: false, error: describeFetchError(err, base) });
     }
+    return;
+  }
+
+  /**
+   * The board's own controls: start, stop, reset, calibrate, plus its state.
+   *
+   * A thin pass-through to the Board Manager's local API. It lives here rather
+   * than in the game server because the bridge is the only process that knows
+   * a board's address, and rather than in the browser because the board is on
+   * the house network, not necessarily on the one serving the UI.
+   *
+   * Only meaningful when a board is the active source. On the simulator there
+   * is no board to start, and saying so is more useful than a dead button.
+   */
+  if (req.url?.startsWith('/board')) {
+    const boardUrl = manager.config.kind === 'autodarts' ? manager.config.url : null;
+    if (!boardUrl) {
+      // Not an error status: "there is no board" is a true answer to the
+      // question, and the caller needs to tell it apart from a board that is
+      // attached but unreachable. `attached` is what says which.
+      json(res, 200, {
+        ok: false,
+        attached: false,
+        error: `no board attached — the active source is "${manager.config.kind}"`,
+      });
+      return;
+    }
+
+    if (req.url === '/board/state' && req.method === 'GET') {
+      const result = await boardState(boardUrl);
+      json(res, 200, { ...result, attached: true, url: boardUrl });
+      return;
+    }
+
+    const action = req.url.slice('/board/'.length);
+    if (req.method === 'POST' && isBoardAction(action)) {
+      const result = await boardCommand(boardUrl, action);
+      json(res, 200, { ...result, attached: true, action, url: boardUrl });
+      return;
+    }
+
+    json(res, 404, { error: `unknown board control "${req.url}"` });
     return;
   }
 

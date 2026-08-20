@@ -164,6 +164,11 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
 
       case 'NEXT_PLAYER': {
         if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.turnEnded) {
+          advanceTurn(base, makeSkip(state, cfg));
+          beginTurn(state);
+          return { state, events };
+        }
         const p = activePlayer(base);
         events.push({
           type: 'turn.completed',
@@ -172,6 +177,13 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
           darts: base.turn.length,
           busted: false,
         });
+        advanceTurn(base, makeSkip(state, cfg));
+        beginTurn(state);
+        return { state, events };
+      }
+
+      case 'ADVANCE_TURN': {
+        if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base, makeSkip(state, cfg));
         beginTurn(state);
         return { state, events };
@@ -206,6 +218,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
       case 'RESTART_LEG': {
         base.activeIndex = base.legStartIndex;
         base.turn = [];
+        base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
         resetLeg(state);
         beginTurn(state);
@@ -213,7 +226,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
       }
 
       case 'THROW': {
-        if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.status !== 'playing' || base.turnEnded) return { state: prev, events: [] };
 
         const player = activePlayer(base);
         if (isDone(state, cfg, player.id)) return { state: prev, events: [] };
@@ -288,8 +301,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
             darts: base.turn.length,
             busted: false,
           });
-          advanceTurn(base, makeSkip(state, cfg));
-          beginTurn(state);
+          base.turnEnded = true;
         }
 
         return { state, events };
@@ -349,8 +361,9 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
       status: base.status,
       players,
       activePlayerId: base.status === 'playing' ? (active?.id ?? null) : null,
+      awaitingTakeout: base.turnEnded,
       turn: {
-        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value })),
+        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value, coords: t.coords })),
         // Points won this turn, not the board value of the darts -- a golf turn
         // scores when a hole is holed out, not when a dart happens to be a treble.
         total: active

@@ -20,15 +20,47 @@
   - the winning turn plays back dart by dart in the overview
 - [x] heatmap per user throughout all games
   - in the player's panel, over every finished match
-- [ ] add a leaderboard for all players, showing their stats and ranking
-  - includes a heatmap of where the darts landed on the board
+- [x] add a leaderboard for all players, showing their stats and ranking
+  - its own tab, ranked on points: 3 for a win, 1 for turning up, so a season
+    of showing up beats one lucky night
+  - every column sorts; a row opens the player's heatmap, season detail and
+    best golf card
   - averages, first nine, best turn, 180s, checkouts, busts, golf card
-- [ ] add start/stop, reset, calibrate buttons for the board, and a "board connected" indicator. they can directly call the board's api
-- [ ] add a reset leaderboard button which clears all stats besides the top three players.
+  - golf handicaps stay career-wide, because that is what the next round is
+    played off
+- [x] add start/stop, reset, calibrate buttons for the board, and a "board connected" indicator
+  - on the play screen behind **Board**, and on the Settings page
+  - each button is exactly one Board Manager endpoint, proxied through the
+    bridge because that is the only process that knows the board's address
+  - two indicators: the bridge heartbeat ("is it talking to us") and the
+    board's own `running` flag ("is detection armed") — they differ
+- [x] add a reset leaderboard button which clears the leaderboard and archives the current leaderboard
+  - a reset deletes nothing: it files a condensed snapshot and records a
+    timestamp, so a season is a window on the command log
+  - the archive keeps the standings and how everyone threw; heatmaps and golf
+    cards are left out, being derivable from the log
+  - past leaderboards are listed under the table and reopen with a click
 
+
+- [x] add Shanghai and Killer game modes
+  - **Shanghai**: rounds 1-7 by default, only the round's own number scores,
+    a single+double+triple of it in one turn wins instantly
+  - **Killer**: claim a number, hit its double to become a killer, knock
+    opponents' lives off with their doubles, last one standing wins
+  - both reworked the "New match" player picker: a search box plus a pinned
+    "selected" row and a scrollable list, so it stays usable with ~30 profiles
+- [x] test the live board path without hardware
+  - `@darts/fakeboard` speaks the Board Manager's local protocol on :3180, so
+    `SOURCE=autodarts` runs end to end with no board and no cloud
+  - covers reconnect, the stats heartbeat, the cumulative `throws[]` dedupe and
+    takeout; drive it with `POST /sim/turn`, `/sim/throw`, `/sim/disconnect`
+  - it emits the *inferred* throw payload, so it cannot close FINDINGS §3
 
 ## Ideas not yet picked up
 
+- Feeding a real Board Manager from `v4l2loopback` cameras would test Autodarts'
+  own detection, but needs recorded 3-cam footage and a matching calibration —
+  and it tests their code, not ours. The fake board covers our side.
 - Coordinates only exist for simulator darts. Once the board's throw payload is
   captured the same heatmaps sharpen automatically, with no code change here.
 - Golf assumes a hole is holed by hitting the number in any ring. A stricter

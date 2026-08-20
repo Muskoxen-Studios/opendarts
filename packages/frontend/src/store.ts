@@ -114,6 +114,102 @@ export interface MatchReport {
   } | null;
 }
 
+/**
+ * A row of the leaderboard. Mirrored from @darts/stats for the same reason the
+ * heatmap types are: the frontend depends on @darts/schema and nothing else.
+ */
+export interface LeaderboardRow {
+  rank: number;
+  playerId: string;
+  name: string;
+  color: string;
+  points: number;
+  matchesPlayed: number;
+  matchesWon: number;
+  winRate: number | null;
+  legsWon: number;
+  dartsThrown: number;
+  average3: number | null;
+  first9Average: number | null;
+  bestTurn: number | null;
+  count180: number;
+  count140plus: number;
+  count100plus: number;
+  checkoutsHit: number;
+  checkoutRate: number | null;
+  highestCheckout: number;
+  bestLegDarts: number | null;
+  bustedTurns: number;
+  mpr: number | null;
+  golfRounds: number;
+  golfBestPoints: number | null;
+  golfHandicap: number;
+  golfBestCard: GolfHoleResult[] | null;
+  currentStreak: number;
+  longestStreak: number;
+  lastPlayed: string | null;
+  heatmap: Heatmap;
+}
+
+export interface Leaderboard {
+  /** Where the current season starts; null means "everything on record". */
+  since: string | null;
+  generatedAt: string;
+  matchesCounted: number;
+  rows: LeaderboardRow[];
+  heatmap: Heatmap;
+}
+
+/** The condensed row kept in an archive: no heatmap, no golf card. */
+export type ArchivedRow = Omit<
+  LeaderboardRow,
+  | 'heatmap'
+  | 'golfBestCard'
+  | 'count140plus'
+  | 'count100plus'
+  | 'bestLegDarts'
+  | 'currentStreak'
+  | 'lastPlayed'
+>;
+
+export interface LeaderboardArchiveSummary {
+  id: string;
+  label: string;
+  createdAt: string;
+  from: string | null;
+  to: string;
+  matches: number;
+}
+
+export interface LeaderboardArchive extends LeaderboardArchiveSummary {
+  rows: ArchivedRow[];
+}
+
+/**
+ * The board's own state, straight from the Board Manager.
+ *
+ * `state` is whatever the board returned; `ok` is false when it could not be
+ * reached at all, which is a different thing from a board that is merely
+ * stopped.
+ */
+export interface BoardStateResult {
+  ok: boolean;
+  /** False when the bridge has no board at all -- simulator or replay source. */
+  attached?: boolean;
+  error?: string;
+  url?: string;
+  boardOnline?: boolean;
+  state?: {
+    connected?: boolean;
+    running?: boolean;
+    status?: string;
+    event?: string;
+    numThrows?: number;
+  } | null;
+}
+
+export type BoardAction = 'start' | 'stop' | 'reset' | 'calibrate';
+
 export interface MatchSetupRecord {
   gameType: string;
   config: Record<string, unknown>;
@@ -167,6 +263,9 @@ interface State {
   view: MatchView | null;
   profiles: Profile[];
   boardOnline: boolean;
+  /** The board's own status word, e.g. "Throw" or "Takeout". Null when unknown. */
+  boardStatus: string | null;
+  boardRunning: boolean;
   connected: boolean;
   toasts: Toast[];
   lastError: string | null;
@@ -181,6 +280,8 @@ const state = reactive<State>({
   view: null,
   profiles: [],
   boardOnline: false,
+  boardStatus: null,
+  boardRunning: false,
   connected: false,
   toasts: [],
   lastError: null,
@@ -341,6 +442,38 @@ export const api = {
     });
   },
 
+  // -- leaderboard ----------------------------------------------------------
+
+  leaderboard(): Promise<Leaderboard> {
+    return request<Leaderboard>('/api/leaderboard');
+  },
+  /** Archive the current table and start a new one. Nothing is deleted. */
+  resetLeaderboard(label?: string): Promise<LeaderboardArchive> {
+    return request<LeaderboardArchive>('/api/leaderboard/reset', {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    });
+  },
+  leaderboardArchives(): Promise<LeaderboardArchiveSummary[]> {
+    return request<LeaderboardArchiveSummary[]>('/api/leaderboard/archives');
+  },
+  leaderboardArchive(id: string): Promise<LeaderboardArchive> {
+    return request<LeaderboardArchive>(`/api/leaderboard/archives/${id}`);
+  },
+  deleteLeaderboardArchive(id: string): Promise<void> {
+    return request<void>(`/api/leaderboard/archives/${id}`, { method: 'DELETE' });
+  },
+
+  // -- the board itself -----------------------------------------------------
+
+  boardState(): Promise<BoardStateResult> {
+    return request<BoardStateResult>('/api/board/state');
+  },
+  /** Start/stop detection, reset the throw counter, or auto-calibrate. */
+  boardAction(action: BoardAction): Promise<BoardStateResult & { action: BoardAction }> {
+    return request(`/api/board/${action}`, { method: 'POST' });
+  },
+
   // -- settings -------------------------------------------------------------
   async settings(): Promise<Settings> {
     const s = await request<Settings>('/api/settings');
@@ -393,7 +526,18 @@ export function connect(): void {
         if (msg.event?.type === 'board.connected' || msg.event?.type === 'board.heartbeat') {
           state.boardOnline = true;
         }
-        if (msg.event?.type === 'board.disconnected') state.boardOnline = false;
+        if (msg.event?.type === 'board.disconnected') {
+          state.boardOnline = false;
+          // The status word came from a board we can no longer hear from, so
+          // it says nothing about the board now. Clear it rather than leave a
+          // stale "Throw" on screen next to an offline indicator.
+          state.boardStatus = null;
+          state.boardRunning = false;
+        }
+        if (msg.event?.type === 'board.status') {
+          state.boardStatus = msg.event.status ?? null;
+          state.boardRunning = Boolean(msg.event.running);
+        }
         break;
       case 'achievements.unlocked': {
         const color =

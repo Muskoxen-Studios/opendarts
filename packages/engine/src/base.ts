@@ -18,6 +18,7 @@ export function createBaseState(players: Player[]): BaseState {
     winnerId: null,
     legDarts: { ...zero },
     legStartIndex: 0,
+    turnEnded: false,
   };
 }
 
@@ -40,6 +41,7 @@ export function playerById(base: BaseState, id: string): Player | undefined {
  */
 export function advanceTurn(base: BaseState, skip?: (playerId: string) => boolean): void {
   base.turn = [];
+  base.turnEnded = false;
   const count = base.players.length;
   if (count === 0) return;
 
@@ -84,6 +86,7 @@ export function awardLeg(
       base.status = 'finished';
       base.winnerId = playerId;
       base.turn = [];
+      base.turnEnded = false;
       events.push({ type: 'match.won', playerId });
       return events;
     }
@@ -100,6 +103,7 @@ export function awardLeg(
   base.legStartIndex = (base.legStartIndex + 1) % base.players.length;
   base.activeIndex = base.legStartIndex;
   base.turn = [];
+  base.turnEnded = false;
   for (const p of base.players) base.legDarts[p.id] = 0;
   onNewLeg();
   return events;
@@ -140,6 +144,7 @@ export function endMatchEarly(
   base.status = 'finished';
   base.winnerId = winner.id;
   base.turn = [];
+  base.turnEnded = false;
   return [
     { type: 'match.conceded', playerId: winner.id },
     { type: 'match.won', playerId: winner.id },
@@ -189,12 +194,17 @@ export function removePlayerFromBase(base: BaseState, playerId: string): number 
     base.activeIndex = 0;
     base.legStartIndex = 0;
     base.turn = [];
+    base.turnEnded = false;
     base.status = 'finished';
     return index;
   }
 
-  if (wasActive) base.turn = [];
-  else if (index < base.activeIndex) base.activeIndex -= 1;
+  if (wasActive) {
+    base.turn = [];
+    base.turnEnded = false;
+  } else if (index < base.activeIndex) {
+    base.activeIndex -= 1;
+  }
   if (index < base.legStartIndex) base.legStartIndex -= 1;
 
   base.activeIndex %= base.players.length;

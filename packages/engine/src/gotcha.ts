@@ -77,6 +77,11 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
 
       case 'NEXT_PLAYER': {
         if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.turnEnded) {
+          advanceTurn(base);
+          beginTurn(state);
+          return { state, events };
+        }
         const p = activePlayer(base);
         events.push({
           type: 'turn.completed',
@@ -85,6 +90,13 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
           darts: base.turn.length,
           busted: false,
         });
+        advanceTurn(base);
+        beginTurn(state);
+        return { state, events };
+      }
+
+      case 'ADVANCE_TURN': {
+        if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base);
         beginTurn(state);
         return { state, events };
@@ -117,6 +129,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
       case 'RESTART_LEG': {
         base.activeIndex = base.legStartIndex;
         base.turn = [];
+        base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
         resetLeg(state);
         beginTurn(state);
@@ -124,7 +137,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
       }
 
       case 'THROW': {
-        if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.status !== 'playing' || base.turnEnded) return { state: prev, events: [] };
 
         const player = activePlayer(base);
         const dart = cmd.throw;
@@ -155,8 +168,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
             darts: base.turn.length,
             busted: true,
           });
-          advanceTurn(base);
-          beginTurn(state);
+          base.turnEnded = true;
           return { state, events };
         }
 
@@ -217,8 +229,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
             darts: base.turn.length,
             busted: false,
           });
-          advanceTurn(base);
-          beginTurn(state);
+          base.turnEnded = true;
         }
 
         return { state, events };
@@ -260,8 +271,9 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
       status: base.status,
       players,
       activePlayerId: base.status === 'playing' ? (active?.id ?? null) : null,
+      awaitingTakeout: base.turnEnded,
       turn: {
-        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value })),
+        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value, coords: t.coords })),
         total: base.turn.reduce((a, t) => a + t.value, 0),
         dartsRemaining: 3 - base.turn.length,
         hints: [],

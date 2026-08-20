@@ -1,4 +1,4 @@
-import { segmentValue, type BoardEvent, type BoardStatus } from '@darts/schema';
+import { segmentValue, type BoardEvent, type BoardStatus, type Coords, type Segment } from '@darts/schema';
 import { normalizeThrow, ThrowShapeError } from '../adapters/autodarts.ts';
 import type { EventSink, Source } from './types.ts';
 
@@ -32,6 +32,8 @@ export function autodartsSource(opts: AutodartsOptions): Source {
   let online = false;
   /** Number of darts already emitted for the current visit to the board. */
   let emittedThrows = 0;
+  let currentEmit: EventSink | null = null;
+  let manualSeq = 0;
 
   const connect = (emit: EventSink): void => {
     if (closed) return;
@@ -155,14 +157,41 @@ export function autodartsSource(opts: AutodartsOptions): Source {
     name: 'autodarts',
     start(emit) {
       closed = false;
+      currentEmit = emit;
       connect(emit);
       armHeartbeat(emit);
     },
     stop() {
       closed = true;
+      currentEmit = null;
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       socket?.close();
       socket = null;
+    },
+    /**
+     * The camera occasionally misses a dart outright, leaving nothing in
+     * `throws[]` to correct. This lets an operator hand-enter the dart it
+     * missed, same as the simulator, without waiting for the board to agree.
+     *
+     * `emittedThrows` is bumped along with it so the count stays in step: the
+     * board's own array only ever grows by darts *it* saw, so a manual entry
+     * would otherwise make the next real dart look like a repeat.
+     */
+    inject(segment: Segment, coords?: Coords | null) {
+      if (!currentEmit) return;
+      const ts = new Date().toISOString();
+      emittedThrows += 1;
+      currentEmit({
+        type: 'throw.detected',
+        throw: {
+          id: `ad-manual-${ts}-${manualSeq++}`,
+          ts,
+          segment,
+          value: segmentValue(segment),
+          coords: coords ?? null,
+          source: 'manual',
+        },
+      });
     },
   };
 }

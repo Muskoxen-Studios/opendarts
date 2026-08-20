@@ -58,9 +58,27 @@ All under `/api`, unauthenticated (`auth.api_key` is empty in this board's confi
 `status` enum: `Starting · Stopping · Stopped · Throw · Takeout · Takeout in progress · Calibrating · Offline · Setup · Error`
 (`status:"Throw"` means *armed and waiting*, not "a dart just landed".)
 
-## 3. Throw payload — FROM BUNDLE, NOT YET CONFIRMED
+## 3. Throw payload — CONFIRMED
 
-`state.data.throws` is an array. The UI's board renderer does:
+Captured 2026-08-20 against the real board (`recon/captures/live-ws-2026-08-20T10-06-03-291Z.ndjson`),
+three darts thrown then taken out. Real `state` frame on the third dart:
+
+```json
+{
+  "connected": true, "running": true,
+  "status": "Takeout", "event": "Throw detected", "numThrows": 3,
+  "throws": [
+    { "segment": { "name": "S11", "number": 11, "bed": "SingleInner", "multiplier": 1 },
+      "coords": { "x": -0.24093133012437515, "y": 0.006307790868472802 } },
+    { "segment": { "name": "S4", "number": 4, "bed": "SingleOuter", "multiplier": 1 },
+      "coords": { "x": 0.5476268779047749, "y": 0.33845423262136143 } },
+    { "segment": { "name": "S1", "number": 1, "bed": "SingleInner", "multiplier": 1 },
+      "coords": { "x": 0.18832737995641766, "y": 0.37901887299768106 } }
+  ]
+}
+```
+
+The UI's board renderer does:
 
 ```js
 const coords   = (throws||[]).map(d => d.coords).filter(Boolean);
@@ -76,15 +94,27 @@ So each throw has **both** `coords` and `segment` — raw position *and* a resol
 segment. We get heatmaps/grouping for free without owning segment mapping.
 
 `segment.bed` enum: `Single · SingleInner · SingleOuter · Double · Triple · Outside`
-`segment.name`: `"D20"`, `"M20"` (miss ring), etc. — `slice(1,5)` implies a
-1-char prefix + number.
+`segment.name`: `"D20"`, `"M20"` (miss ring), etc. — a 1-char prefix + number.
 
-**OPEN — needs a real throw to settle:**
-- `coords` shape: `{x,y}` or `[x,y]`? units? origin? y-axis direction?
-- Does `segment` also carry `number` / `multiplier`? (`multiplier` appears
-  **0 times** in the bundle — so probably not; the bridge likely derives it from `bed`.)
-- Is `throws[]` cumulative for the turn, or reset per dart?
-- What `event` values accompany a throw vs. a takeout?
+`packages/fakeboard` **emitted exactly this inferred shape** ahead of the real
+capture — `toRawCoords`'s `{x, y}` / normalised-by-170 / bull-origin / y-down
+formula lands within noise of the real board's numbers for all three darts
+above (e.g. predicted `(-r, 0)` for a dead-centre S11 vs. the observed
+`(-0.2409, 0.0063)`). The one guess it got wrong: `multiplier` **is** present on
+the real segment (`1` for singles here) — the adapter already ignored it and
+derived the ring from `bed` instead, so nothing downstream needed to change.
+
+**Settled:**
+- `coords`: `{x, y}`, normalised by 170 (board-mm / 170), origin at the bull,
+  x right, y down (screen convention). Confirmed by all three captured darts
+  landing at the predicted radius/angle for their segment.
+- `segment` carries `number` and `multiplier` in addition to `name`/`bed`.
+- `throws[]` is **cumulative for the visit**: it grew from 1 to 3 entries as
+  each dart landed, each element's `segment`/`coords` staying fixed once set.
+- `event` sequence: `"Throw detected"` per dart (status `"Throw"` while armed,
+  `"Takeout"` once 3 are down); `"Takeout started"` while status is
+  `"Takeout in progress"` (throws[] still populated); then `"Takeout finished"`
+  with `numThrows: 0` and **no `throws` key at all** (not `throws: []`).
 
 ## 4. Cloud independence — CONFIRMED
 
@@ -120,6 +150,12 @@ auto-calibrate on start enabled, motion standby 15 min.
 ---
 
 ## Next step
-Capture a real throw: `./recon/capture-throws.sh 192.168.120.40`
-(starts detection, records `/api/events`, restores prior state on Ctrl-C).
-Throw 3 darts, pull them out, Ctrl-C. That settles every OPEN item in §3.
+
+§3 is settled. `packages/bridge/src/adapters/autodarts.ts` (`toCoords`) now
+parses the confirmed `{x,y}` shape instead of discarding it, and
+`packages/fakeboard/src/payload.ts`'s comments are updated from ASSUMED to
+CONFIRMED — the formula itself did not need to change.
+
+The capture that settled it, `recon/captures/live-ws-2026-08-20T10-06-03-291Z.ndjson`,
+is worth keeping as a `replay` fixture: it is a real three-dart-then-takeout
+sequence, not a synthesised one.

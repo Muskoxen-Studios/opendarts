@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && vue-tsc -p packages/frontend/tsconfig.json --noEmit",
     "dev:bridge": "node --watch packages/bridge/src/main.ts",
+    "dev:fakeboard": "node --watch packages/fakeboard/src/main.ts",
     "dev:server": "node --watch packages/server/src/main.ts",
     "dev:frontend": "npm -w @darts/frontend run dev",
     "achievements:backfill": "node packages/server/src/scripts/backfill.ts",

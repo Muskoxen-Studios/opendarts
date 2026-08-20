@@ -22,6 +22,13 @@ let store: Store;
 let events: ServerEvent[];
 let manager: MatchManager;
 
+/**
+ * A turn that ends is held for takeout (BaseState.turnEnded) rather than
+ * handing over immediately. `onBoardEvent` releases that hold at once for
+ * non-board sources, since there is no physical takeout to wait for; this
+ * helper calls `manager.apply` directly rather than going through
+ * `onBoardEvent`, so it has to do the same thing itself.
+ */
 function throwAt(label: string, coords: { x: number; y: number } | null = null): void {
   const segment: Segment = seg(label);
   manager.apply({
@@ -35,6 +42,7 @@ function throwAt(label: string, coords: { x: number; y: number } | null = null):
       source: 'simulator',
     },
   });
+  if (manager.view?.awaitingTakeout) manager.apply({ type: 'ADVANCE_TURN' });
 }
 
 /** Alice wins a 501 leg in nine darts; Bob misses throughout. */
@@ -106,6 +114,60 @@ describe('playing a match', () => {
     const summary = store.listMatches()[0];
     expect(summary?.endedAt).not.toBeNull();
     expect(summary?.winnerId).toBe(alice.id);
+  });
+});
+
+describe('holding the handover for a real takeout', () => {
+  function boardThrow(label: string): void {
+    const segment: Segment = seg(label);
+    manager.onBoardEvent({
+      type: 'throw.detected',
+      throw: {
+        id: `${label}-${Math.random()}`,
+        ts: new Date().toISOString(),
+        segment,
+        value: segmentValue(segment),
+        coords: null,
+        source: 'board',
+      },
+    });
+  }
+
+  it('does not advance to the next player on the third dart', () => {
+    const [alice, bob] = seedPlayers();
+    manager.start(X01, [alice, bob]);
+    boardThrow('T20');
+    boardThrow('T20');
+    boardThrow('T20');
+
+    expect(manager.view?.awaitingTakeout).toBe(true);
+    expect(manager.view?.activePlayerId).toBe(alice.id);
+    expect(manager.view?.turn.throws).toHaveLength(3);
+  });
+
+  it('advances only once takeout.completed arrives from the bridge', () => {
+    const [alice, bob] = seedPlayers();
+    manager.start(X01, [alice, bob]);
+    boardThrow('T20');
+    boardThrow('T20');
+    boardThrow('T20');
+
+    manager.onBoardEvent({ type: 'takeout.completed' });
+
+    expect(manager.view?.awaitingTakeout).toBe(false);
+    expect(manager.view?.activePlayerId).toBe(bob.id);
+    expect(manager.view?.turn.throws).toHaveLength(0);
+  });
+
+  it('advances immediately for a simulated or manually-entered dart', () => {
+    const [alice, bob] = seedPlayers();
+    manager.start(X01, [alice, bob]);
+    throwAt('T20');
+    throwAt('T20');
+    throwAt('T20');
+
+    // throwAt already released the hold itself (source: 'simulator').
+    expect(manager.view?.activePlayerId).toBe(bob.id);
   });
 });
 
@@ -683,6 +745,203 @@ describe('golf', () => {
     const report = store.summaryFor(store.lastFinishedMatchId()!);
     expect(report?.players[0]?.golf?.points).toBe(9);
     expect(report?.players[0]?.golf?.holes.map((h) => h.strokes)).toEqual([2, 1]);
+  });
+});
+
+describe('the leaderboard', () => {
+  /** Alice beats Bob; both have a full match on record afterwards. */
+  function aliceWins(): void {
+    const players = store.listProfiles().map(toPlayer);
+    manager.start(X01, players);
+    nineDartLeg();
+  }
+
+  it('ranks on points: three for a win, one for turning up', () => {
+    seedPlayers();
+    aliceWins();
+
+    const board = store.leaderboard();
+    expect(board.rows.map((r) => r.name)).toEqual(['Alice', 'Bob']);
+    expect(board.rows[0]).toMatchObject({ rank: 1, points: 3, matchesWon: 1, winRate: 1 });
+    expect(board.rows[1]).toMatchObject({ rank: 2, points: 1, matchesWon: 0, winRate: 0 });
+  });
+
+  it('puts a regular loser above a one-match winner', () => {
+    const [alice] = seedPlayers();
+    aliceWins();
+    aliceWins();
+    aliceWins();
+    aliceWins();
+
+    // Bob has lost four; a newcomer wins their only match. Four appearances
+    // (4 points) still outrank one win (3), which is the intended shape: the
+    // table rewards playing, not a single lucky night.
+    const carol = toPlayer(store.createProfile('Carol'));
+    manager.start(X01, [carol]);
+    nineDartLeg();
+
+    const rows = store.leaderboard().rows;
+    expect(rows.map((r) => r.name)).toEqual(['Alice', 'Bob', 'Carol']);
+    expect(rows.find((r) => r.name === 'Bob')?.points).toBe(4);
+    expect(rows.find((r) => r.name === 'Carol')?.points).toBe(3);
+    expect(alice.id).toBe(rows[0]?.playerId);
+  });
+
+  it('carries the match statistics the table is read for', () => {
+    seedPlayers();
+    aliceWins();
+
+    const alice = store.leaderboard().rows[0]!;
+    expect(alice.average3).toBeCloseTo(167, 0);
+    expect(alice.first9Average).toBeCloseTo(167, 0);
+    expect(alice.bestTurn).toBe(180);
+    expect(alice.count180).toBe(2);
+    expect(alice.checkoutsHit).toBe(1);
+    expect(alice.bustedTurns).toBe(0);
+    // Built from segment counts, so it works with coords: null like everywhere else.
+    expect(alice.heatmap.total).toBe(9);
+    expect(alice.heatmap.byNumber[20]).toBe(7);
+  });
+
+  it('carries the best golf card, hole by hole', () => {
+    const [alice] = seedPlayers();
+    manager.start(
+      { gameType: 'golf', holes: 2, par: 4, handicaps: { [alice.id]: 0 }, legsToWin: 1, setsToWin: 1 },
+      [alice],
+    );
+    throwAt('MISS');
+    throwAt('S1');
+    throwAt('S2');
+
+    const row = store.leaderboard().rows.find((r) => r.playerId === alice.id)!;
+    expect(row.golfRounds).toBe(1);
+    expect(row.golfBestPoints).toBe(9);
+    expect(row.golfBestCard?.map((h) => h.strokes)).toEqual([2, 1]);
+  });
+
+  it('drops a deleted player from the table without touching the matches', () => {
+    const [alice] = seedPlayers();
+    aliceWins();
+    store.deleteProfile(alice.id);
+
+    expect(store.leaderboard().rows.map((r) => r.name)).toEqual(['Bob']);
+    // Bob's own record is unchanged: he still played, and still lost.
+    expect(store.leaderboard().rows[0]).toMatchObject({ matchesPlayed: 1, matchesWon: 0 });
+    // And the match itself is still on record, Alice included.
+    expect(store.summaryFor(store.lastFinishedMatchId()!)?.players).toHaveLength(2);
+  });
+});
+
+describe('resetting the leaderboard', () => {
+  function aliceWins(): void {
+    manager.start(X01, store.listProfiles().map(toPlayer));
+    nineDartLeg();
+  }
+
+  it('archives the standings and starts the table empty', () => {
+    seedPlayers();
+    aliceWins();
+
+    const archive = store.resetLeaderboard('Winter');
+    expect(archive.label).toBe('Winter');
+    expect(archive.matches).toBe(1);
+    expect(archive.rows.map((r) => r.name)).toEqual(['Alice', 'Bob']);
+
+    const fresh = store.leaderboard();
+    expect(fresh.rows).toEqual([]);
+    expect(fresh.matchesCounted).toBe(0);
+    expect(fresh.since).toBe(archive.to);
+  });
+
+  it('deletes nothing: the log, career stats and match reports all survive', () => {
+    const [alice] = seedPlayers();
+    aliceWins();
+    const matchId = store.lastFinishedMatchId()!;
+
+    store.resetLeaderboard();
+
+    // The command log is untouched, which is what everything else derives from.
+    expect(store.commandsFor(matchId).length).toBeGreaterThan(0);
+    expect(store.summaryFor(matchId)?.winnerId).toBe(alice.id);
+    // A career is a career: it is not seasonal and does not reset.
+    expect(store.careerFor(alice.id).matchesPlayed).toBe(1);
+    expect(store.heatmapFor(alice.id).total).toBe(9);
+  });
+
+  it('counts matches played after the reset toward the new table', () => {
+    seedPlayers();
+    aliceWins();
+    store.resetLeaderboard();
+    aliceWins();
+
+    const board = store.leaderboard();
+    expect(board.matchesCounted).toBe(1);
+    expect(board.rows[0]).toMatchObject({ name: 'Alice', matchesPlayed: 1, points: 3 });
+  });
+
+  it('keeps only the essential figures in an archive', () => {
+    seedPlayers();
+    aliceWins();
+    const archive = store.resetLeaderboard();
+
+    const row = archive.rows[0] as unknown as Record<string, unknown>;
+    expect(row.average3).toBeDefined();
+    expect(row.count180).toBe(2);
+    // The bulky parts are left out on purpose: both are still derivable from
+    // the command log, which the archive does not replace.
+    expect(row.heatmap).toBeUndefined();
+    expect(row.golfBestCard).toBeUndefined();
+  });
+
+  it('shows the handicap a golfer would actually play off, not a seasonal one', () => {
+    const [alice] = seedPlayers();
+    manager.start(
+      { gameType: 'golf', holes: 2, par: 4, handicaps: { [alice.id]: 0 }, legsToWin: 1, setsToWin: 1 },
+      [alice],
+    );
+    throwAt('S1');
+    throwAt('S2');
+    const earned = store.golfHandicapFor(alice.id).handicap;
+
+    // That round is now in the archive, so the new season knows nothing of it.
+    store.resetLeaderboard();
+    manager.start(X01, [alice]);
+    nineDartLeg();
+
+    const row = store.leaderboard().rows.find((r) => r.playerId === alice.id)!;
+    expect(row.golfRounds).toBe(0);
+    // The handicap still comes from every round ever played, because that is
+    // the number the next round is played off.
+    expect(row.golfHandicap).toBe(earned);
+  });
+
+  it('lists, reopens and discards archives', () => {
+    seedPlayers();
+    aliceWins();
+    const first = store.resetLeaderboard('Spring');
+    aliceWins();
+    const second = store.resetLeaderboard('Summer');
+
+    expect(store.listArchives().map((a) => a.label)).toEqual(['Summer', 'Spring']);
+    expect(store.getArchive(first.id)?.rows).toHaveLength(2);
+
+    expect(store.deleteArchive(second.id)).toBe(true);
+    expect(store.listArchives().map((a) => a.label)).toEqual(['Spring']);
+    expect(store.deleteArchive(second.id)).toBe(false);
+  });
+
+  it('labels an unnamed archive by the window it covered', () => {
+    seedPlayers();
+    aliceWins();
+    const first = store.resetLeaderboard();
+    // The first season has no start date, so it is named by its end.
+    expect(first.label).toMatch(/^Up to /);
+    expect(first.from).toBeNull();
+
+    aliceWins();
+    const second = store.resetLeaderboard();
+    expect(second.from).toBe(first.to);
+    expect(second.label).toContain('\u2013');
   });
 });
 

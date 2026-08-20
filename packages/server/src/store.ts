@@ -6,10 +6,14 @@ import {
   buildHeatmap,
   computeCareer,
   computeGolfHandicap,
+  computeLeaderboard,
+  condenseRow,
   summarizeMatch,
+  type ArchivedRow,
   type CareerStats,
   type GolfHandicap,
   type Heatmap,
+  type Leaderboard,
   type MatchAnalysis,
   type MatchRecord,
   type MatchReport,
@@ -31,6 +35,20 @@ export interface MatchSummary {
   endedAt: string | null;
   winnerId: string | null;
   players: Player[];
+}
+
+export interface LeaderboardArchiveSummary {
+  id: string;
+  label: string;
+  createdAt: string;
+  /** Start of the archived season; null for the first one, which had no start. */
+  from: string | null;
+  to: string;
+  matches: number;
+}
+
+export interface LeaderboardArchive extends LeaderboardArchiveSummary {
+  rows: ArchivedRow[];
 }
 
 export class Store {
@@ -161,11 +179,28 @@ export class Store {
     };
   }
 
-  /** Every finished match, oldest first. Chronological order matters for streaks. */
-  loadFinishedMatches(): MatchRecord[] {
-    const rows = this.db
-      .prepare(`SELECT id FROM matches WHERE ended_at IS NOT NULL ORDER BY ended_at ASC`)
-      .all() as Array<Record<string, unknown>>;
+  /**
+   * Every finished match, oldest first. Chronological order matters for streaks.
+   *
+   * `since` narrows it to matches that finished strictly after an ISO
+   * timestamp, which is how a leaderboard season is expressed -- no match is
+   * ever removed to start a new one. Strictly after, so a match that ended in
+   * the same millisecond a season was archived belongs to the archive that
+   * counted it, and not also to the season that followed.
+   */
+  loadFinishedMatches(since: string | null = null): MatchRecord[] {
+    const rows = (
+      since === null
+        ? this.db
+            .prepare(`SELECT id FROM matches WHERE ended_at IS NOT NULL ORDER BY ended_at ASC`)
+            .all()
+        : this.db
+            .prepare(
+              `SELECT id FROM matches WHERE ended_at IS NOT NULL AND ended_at > ?
+               ORDER BY ended_at ASC`,
+            )
+            .all(since)
+    ) as Array<Record<string, unknown>>;
     const out: MatchRecord[] = [];
     for (const row of rows) {
       const rec = this.loadMatchRecord(String(row.id));
@@ -404,6 +439,116 @@ export class Store {
     return computeGolfHandicap(profileId, this.loadFinishedMatches().map(analyzeMatch));
   }
 
+  // -- leaderboard ----------------------------------------------------------
+
+  /** The timestamp the current leaderboard counts from; null until first reset. */
+  leaderboardEpoch(): string | null {
+    return this.getSetting<string | null>('leaderboardEpoch', null);
+  }
+
+  /**
+   * Rank every player who still exists, over the current season.
+   *
+   * Golf handicaps are taken from the player's whole history rather than the
+   * season, because a handicap is what the next round is played off -- see
+   * `computeLeaderboard`.
+   */
+  leaderboard(): Leaderboard {
+    const since = this.leaderboardEpoch();
+    const all = this.loadFinishedMatches().map(analyzeMatch);
+    const seasonal =
+      since === null ? all : all.filter((a) => a.endedAt !== null && a.endedAt > since);
+
+    const live = new Set(this.listProfiles().map((p) => p.id));
+    const handicaps = new Map<string, number>();
+    for (const id of live) handicaps.set(id, computeGolfHandicap(id, all).handicap);
+
+    return computeLeaderboard(seasonal, { include: live, since, handicaps });
+  }
+
+  /**
+   * Archive the current leaderboard and start a fresh one.
+   *
+   * Nothing is deleted. The archive keeps only the condensed row -- the parts a
+   * past season is read for -- and the epoch moves forward so the live table
+   * starts empty. Every match remains in the command log, so career statistics,
+   * achievements and match reports are untouched and a wrongly pressed reset
+   * costs nothing but the archive entry.
+   */
+  resetLeaderboard(label?: string): LeaderboardArchive {
+    const current = this.leaderboard();
+    const now = new Date().toISOString();
+    const archive: LeaderboardArchive = {
+      id: randomUUID(),
+      label: label?.trim() || defaultArchiveLabel(current.since, now),
+      createdAt: now,
+      from: current.since,
+      to: now,
+      matches: current.matchesCounted,
+      rows: current.rows.map(condenseRow),
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO leaderboard_archives (id, label, created_at, from_ts, to_ts, matches, rows_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        archive.id,
+        archive.label,
+        archive.createdAt,
+        archive.from,
+        archive.to,
+        archive.matches,
+        JSON.stringify(archive.rows),
+      );
+
+    this.setSetting('leaderboardEpoch', now);
+    return archive;
+  }
+
+  /** Past seasons, newest first. */
+  listArchives(): LeaderboardArchiveSummary[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, label, created_at, from_ts, to_ts, matches FROM leaderboard_archives
+         ORDER BY created_at DESC`,
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r.id),
+      label: String(r.label),
+      createdAt: String(r.created_at),
+      from: r.from_ts ? String(r.from_ts) : null,
+      to: String(r.to_ts),
+      matches: Number(r.matches),
+    }));
+  }
+
+  getArchive(id: string): LeaderboardArchive | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, label, created_at, from_ts, to_ts, matches, rows_json
+         FROM leaderboard_archives WHERE id = ?`,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      id: String(row.id),
+      label: String(row.label),
+      createdAt: String(row.created_at),
+      from: row.from_ts ? String(row.from_ts) : null,
+      to: String(row.to_ts),
+      matches: Number(row.matches),
+      rows: JSON.parse(String(row.rows_json)) as ArchivedRow[],
+    };
+  }
+
+  deleteArchive(id: string): boolean {
+    const res = this.db.prepare(`DELETE FROM leaderboard_archives WHERE id = ?`).run(id);
+    return Number(res.changes) > 0;
+  }
+
   // -- settings -------------------------------------------------------------
 
   getSetting<T>(key: string, fallback: T): T {
@@ -483,6 +628,13 @@ export class Store {
     const analyses = this.loadFinishedMatches().map(analyzeMatch);
     return computeCareer(profileId, analyses);
   }
+}
+
+/** e.g. "Season to 20 Aug 2026" -- enough to tell two archives apart at a glance. */
+function defaultArchiveLabel(from: string | null, to: string): string {
+  const day = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return from ? `${day(from)} \u2013 ${day(to)}` : `Up to ${day(to)}`;
 }
 
 function toProfile(row: Record<string, unknown>): Profile {

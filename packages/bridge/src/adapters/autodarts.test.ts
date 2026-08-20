@@ -51,15 +51,19 @@ describe('failing loudly on an unexpected payload', () => {
 });
 
 describe('coordinates', () => {
-  it('is null regardless of what the board sends, until the payload is understood', () => {
-    expect(toCoords({ x: 1, y: 2 })).toBeNull();
-    expect(toCoords([1, 2])).toBeNull();
-    expect(toCoords(undefined)).toBeNull();
+  it('scales by 170 and flips y, board-down to schema-up', () => {
+    expect(toCoords({ x: 0.5, y: 0.25 })).toEqual({ x: 85, y: -42.5 });
   });
 
-  it('produces throws with null coords', () => {
-    const t = normalizeThrow({ segment: { name: 'T20', bed: 'Triple' }, coords: { x: 5, y: 5 } });
-    expect(t.coords).toBeNull();
+  it('is null for anything that does not parse as {x, y}', () => {
+    expect(toCoords([1, 2])).toBeNull();
+    expect(toCoords(undefined)).toBeNull();
+    expect(toCoords({ x: '1', y: 2 })).toBeNull();
+  });
+
+  it('carries real coords through onto the normalised throw', () => {
+    const t = normalizeThrow({ segment: { name: 'T20', bed: 'Triple' }, coords: { x: 0.6, y: -0.1 } });
+    expect(t.coords).toEqual({ x: 102, y: 17 });
   });
 });
 

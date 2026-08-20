@@ -133,6 +133,10 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
 
       case 'NEXT_PLAYER': {
         if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.turnEnded) {
+          advanceTurn(base);
+          return { state, events };
+        }
         const p = activePlayer(base);
         events.push({
           type: 'turn.completed',
@@ -142,6 +146,12 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
           busted: false,
         });
         closeRound(state, p.id);
+        advanceTurn(base);
+        return { state, events };
+      }
+
+      case 'ADVANCE_TURN': {
+        if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base);
         return { state, events };
       }
@@ -194,13 +204,14 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
       case 'RESTART_LEG': {
         base.activeIndex = base.legStartIndex;
         base.turn = [];
+        base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
         resetLeg(state, cfg);
         return { state, events };
       }
 
       case 'THROW': {
-        if (base.status !== 'playing') return { state: prev, events: [] };
+        if (base.status !== 'playing' || base.turnEnded) return { state: prev, events: [] };
 
         const player = activePlayer(base);
         const dart = cmd.throw;
@@ -288,7 +299,7 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
             busted: false,
           });
           closeRound(state, player.id);
-          advanceTurn(base);
+          base.turnEnded = true;
         }
 
         return { state, events };
@@ -333,8 +344,9 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
       status: base.status,
       players,
       activePlayerId: base.status === 'playing' ? (active?.id ?? null) : null,
+      awaitingTakeout: base.turnEnded,
       turn: {
-        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value })),
+        throws: base.turn.map((t) => ({ id: t.id, label: segmentLabel(t.segment), value: t.value, coords: t.coords })),
         total: base.turn.reduce((a, t) => a + t.value, 0),
         dartsRemaining: 3 - base.turn.length,
         hints: [],

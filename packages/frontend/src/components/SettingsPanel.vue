@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import BoardControls from './BoardControls.vue';
 import { api, pushToast, type Settings, type SourceConfig } from '../store.ts';
 
 const settings = ref<Settings | null>(null);
@@ -268,6 +269,15 @@ async function toggleCoords(value: boolean): Promise<void> {
         {{ recomputing ? 'Rebuilding…' : 'Rebuild statistics and achievements' }}
       </button>
       <p v-if="result" class="result">{{ result }}</p>
+    </div>
+
+    <div class="group">
+      <h3>The board</h3>
+      <p class="hint">
+        These call the Board Manager's own API directly &mdash; the same
+        controls its stock UI has, without needing the internet to load it.
+      </p>
+      <BoardControls />
     </div>
 
     <div class="group">

@@ -24,6 +24,7 @@ export type ForwardCommand = Extract<
       | 'START'
       | 'THROW'
       | 'NEXT_PLAYER'
+      | 'ADVANCE_TURN'
       | 'RESTART_LEG'
       | 'ADD_PLAYER'
       | 'REMOVE_PLAYER'
@@ -61,6 +62,18 @@ export interface BaseState {
   legDarts: Record<string, number>;
   /** Which player starts the current leg, rotated each leg. */
   legStartIndex: number;
+  /**
+   * The active player's turn is over (3 darts, a bust, or a hole/round/all-out
+   * finish) but the handover to the next player is being held.
+   *
+   * The board holds the finished darts until they are physically pulled out,
+   * so `activeIndex` and `turn` stay put -- still pointing at the player who
+   * just threw -- until an `ADVANCE_TURN` command (sent on `takeout.completed`)
+   * clears them. This is what lets a player see their own three darts, and
+   * everyone else see them, before they disappear off the board and the
+   * highlight moves on.
+   */
+  turnEnded: boolean;
 }
 
 export type { DartThrow, DomainEvent, MatchView, Player };

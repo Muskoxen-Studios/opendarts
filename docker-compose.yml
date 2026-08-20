@@ -1,4 +1,22 @@
 services:
+  # A stand-in for the Autodarts Board Manager, for running the whole stack
+  # without hardware. Behind a profile so it never starts by default:
+  #   docker compose --profile fake up
+  # then point the bridge at it with SOURCE=autodarts BOARD_URL=http://fakeboard:3180
+  fakeboard:
+    profiles: ["fake"]
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    command: ["node", "packages/fakeboard/src/main.ts"]
+    environment:
+      FAKE_BOARD_PORT: "3180"
+      # The board's motion channel runs at 30/s; only enable for debugging.
+      FAKE_MOTION: ${FAKE_MOTION:-0}
+    ports:
+      - "${FAKE_BOARD_PORT:-3180}:3180"
+    restart: unless-stopped
+
   bridge:
     build:
       context: .

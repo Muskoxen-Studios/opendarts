@@ -5,5 +5,7 @@ export * from './x01.ts';
 export * from './cricket.ts';
 export * from './gotcha.ts';
 export * from './golf.ts';
+export * from './shanghai.ts';
+export * from './killer.ts';
 export * from './registry.ts';
 export * from './match.ts';

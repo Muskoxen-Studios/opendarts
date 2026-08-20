@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { parseSegmentLabel, type Segment } from '@darts/schema';
+import BoardControls from './components/BoardControls.vue';
 import Celebration from './components/Celebration.vue';
 import Dartboard from './components/Dartboard.vue';
+import Leaderboard from './components/Leaderboard.vue';
 import MatchOverview from './components/MatchOverview.vue';
 import MatchSetup from './components/MatchSetup.vue';
 import ProfilePanel from './components/ProfilePanel.vue';
@@ -10,9 +12,11 @@ import Scoreboard from './components/Scoreboard.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import { api, connect, dismissCelebration, pushToast, store, type MatchReport } from './store.ts';
 
-const tab = ref<'play' | 'setup' | 'players' | 'settings'>('play');
+const tab = ref<'play' | 'setup' | 'leaderboard' | 'players' | 'settings'>('play');
 const view = computed(() => store.view);
 const managingRoster = ref(false);
+/** The board's own controls, folded away until the hardware needs attention. */
+const showingBoard = ref(false);
 
 /** Profiles not currently in the match, offered as mid-match additions. */
 const availableToJoin = computed(() =>
@@ -92,19 +96,25 @@ const correcting = ref(false);
  * Empty while correcting a dart: the board is then an input for "what did it
  * actually hit", and suggesting an answer there would be misleading.
  */
+/** Games whose hints name a whole number rather than a specific ring. */
+const WHOLE_NUMBER_HINT_GAMES = new Set(['golf', 'shanghai']);
+
 const hintSegments = computed<Segment[]>(() => {
-  if (!view.value || correcting.value || view.value.gameType === 'golf') return [];
+  if (!view.value || correcting.value || WHOLE_NUMBER_HINT_GAMES.has(view.value.gameType)) return [];
   return view.value.turn.hints
     .map((h) => parseSegmentLabel(h))
     .filter((s): s is Segment => s !== null);
 });
 
-/** Golf aims at a whole number rather than a particular ring. */
+/** Golf and Shanghai aim at a whole number rather than a particular ring. */
 const hintNumbers = computed<number[]>(() => {
-  if (!view.value || correcting.value || view.value.gameType !== 'golf') return [];
+  if (!view.value || correcting.value || !WHOLE_NUMBER_HINT_GAMES.has(view.value.gameType)) return [];
   const hole = Number(view.value.turn.hints[0]);
   return Number.isInteger(hole) ? [hole] : [];
 });
+
+/** The player whose darts are on the board -- still them while a finished turn is held for takeout. */
+const activePlayer = computed(() => view.value?.players.find((p) => p.playerId === view.value?.activePlayerId));
 
 // -- match overview ----------------------------------------------------------
 
@@ -160,6 +170,7 @@ async function rematch(): Promise<void> {
       <nav>
         <button :class="{ on: tab === 'play' }" @click="tab = 'play'">Play</button>
         <button :class="{ on: tab === 'setup' }" @click="tab = 'setup'">New match</button>
+        <button :class="{ on: tab === 'leaderboard' }" @click="tab = 'leaderboard'">Leaderboard</button>
         <button :class="{ on: tab === 'players' }" @click="tab = 'players'">Players</button>
         <button :class="{ on: tab === 'settings' }" @click="tab = 'settings'">Settings</button>
       </nav>
@@ -167,8 +178,12 @@ async function rematch(): Promise<void> {
         <span class="pill" :class="{ ok: store.connected }">
           {{ store.connected ? 'server' : 'offline' }}
         </span>
-        <span class="pill" :class="{ ok: store.boardOnline }">
-          {{ store.boardOnline ? 'board' : 'no board' }}
+        <span
+          class="pill"
+          :class="{ ok: store.boardOnline }"
+          :title="store.boardStatus ? `Board status: ${store.boardStatus}` : 'No status from the board'"
+        >
+          {{ store.boardOnline ? (store.boardStatus ?? 'board') : 'no board' }}
         </span>
       </div>
     </header>
@@ -178,6 +193,23 @@ async function rematch(): Promise<void> {
         <div v-if="view" class="play">
           <section class="left">
             <Scoreboard :view="view" />
+          </section>
+
+          <section class="right">
+            <Dartboard
+              :highlight="hintSegments"
+              :highlight-numbers="hintNumbers"
+              :marks="view.turn.throws"
+              :mark-color="activePlayer?.color"
+              @throw="correcting ? correctLast($event.segment) : onThrow($event)"
+            />
+            <p v-if="view.awaitingTakeout" class="hint centered takeout">
+              {{ activePlayer?.name }}'s turn is done -- pull your darts to hand over.
+            </p>
+            <p v-else class="hint centered">
+              Click the board to throw. Simulated darts travel through the bridge,
+              the same path real ones will.
+            </p>
 
             <div class="controls">
               <button @click="undo">Undo dart</button>
@@ -192,6 +224,13 @@ async function rematch(): Promise<void> {
                 End game
               </button>
               <button @click="showLastGame">Last game</button>
+              <button :class="{ on: showingBoard }" @click="showingBoard = !showingBoard">
+                Board
+              </button>
+            </div>
+
+            <div v-if="showingBoard" class="board-panel">
+              <BoardControls />
             </div>
 
             <div v-if="managingRoster" class="roster">
@@ -235,18 +274,6 @@ async function rematch(): Promise<void> {
               </li>
             </ul>
           </section>
-
-          <section class="right">
-            <Dartboard
-              :highlight="hintSegments"
-              :highlight-numbers="hintNumbers"
-              @throw="correcting ? correctLast($event.segment) : onThrow($event)"
-            />
-            <p class="hint centered">
-              Click the board to throw. Simulated darts travel through the bridge,
-              the same path real ones will.
-            </p>
-          </section>
         </div>
 
         <div v-else class="empty">
@@ -259,6 +286,7 @@ async function rematch(): Promise<void> {
       </template>
 
       <MatchSetup v-else-if="tab === 'setup'" @started="tab = 'play'" />
+      <Leaderboard v-else-if="tab === 'leaderboard'" />
       <SettingsPanel v-else-if="tab === 'settings'" />
       <ProfilePanel v-else />
     </main>
@@ -320,6 +348,7 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 
 .hint { margin: 0; font-size: 0.8rem; color: #8b93a1; }
 .hint.centered { text-align: center; }
+.hint.takeout { color: #e0a458; font-weight: 600; }
 
 .recent { list-style: none; margin: 0; padding: 0; display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .recent li {
@@ -329,6 +358,7 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 }
 .recent .value { color: #8b93a1; }
 
+.board-panel { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem 0.9rem; background: #14171c; }
 .roster { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem 0.9rem; background: #14171c; }
 .roster ul { list-style: none; margin: 0.5rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .roster li { display: flex; align-items: center; gap: 0.55rem; }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Match } from '@darts/engine';
 import type { GolfConfig, MatchCommand, Player } from '@darts/schema';
-import { players, resetDartIds, throwCmd } from '../../engine/src/testkit.ts';
+import { play, players, resetDartIds } from '../../engine/src/testkit.ts';
 import { analyzeMatch, type MatchAnalysis, type MatchRecord } from './analysis.ts';
 import { computeGolfHandicap, countedRounds, golfRounds } from './golf.ts';
 import { buildHeatmap, summarizeMatch } from './summary.ts';
@@ -27,7 +27,7 @@ function config(handicap: number, holes = 2): GolfConfig {
 function round(cfg: GolfConfig, script: string[], id = 'g1', endedAt = '2026-01-01T12:00:00.000Z'): MatchRecord {
   const m = new Match(id, ROSTER, cfg);
   m.apply({ type: 'START' });
-  for (const label of script) m.apply(throwCmd(label));
+  play(m, ...script);
   return {
     matchId: id,
     gameType: 'golf',

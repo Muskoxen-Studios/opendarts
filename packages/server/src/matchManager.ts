@@ -310,9 +310,22 @@ export class MatchManager {
       case 'board.disconnected':
         this.boardOnline = false;
         break;
-      case 'throw.detected':
+      case 'throw.detected': {
         this.broadcast({ type: 'board', event });
-        this.apply({ type: 'THROW', throw: event.throw });
+        const view = this.apply({ type: 'THROW', throw: event.throw });
+        // A real board holds the finished turn until the darts are physically
+        // pulled out (see BaseState.turnEnded), so players get a moment to
+        // check the detection was right before the highlight moves on. The
+        // simulator and manual entry have no physical takeout to wait for, so
+        // release the hold at once -- same as today's instant handover.
+        if (view?.awaitingTakeout && event.throw.source !== 'board') {
+          this.apply({ type: 'ADVANCE_TURN' });
+        }
+        return;
+      }
+      case 'takeout.completed':
+        this.apply({ type: 'ADVANCE_TURN' });
+        this.broadcast({ type: 'board', event });
         return;
       default:
         break;

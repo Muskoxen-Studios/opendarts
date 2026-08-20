@@ -4,7 +4,6 @@ import Heatmap from './Heatmap.vue';
 import { api, store, type AchievementView, type Heatmap as HeatmapData, type Profile } from '../store.ts';
 
 const name = ref('');
-const color = ref('#4f8ef7');
 const busy = ref(false);
 const openProfile = ref<string | null>(null);
 const achievements = ref<AchievementView[]>([]);
@@ -12,7 +11,26 @@ const stats = ref<Record<string, unknown> | null>(null);
 /** Where this player's darts have landed, across every finished match. */
 const heatmap = ref<HeatmapData | null>(null);
 
-const PALETTE = ['#4f8ef7', '#d8453f', '#3f9d54', '#e0a458', '#a06cd5', '#41b8c4'];
+const PALETTE = [
+  '#4f8ef7',
+  '#d8453f',
+  '#3f9d54',
+  '#e0a458',
+  '#a06cd5',
+  '#41b8c4',
+  '#e85d9a',
+  '#f2c14e',
+  '#5cc48a',
+  '#ff7043',
+  '#7986cb',
+  '#26a69a',
+];
+
+function randomColor(): string {
+  return PALETTE[Math.floor(Math.random() * PALETTE.length)];
+}
+
+const color = ref(randomColor());
 
 async function add(): Promise<void> {
   if (!name.value.trim()) return;
@@ -20,6 +38,7 @@ async function add(): Promise<void> {
   try {
     await api.createProfile(name.value.trim(), color.value);
     name.value = '';
+    color.value = randomColor();
     await api.loadProfiles();
   } finally {
     busy.value = false;

@@ -90,6 +90,21 @@ function migrate(db: DatabaseSync): void {
       PRIMARY KEY (profile_id, achievement_id)
     );
 
+    -- A leaderboard reset does not delete anything: it archives a condensed
+    -- snapshot of the table and moves the epoch it counts from. The matches
+    -- themselves stay in the commands table, which is still the only source of truth.
+    CREATE TABLE IF NOT EXISTS leaderboard_archives (
+      id         TEXT PRIMARY KEY,
+      label      TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      -- The window the archived table covered. from_ts is null for the first
+      -- season, which counted from the very first match played.
+      from_ts    TEXT,
+      to_ts      TEXT NOT NULL,
+      matches    INTEGER NOT NULL,
+      rows_json  TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key        TEXT PRIMARY KEY,
       value_json TEXT NOT NULL,

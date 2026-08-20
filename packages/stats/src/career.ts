@@ -49,6 +49,11 @@ export interface CareerStats {
   /** The handicap the next round would be played off. */
   golfHandicap: number;
 
+  // Shanghai
+  shanghaiRounds: number;
+  /** Best total score across a full Shanghai round. */
+  shanghaiBestScore: number | null;
+
   // Cross-game
   currentStreak: number;
   longestStreak: number;
@@ -83,6 +88,8 @@ export function emptyCareer(playerId: string): CareerStats {
     golfRounds: 0,
     golfBestPoints: null,
     golfHandicap: GOLF_BASE_HANDICAP,
+    shanghaiRounds: 0,
+    shanghaiBestScore: null,
     currentStreak: 0,
     longestStreak: 0,
     headToHead: {},
@@ -194,6 +201,15 @@ export function computeCareer(playerId: string, analyses: MatchAnalysis[]): Care
       if (typeof points === 'number' && (a.golf.holes[playerId]?.length ?? 0) > 0) {
         stats.golfRounds += 1;
         stats.golfBestPoints = Math.max(stats.golfBestPoints ?? 0, points);
+      }
+    }
+
+    if (a.gameType === 'shanghai' && a.shanghai) {
+      const rounds = a.shanghai[playerId];
+      if (rounds && rounds.length > 0) {
+        stats.shanghaiRounds += 1;
+        const total = rounds.reduce((sum, r) => sum + r, 0);
+        stats.shanghaiBestScore = Math.max(stats.shanghaiBestScore ?? 0, total);
       }
     }
 

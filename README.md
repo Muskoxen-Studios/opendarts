@@ -27,6 +27,7 @@ Board Manager  ->  bridge  ->  server  ->  frontend
 | `@darts/engine` | Pure game logic: X01, Cricket, Gotcha. No I/O. |
 | `@darts/stats` | Statistics and achievements, computed as projections. |
 | `@darts/bridge` | Board adapter, plus simulator and replay sources. |
+| `@darts/fakeboard` | A stand-in Board Manager, for testing without hardware. |
 | `@darts/server` | Match state, profiles, persistence, WS + REST API. |
 | `@darts/frontend` | Vue 3 scoreboard and virtual dartboard. |
 
@@ -68,6 +69,31 @@ Set `SOURCE` in `.env`:
 
 Simulated darts are posted to the **bridge**, not straight into the game server,
 so they travel the same path real darts will.
+
+### The fake board
+
+`simulator` and `replay` both bypass the network, so neither exercises the live
+board path — reconnection, the heartbeat, takeout detection. `@darts/fakeboard`
+is a stand-in Board Manager that speaks the real local protocol on port 3180, so
+`SOURCE=autodarts` can be tested with no hardware and no cloud:
+
+```bash
+npm run dev:fakeboard                                          # terminal 1
+SOURCE=autodarts BOARD_URL=http://localhost:3180 npm run dev:bridge
+
+curl -X POST localhost:3180/sim/turn -d '{"segments":["T20","T20","T20"]}'
+curl -X POST localhost:3180/sim/throw -d '{"segment":"D16"}'
+curl -X POST localhost:3180/sim/disconnect -d '{"ms":5000}'    # test the indicator
+```
+
+Under compose: `docker compose --profile fake up`. The control endpoints live
+under `/sim`, never `/api`, so nothing there can be mistaken for a real board
+path.
+
+**It proves the bridge, not the protocol.** The fake emits the throw payload
+that `recon/FINDINGS.md` §3 *infers* from the board UI bundle — see below. A
+green test says the bridge handles the shape we guessed, not that the guess is
+right.
 
 ## Games
 
@@ -138,7 +164,27 @@ computed from finished matches like every other statistic — never stored on th
 profile — and is resolved into the match config at start time, so recomputing it
 later cannot rewrite a round already played.
 
-Adding a fifth game is one file in `packages/engine/src/` plus one line in
+**Shanghai** — rounds run from `startRound` to `endRound` (default 1–7), each
+round's number the shared target that everyone plays before it advances. Only
+darts on the round's own number score, at their ring value — a triple 3 in
+round 3 is worth 9, everything else is worth nothing. Landing a single, a
+double and a triple of the round's number in the same turn — "a Shanghai" — is
+an instant win. Otherwise, whoever has the highest total after the last round
+wins.
+
+**Killer** — each player throws for a number of their own: the first dart to
+land on an unclaimed 1–20 in any ring claims it, and anyone who finds nothing
+in three darts is handed a random unclaimed number so no one gets stuck. Once
+everyone has a number, play begins. A player who is not yet a killer can only
+become one by hitting their own double; once a killer, hitting an opponent's
+double costs that opponent a life. A player at zero lives is eliminated and
+skipped for the rest of the match — last player standing wins.
+
+`friendlyFire` (off by default) makes hitting your own double *again* after
+already becoming a killer cost you a life too, for groups who want the extra
+risk.
+
+Adding a new game is one file in `packages/engine/src/` plus one line in
 `registry.ts`.
 
 ### Ending a game early
@@ -176,6 +222,39 @@ Nothing depends on their presence; the map simply gets sharper when they arrive.
 instead, so they can be adjusted first. Golf handicaps are deliberately *not*
 carried over by either: they move with every round played, and reusing a stale
 one would misprice the game.
+
+## The leaderboard
+
+Every player, ranked, on its own tab. The order is by points — **3 for a win, 1
+for turning up** — with win rate, then average, then legs won as tie-breaks.
+Ranking on win rate alone would put whoever won their only match on top forever;
+this way a season of showing up counts for something, and a single lucky night
+does not.
+
+The columns are the ones the match overview shows, over a whole season: three-dart
+and first-nine averages, best turn, 180s, checkouts and the rate they were taken
+at, busts, and the best Stableford round. Click a column to re-sort by it, and a
+row to open the player's heatmap, their season detail and their best golf card
+hole by hole.
+
+Golf handicaps are the one figure that is **not** seasonal. A handicap is what
+the next round is played off, so it is always computed from every round ever
+played, even on a table that only counts the last month.
+
+### Resetting it
+
+**Reset leaderboard** files the current standings away and starts the table
+empty. It deletes nothing:
+
+- The archive keeps only the essential figures — the standings and how everyone
+  threw. The heatmaps and golf cards are left out, because they are derivable
+  from the command log, which the archive does not replace.
+- The command log is untouched, so career statistics, achievements, match
+  reports and profile heatmaps all carry on exactly as they were.
+- A season is therefore just a *window* on the log: the reset records a
+  timestamp, and the live table counts matches finished after it.
+
+Past leaderboards stay listed under the table and reopen with a click.
 
 ## Players, statistics and achievements
 
@@ -235,6 +314,27 @@ one that is still earned will simply be awarded again. To remove one permanently
 correct the throw behind it — that changes the log, which is what the achievement
 is computed from.
 
+## Controlling the board
+
+Start and stop detection, reset the throw counter and re-run auto-calibration,
+from the **Board** button on the play screen or the Settings page. Each button
+is exactly one Board Manager endpoint and nothing more — stopping detection
+stops darts arriving, it does not end the match.
+
+The calls go frontend → server → bridge → board, because the bridge is the only
+process that knows a board's address, and the board lives on the house network
+rather than necessarily the one serving the UI. Unlike the throw payload, every
+path used here is confirmed against real hardware (`recon/FINDINGS.md` §2).
+
+Two indicators, answering different questions. The pill in the header is the
+bridge's heartbeat — *is the board talking to us* — and shows the board's own
+status word when it is. The chip beside the buttons is the board's `running`
+flag — *is detection actually armed*. A board can be perfectly online and
+detecting nothing, and that is worth being able to see.
+
+With the simulator or a replay as the source there is no board to control, and
+the panel says so rather than offering dead buttons.
+
 ## Settings
 
 Reachable from the Settings tab:
@@ -243,6 +343,8 @@ Reachable from the Settings tab:
 - **Dart coordinates** — enable coordinate-based achievements. Turning this on
   automatically runs a rebuild, which is what unlocks them retroactively.
 - **Data** — rebuild all statistics and achievements from the command log.
+- **The board** — its own start, stop, reset and calibrate controls, plus a
+  live connection indicator.
 - **Connection** — read-only view of the event source, board URL, bridge and
   database, so you can see what the bridge is attached to without reading
   compose files.
@@ -250,7 +352,9 @@ Reachable from the Settings tab:
 ## Waiting on the throw payload
 
 `packages/bridge/src/adapters/autodarts.ts` is the **only** file that knows
-Autodarts field names. Everything else depends on `@darts/schema`.
+Autodarts field *names*. (`packages/bridge/src/boardControl.ts` knows its control
+*paths*, but every one of those is confirmed — see §2 below.) Everything else
+depends on `@darts/schema`.
 
 Confirmed against the real board (see `recon/FINDINGS.md`): the transport, the
 `{type, data}` envelope, the channel names and rates, and the full local control
@@ -274,9 +378,14 @@ To capture the real payload:
 ./recon/capture-throws.sh 192.168.120.40
 ```
 
+That capture is the only thing that settles it. When it lands, it corrects two
+files — `packages/bridge/src/adapters/autodarts.ts`, which reads those field
+names, and `packages/fakeboard/src/payload.ts`, which writes them — and drops
+into `replay` as a regression fixture. Nothing else changes.
+
 ## Checks
 
 ```bash
 npm run check      # typecheck (backend + frontend) and tests
-npm test           # 257 tests, no hardware required
+npm test           # 303 tests, no hardware required
 ```

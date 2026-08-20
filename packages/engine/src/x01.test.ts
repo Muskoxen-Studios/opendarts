@@ -51,6 +51,79 @@ describe('X01 basic scoring', () => {
   });
 });
 
+describe('X01 held for takeout', () => {
+  it('keeps the finished player active and their darts visible until ADVANCE_TURN', () => {
+    const m = newMatch();
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+
+    expect(m.view.awaitingTakeout).toBe(true);
+    expect(m.view.activePlayerId).toBe(ALICE);
+    expect(m.view.turn.throws).toHaveLength(3);
+    expect(scoreOf(m, ALICE)).toBe(321);
+  });
+
+  it('ignores a further dart while a turn is held', () => {
+    const m = newMatch();
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+
+    expect(m.view.turn.throws).toHaveLength(3);
+    expect(scoreOf(m, ALICE)).toBe(321);
+  });
+
+  it('hands over and clears the turn once ADVANCE_TURN arrives', () => {
+    const m = newMatch();
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply({ type: 'ADVANCE_TURN' });
+
+    expect(m.view.awaitingTakeout).toBe(false);
+    expect(m.view.activePlayerId).toBe(BOB);
+    expect(m.view.turn.throws).toHaveLength(0);
+  });
+
+  it('treats NEXT_PLAYER as a takeout confirmation when a turn is already held', () => {
+    const m = newMatch();
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply(throwCmd('T20'));
+    m.apply({ type: 'NEXT_PLAYER' });
+
+    expect(m.view.activePlayerId).toBe(BOB);
+    expect(m.view.turn.throws).toHaveLength(0);
+    // No second turn.completed for the same turn.
+    const completed = m.allEvents.filter((e) => e.type === 'turn.completed');
+    expect(completed).toHaveLength(1);
+  });
+
+  it('is a no-op when no turn is being held', () => {
+    const m = newMatch();
+    m.apply(throwCmd('T20'));
+    m.apply({ type: 'ADVANCE_TURN' });
+
+    expect(m.view.activePlayerId).toBe(ALICE);
+    expect(m.view.turn.throws).toHaveLength(1);
+  });
+
+  it('holds a bust the same way as a normal handover', () => {
+    const m = newMatch({ startScore: 41 });
+    m.apply(throwCmd('20')); // 21 left
+    m.apply(throwCmd('T20')); // would be -39: bust, reverts to 41 -- but held
+
+    expect(m.view.awaitingTakeout).toBe(true);
+    expect(m.view.activePlayerId).toBe(ALICE);
+    expect(scoreOf(m, ALICE)).toBe(41);
+
+    m.apply({ type: 'ADVANCE_TURN' });
+    expect(m.view.activePlayerId).toBe(BOB);
+  });
+});
+
 describe('X01 bust handling', () => {
   it('busts and restores the turn-start score when going below zero', () => {
     const m = newMatch({ startScore: 41 });

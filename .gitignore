@@ -3,3 +3,8 @@ dist/
 data/
 *.log
 recon/captures/*
+.env*
+!.env.example
+
+# Skilld references (recreated by `skilld install`)
+.skilld

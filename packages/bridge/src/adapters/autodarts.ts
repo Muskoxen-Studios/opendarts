@@ -1,25 +1,22 @@
 import { z } from 'zod';
-import { segmentValue, type Ring, type Segment } from '@darts/schema';
+import { BOARD_NORM, segmentValue, type Ring, type Segment } from '@darts/schema';
 
 /**
  * THE ANTI-CORRUPTION BOUNDARY.
  *
  * This is the only file in the repository that knows Autodarts field names.
- * Everything downstream depends on @darts/schema instead. When the real throw
- * payload is captured, this file changes and nothing else does.
+ * Everything downstream depends on @darts/schema instead.
  *
- * What is CONFIRMED (recon/FINDINGS.md):
+ * What is CONFIRMED, against a real board (recon/FINDINGS.md §3):
  *   - transport, envelope {type, data}, channel names
- *   - `state.data.throws` is an array
- *   - each element has `coords` and `segment`, and segment has `name` and `bed`
- *   - bed is one of Single|SingleInner|SingleOuter|Double|Triple|Outside
- *
- * What is NOT yet confirmed, and is therefore parsed defensively:
- *   - whether `coords` is {x,y} or [x,y]; its units, origin and axis directions
- *   - whether `segment` also carries `number` / `multiplier`
- *   - whether `throws[]` is cumulative for the turn or reset per dart
- *
- * TODO(payload): settle the above from a real capture, then tighten this file.
+ *   - `state.data.throws` is an array, cumulative for the current visit to the
+ *     board -- it grows by one element per dart rather than resetting
+ *   - each element has `coords: {x, y}` and `segment: {name, bed, number,
+ *     multiplier}`
+ *   - `coords` is normalised by 170 (board millimetres / 170), origin at the
+ *     bull, x right, y down
+ *   - `multiplier` is present but unused here: the ring is derived from `bed`,
+ *     which is confirmed and does not need it
  */
 
 export class ThrowShapeError extends Error {
@@ -48,6 +45,8 @@ const RawSegmentSchema = z.object({
   number: z.number().optional(),
   multiplier: z.number().optional(),
 });
+
+const RawCoordsSchema = z.object({ x: z.number(), y: z.number() });
 
 const RawThrowSchema = z.object({
   segment: RawSegmentSchema,
@@ -112,18 +111,22 @@ export function toSegment(raw: unknown): Segment {
 }
 
 /**
- * Coordinates are accepted in either plausible shape but are NOT trusted.
+ * Board coordinates are `{x, y}`, normalised by 170 (board millimetres / 170),
+ * origin at the bull, x right, y **down** (screen convention) -- confirmed
+ * against a real board, recon/FINDINGS.md §3.
  *
- * Returning null is always safe: no game logic, statistic or achievement may
- * depend on coordinates until their units and origin are known. Once that is
- * settled this becomes a real conversion and historical throws gain
- * coordinates through the normal backfill path.
+ * `@darts/schema`'s `Coords` is board millimetres, x right, y **up** (the
+ * orientation a person would draw on paper -- see boardGeometry.ts), so this
+ * is the one place that scales by 170 and flips the axis.
+ *
+ * Still returns null on anything that doesn't parse: a malformed `coords`
+ * should not take the whole throw down with it, since the segment alone is
+ * enough to score.
  */
-export function toCoords(_raw: unknown): { x: number; y: number } | null {
-  // TODO(payload): units, origin and axis directions are unknown. Until a real
-  // capture settles them, emitting a number here would invite downstream code
-  // to depend on a value we cannot yet interpret.
-  return null;
+export function toCoords(raw: unknown): { x: number; y: number } | null {
+  const parsed = RawCoordsSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  return { x: parsed.data.x * BOARD_NORM, y: -parsed.data.y * BOARD_NORM };
 }
 
 let seq = 0;

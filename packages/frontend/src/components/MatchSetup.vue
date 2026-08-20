@@ -4,17 +4,32 @@ import { api, store, type GolfHandicap } from '../store.ts';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
-type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf';
+type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer';
 
 const GAME_LABELS: Record<GameType, string> = {
   x01: 'X01',
   cricket: 'Cricket',
   gotcha: 'Gotcha',
   golf: 'Golf',
+  shanghai: 'Shanghai',
+  killer: 'Killer',
 };
 
 const gameType = ref<GameType>('x01');
 const selected = ref<string[]>([]);
+const playerFilter = ref('');
+
+const filteredProfiles = computed(() => {
+  const q = playerFilter.value.trim().toLowerCase();
+  const unselected = store.profiles.filter((p) => !selected.value.includes(p.id));
+  return q ? unselected.filter((p) => p.name.toLowerCase().includes(q)) : unselected;
+});
+
+const selectedProfiles = computed(() =>
+  selected.value
+    .map((id) => store.profiles.find((p) => p.id === id))
+    .filter((p): p is (typeof store.profiles)[number] => !!p),
+);
 
 // X01
 const startScore = ref(501);
@@ -44,6 +59,15 @@ const golfHistory = ref<Record<string, GolfHandicap>>({});
 const target = ref(301);
 const knockback = ref<'zero' | 'previousTurn'>('zero');
 const exactFinish = ref(true);
+
+// Shanghai
+const startRound = ref(1);
+const endRound = ref(7);
+const instantWin = ref(true);
+
+// Killer
+const startingLives = ref(3);
+const friendlyFire = ref(false);
 
 const busy = ref(false);
 const error = ref<string | null>(null);
@@ -119,6 +143,15 @@ async function useLastSettings(): Promise<void> {
       knockback.value = (cfg.knockback as typeof knockback.value) ?? 'zero';
       exactFinish.value = cfg.exactFinish !== false;
     }
+    if (setup.gameType === 'shanghai') {
+      startRound.value = Number(cfg.startRound ?? 1);
+      endRound.value = Number(cfg.endRound ?? 7);
+      instantWin.value = cfg.instantWin !== false;
+    }
+    if (setup.gameType === 'killer') {
+      startingLives.value = Number(cfg.startingLives ?? 3);
+      friendlyFire.value = cfg.friendlyFire === true;
+    }
     if (setup.gameType === 'golf') {
       holes.value = Number(cfg.holes ?? 18);
       // Handicaps are deliberately NOT carried over: they move with each round
@@ -168,6 +201,25 @@ function buildConfig(): unknown {
       target: target.value,
       knockback: knockback.value,
       exactFinish: exactFinish.value,
+      legsToWin: legsToWin.value,
+      setsToWin: setsToWin.value,
+    };
+  }
+  if (gameType.value === 'shanghai') {
+    return {
+      gameType: 'shanghai',
+      startRound: startRound.value,
+      endRound: endRound.value,
+      instantWin: instantWin.value,
+      legsToWin: legsToWin.value,
+      setsToWin: setsToWin.value,
+    };
+  }
+  if (gameType.value === 'killer') {
+    return {
+      gameType: 'killer',
+      startingLives: startingLives.value,
+      friendlyFire: friendlyFire.value,
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
     };
@@ -222,7 +274,7 @@ async function start(): Promise<void> {
       <label>Game</label>
       <div class="tabs">
         <button
-          v-for="g in (['x01', 'cricket', 'gotcha', 'golf'] as GameType[])"
+          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer'] as GameType[])"
           :key="g"
           :class="{ on: gameType === g }"
           @click="gameType = g"
@@ -235,16 +287,34 @@ async function start(): Promise<void> {
       <p v-if="store.profiles.length === 0" class="hint">
         No profiles yet &mdash; add one below.
       </p>
-      <div class="chips">
-        <button
-          v-for="p in store.profiles"
-          :key="p.id"
-          class="chip"
-          :class="{ on: selected.includes(p.id) }"
-          :style="{ '--accent': p.color }"
-          @click="toggle(p.id)"
-        >{{ p.name }}</button>
-      </div>
+      <template v-else>
+        <input
+          v-model="playerFilter"
+          type="text"
+          class="player-search"
+          placeholder="Search players&hellip;"
+          autocomplete="off"
+        />
+        <div class="chips scroll">
+          <button
+            v-for="p in filteredProfiles"
+            :key="p.id"
+            class="chip"
+            :style="{ '--accent': p.color }"
+            @click="toggle(p.id)"
+          >{{ p.name }}</button>
+          <p v-if="filteredProfiles.length === 0" class="hint">No matching players.</p>
+        </div>
+        <div v-if="selectedProfiles.length" class="chips selected-chips">
+          <button
+            v-for="p in selectedProfiles"
+            :key="p.id"
+            class="chip on"
+            :style="{ '--accent': p.color }"
+            @click="toggle(p.id)"
+          >{{ p.name }}</button>
+        </div>
+      </template>
     </div>
 
     <!-- X01 -->
@@ -375,6 +445,53 @@ async function start(): Promise<void> {
       </div>
     </template>
 
+    <!-- Shanghai -->
+    <template v-else-if="gameType === 'shanghai'">
+      <div class="grid">
+        <div class="field">
+          <label>From round</label>
+          <input v-model.number="startRound" type="number" min="1" max="20" />
+        </div>
+        <div class="field">
+          <label>To round</label>
+          <input v-model.number="endRound" type="number" min="1" max="20" />
+        </div>
+        <div class="field">
+          <label>Instant win</label>
+          <select v-model="instantWin">
+            <option :value="true">On a Shanghai (single + double + triple)</option>
+            <option :value="false">Off &mdash; highest score after the last round wins</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint">
+        Round N targets the number N &mdash; only darts on that number score.
+        Everyone plays the round before it advances; highest total wins.
+      </p>
+    </template>
+
+    <!-- Killer -->
+    <template v-else-if="gameType === 'killer'">
+      <div class="grid">
+        <div class="field">
+          <label>Lives</label>
+          <input v-model.number="startingLives" type="number" min="1" max="9" />
+        </div>
+        <div class="field">
+          <label>Friendly fire</label>
+          <select v-model="friendlyFire">
+            <option :value="false">Off</option>
+            <option :value="true">On &mdash; hitting your own double after becoming a killer costs a life</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint">
+        Each player throws for a number of their own, then must hit its double
+        to become a killer before knocking lives off opponents' doubles. Last
+        player standing wins.
+      </p>
+    </template>
+
     <!-- Gotcha -->
     <template v-else>
       <div class="grid">
@@ -434,6 +551,13 @@ label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; c
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; }
 .hint { margin: 0; font-size: 0.8rem; color: #8b93a1; }
 .tabs, .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.player-search { width: 100%; box-sizing: border-box; }
+.selected-chips { padding-bottom: 0.5rem; border-bottom: 1px solid #262b33; }
+.chips.scroll {
+  max-height: 14rem; overflow-y: auto; align-content: flex-start;
+  padding-top: 0.15rem;
+}
+.chips.scroll .hint { flex-basis: 100%; }
 .tabs button, .chip {
   background: #14171c; border: 1px solid #262b33; color: #cdd3dc;
   border-radius: 999px; padding: 0.4rem 0.9rem; cursor: pointer;

@@ -13,6 +13,7 @@ COPY packages/engine/package.json  packages/engine/
 COPY packages/stats/package.json   packages/stats/
 COPY packages/bridge/package.json  packages/bridge/
 COPY packages/server/package.json  packages/server/
+COPY packages/fakeboard/package.json packages/fakeboard/
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY packages/schema/src packages/schema/src
@@ -20,6 +21,7 @@ COPY packages/engine/src packages/engine/src
 COPY packages/stats/src  packages/stats/src
 COPY packages/bridge/src packages/bridge/src
 COPY packages/server/src packages/server/src
+COPY packages/fakeboard/src packages/fakeboard/src
 
 # Overridden per service in docker-compose.yml.
 CMD ["node", "packages/server/src/main.ts"]
