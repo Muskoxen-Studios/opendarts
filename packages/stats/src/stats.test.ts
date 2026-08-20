@@ -218,19 +218,12 @@ describe('achievements', () => {
     expect(unlockedIds([analyzeMatch(shanghai)])).toContain('shanghai');
   });
 
-  it('excludes coordinate-dependent achievements by default', () => {
+  it('includes the coordinate-dependent achievements', () => {
     const ids = backfillPlayer(ALICE, [analyzeMatch(record(X01, NINE_DARTER))]).map(
       (u) => u.achievementId,
     );
-    expect(ids).not.toContain('tight-grouping');
-    expect(ids).not.toContain('robin-hood');
-  });
-
-  it('includes them once coordinates are enabled', () => {
-    const ids = backfillPlayer(ALICE, [analyzeMatch(record(X01, NINE_DARTER))], {
-      coordsEnabled: true,
-    }).map((u) => u.achievementId);
     expect(ids).toContain('tight-grouping');
+    expect(ids).toContain('robin-hood');
   });
 
   it('stamps the unlock with the match it happened in', () => {

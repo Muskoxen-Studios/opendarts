@@ -1,0 +1,83 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and attach the release to (e.g. v0.1.0)'
+        required: true
+
+jobs:
+  build:
+    strategy:
+      # One platform failing should not throw away a good installer for the
+      # other -- they are published to the same draft independently.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-latest
+            name: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # A release nobody can trust is worse than no release, so the tests gate
+      # the installer rather than running beside it.
+      - name: Typecheck and test
+        run: npm run check
+
+      - name: Stage the app
+        run: node scripts/package/prepare.mjs
+
+      # Built without publishing so the packed result can be checked first.
+      - name: Package
+        run: npx electron-builder --projectDir build/app --publish never
+
+      # Catches the failure mode that packaging actually has: electron-builder
+      # pruning the @darts/* links, which only shows up outside this repo.
+      - name: Verify the packed app runs
+        run: node scripts/package/verify-package.mjs
+
+      - name: Upload to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Both matrix jobs race to create the release; whoever loses just
+          # uploads into the one that already exists.
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --draft --title "Darts $TAG" \
+              --notes "Download the installer for your platform below." \
+              --verify-tag
+
+          # latest.yml / latest-linux.yml are what electron-updater reads to
+          # find an update, so they matter as much as the installer itself.
+          gh release upload "$TAG" --clobber \
+            $(find build/release -maxdepth 1 -type f \
+              \( -name '*.exe' -o -name '*.AppImage' -o -name '*.blockmap' -o -name 'latest*.yml' \))
+
+      - name: Keep the artifacts on the run too
+        uses: actions/upload-artifact@v4
+        with:
+          name: darts-${{ matrix.name }}
+          path: |
+            build/release/*.exe
+            build/release/*.AppImage
+            build/release/latest*.yml
+          if-no-files-found: error

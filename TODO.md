@@ -55,13 +55,4 @@
   - covers reconnect, the stats heartbeat, the cumulative `throws[]` dedupe and
     takeout; drive it with `POST /sim/turn`, `/sim/throw`, `/sim/disconnect`
   - it emits the *inferred* throw payload, so it cannot close FINDINGS §3
-
-## Ideas not yet picked up
-
-- Feeding a real Board Manager from `v4l2loopback` cameras would test Autodarts'
-  own detection, but needs recorded 3-cam footage and a matching calibration —
-  and it tests their code, not ours. The fake board covers our side.
-- Coordinates only exist for simulator darts. Once the board's throw payload is
-  captured the same heatmaps sharpen automatically, with no code change here.
-- Golf assumes a hole is holed by hitting the number in any ring. A stricter
-  "must hit the double" variant would be a config flag on the same engine.
+- [ ] One thing worth knowing: tight-grouping and robin-hood still have stub evaluators (() => ({ unlocked: false })), so they now always appear in the achievement list as permanently locked. Wiring them to the real coordinate data is a separate piece of work

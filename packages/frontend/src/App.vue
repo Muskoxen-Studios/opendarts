@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { parseSegmentLabel, type Segment } from '@darts/schema';
 import BoardControls from './components/BoardControls.vue';
+import BoardEffect from './components/BoardEffect.vue';
 import Celebration from './components/Celebration.vue';
 import Dartboard from './components/Dartboard.vue';
 import Leaderboard from './components/Leaderboard.vue';
@@ -15,8 +16,6 @@ import { api, connect, dismissCelebration, pushToast, store, type MatchReport } 
 const tab = ref<'play' | 'setup' | 'leaderboard' | 'players' | 'settings'>('play');
 const view = computed(() => store.view);
 const managingRoster = ref(false);
-/** The board's own controls, folded away until the hardware needs attention. */
-const showingBoard = ref(false);
 
 /** Profiles not currently in the match, offered as mid-match additions. */
 const availableToJoin = computed(() =>
@@ -113,6 +112,19 @@ const hintNumbers = computed<number[]>(() => {
   return Number.isInteger(hole) ? [hole] : [];
 });
 
+/**
+ * Which of the two identical shake animations to run.
+ *
+ * Alternating on the effect's key is what makes a second bust actually shake:
+ * re-applying the same animation name to an element that already has it is a
+ * no-op, so consecutive bursts would silently drop every other shake.
+ */
+const shakeClass = computed(() => {
+  const effect = store.boardEffect;
+  if (!effect || store.effects === 'off') return null;
+  return effect.key % 2 === 0 ? 'shake-a' : 'shake-b';
+});
+
 /** The player whose darts are on the board -- still them while a finished turn is held for takeout. */
 const activePlayer = computed(() => view.value?.players.find((p) => p.playerId === view.value?.activePlayerId));
 
@@ -175,6 +187,13 @@ async function rematch(): Promise<void> {
         <button :class="{ on: tab === 'settings' }" @click="tab = 'settings'">Settings</button>
       </nav>
       <div class="status">
+        <!--
+          Reset and Calibrate are hardware controls wanted mid-game, with darts
+          in hand and the board misreading -- so they sit in the header rather
+          than behind a disclosure on the play screen. The full panel, with its
+          indicator and explanation, is on the Settings screen.
+        -->
+        <BoardControls compact />
         <span class="pill" :class="{ ok: store.connected }">
           {{ store.connected ? 'server' : 'offline' }}
         </span>
@@ -196,13 +215,16 @@ async function rematch(): Promise<void> {
           </section>
 
           <section class="right">
-            <Dartboard
-              :highlight="hintSegments"
-              :highlight-numbers="hintNumbers"
-              :marks="view.turn.throws"
-              :mark-color="activePlayer?.color"
-              @throw="correcting ? correctLast($event.segment) : onThrow($event)"
-            />
+            <div class="board-stage" :class="shakeClass">
+              <Dartboard
+                :highlight="hintSegments"
+                :highlight-numbers="hintNumbers"
+                :marks="view.turn.throws"
+                :mark-color="activePlayer?.color"
+                @throw="correcting ? correctLast($event.segment) : onThrow($event)"
+              />
+              <BoardEffect :effect="store.boardEffect" :level="store.effects" />
+            </div>
             <p v-if="view.awaitingTakeout" class="hint centered takeout">
               {{ activePlayer?.name }}'s turn is done -- pull your darts to hand over.
             </p>
@@ -224,13 +246,6 @@ async function rematch(): Promise<void> {
                 End game
               </button>
               <button @click="showLastGame">Last game</button>
-              <button :class="{ on: showingBoard }" @click="showingBoard = !showingBoard">
-                Board
-              </button>
-            </div>
-
-            <div v-if="showingBoard" class="board-panel">
-              <BoardControls />
             </div>
 
             <div v-if="managingRoster" class="roster">
@@ -324,7 +339,7 @@ nav button {
   border-radius: 999px; padding: 0.4rem 0.95rem; cursor: pointer; font: inherit;
 }
 nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
-.status { margin-left: auto; display: flex; gap: 0.4rem; }
+.status { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
 .pill {
   font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
   border: 1px solid #3a2226; background: #24161a; color: #d8453f;
@@ -346,6 +361,31 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 .controls button.danger:hover:not(:disabled) { border-color: #d8453f; color: #d8453f; }
 .controls button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Positions the burst overlay over the board, and takes the shake. */
+.board-stage { position: relative; width: 100%; max-width: 560px; }
+.board-stage.shake-a { animation: shake-a 420ms ease-in-out; }
+.board-stage.shake-b { animation: shake-b 420ms ease-in-out; }
+
+@keyframes shake-a {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  15%  { transform: translate(-9px, 4px) rotate(-0.7deg); }
+  35%  { transform: translate(7px, -5px) rotate(0.6deg); }
+  55%  { transform: translate(-5px, 3px) rotate(-0.4deg); }
+  78%  { transform: translate(3px, -2px) rotate(0.2deg); }
+}
+/* Deliberately identical to shake-a; see shakeClass in the script above. */
+@keyframes shake-b {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  15%  { transform: translate(-9px, 4px) rotate(-0.7deg); }
+  35%  { transform: translate(7px, -5px) rotate(0.6deg); }
+  55%  { transform: translate(-5px, 3px) rotate(-0.4deg); }
+  78%  { transform: translate(3px, -2px) rotate(0.2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-stage.shake-a, .board-stage.shake-b { animation: none; }
+}
+
 .hint { margin: 0; font-size: 0.8rem; color: #8b93a1; }
 .hint.centered { text-align: center; }
 .hint.takeout { color: #e0a458; font-weight: 600; }
@@ -358,7 +398,6 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 }
 .recent .value { color: #8b93a1; }
 
-.board-panel { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem 0.9rem; background: #14171c; }
 .roster { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem 0.9rem; background: #14171c; }
 .roster ul { list-style: none; margin: 0.5rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .roster li { display: flex; align-items: center; gap: 0.55rem; }

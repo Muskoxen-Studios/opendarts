@@ -51,10 +51,6 @@ services:
       DB_FILE: /data/darts.db
       BRIDGE_WS: ws://bridge:8081/events
       BRIDGE_HTTP: http://bridge:8081
-      # Coordinate-dependent achievements stay off until the board's throw
-      # payload is understood. Flipping this to 1 and running the backfill
-      # unlocks them retroactively across all history.
-      COORDS_ENABLED: ${COORDS_ENABLED:-0}
     volumes:
       - darts-data:/data
     depends_on:

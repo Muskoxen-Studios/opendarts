@@ -550,10 +550,10 @@ describe('roster changes during a match', () => {
 
 describe('settings', () => {
   it('round-trips values', () => {
-    expect(store.getSetting('coordsEnabled', false)).toBe(false);
-    store.setSetting('coordsEnabled', true);
-    expect(store.getSetting('coordsEnabled', false)).toBe(true);
-    expect(store.allSettings()).toMatchObject({ coordsEnabled: true });
+    expect(store.getSetting('celebrations', true)).toBe(true);
+    store.setSetting('celebrations', false);
+    expect(store.getSetting('celebrations', true)).toBe(false);
+    expect(store.allSettings()).toMatchObject({ celebrations: false });
   });
 });
 
@@ -575,22 +575,6 @@ describe('backfill', () => {
     expect(
       (db.prepare('SELECT COUNT(*) AS n FROM throws').get() as { n: number }).n,
     ).toBeGreaterThan(0);
-  });
-
-  it('gates coordinate-dependent achievements behind a flag', () => {
-    const [alice, bob] = seedPlayers();
-    manager.start(X01, [alice, bob]);
-    nineDartLeg();
-
-    store.recomputeAll({ coordsEnabled: false });
-    expect(store.readAchievements(alice.id).map((a) => a.achievementId)).not.toContain(
-      'tight-grouping',
-    );
-
-    store.recomputeAll({ coordsEnabled: true });
-    expect(store.readAchievements(alice.id).map((a) => a.achievementId)).toContain(
-      'tight-grouping',
-    );
   });
 });
 

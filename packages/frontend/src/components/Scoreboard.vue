@@ -327,6 +327,10 @@ function ordinal(place: number): string {
  * Everyone, small, in turn order. Horizontally scrollable rather than
  * wrapping, so a big roster costs width, not height -- and it stays
  * centred on whoever is throwing (see the activePlayerId watcher).
+ *
+ * "Small" is relative: these are sized to be read from the oche, several
+ * metres away, not from a desk. That is why the type here is larger than the
+ * usual secondary-text scale -- scroll width is the thing being spent.
  */
 .strip {
   display: flex;
@@ -343,11 +347,11 @@ function ordinal(place: number): string {
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
-  min-width: 4.2rem;
+  min-width: 5.4rem;
   border: 1px solid #262b33;
   border-top: 3px solid var(--accent);
   border-radius: 8px;
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.75rem;
   background: #14171c;
   transition: background 120ms ease, border-color 120ms ease;
 }
@@ -366,19 +370,19 @@ function ordinal(place: number): string {
 }
 
 .mini-score {
-  font-size: 1.3rem;
+  font-size: 1.9rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .mini-name {
-  font-size: 0.72rem;
+  font-size: 0.95rem;
   color: #8b93a1;
   white-space: nowrap;
 }
 
 .mini-place {
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: #e0b84a;
   text-transform: uppercase;
@@ -388,7 +392,7 @@ function ordinal(place: number): string {
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  font-size: 0.85rem;
+  font-size: 1.05rem;
 }
 
 .mini-lives .life {
@@ -400,7 +404,7 @@ function ordinal(place: number): string {
 }
 
 .mini-knife {
-  font-size: 0.8rem;
+  font-size: 1rem;
   margin-left: 0.1rem;
 }
 

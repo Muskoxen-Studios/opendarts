@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import BoardControls from './BoardControls.vue';
-import { api, pushToast, type Settings, type SourceConfig } from '../store.ts';
+import { api, pushToast, type EffectLevel, type Settings, type SourceConfig } from '../store.ts';
 
 const settings = ref<Settings | null>(null);
 const busy = ref(false);
@@ -129,13 +129,6 @@ async function recompute(): Promise<void> {
     recomputing.value = false;
   }
 }
-
-async function toggleCoords(value: boolean): Promise<void> {
-  await save({ coordsEnabled: value });
-  // Coordinate achievements evaluate over stored history, so turning them on
-  // only takes effect once the projections are rebuilt.
-  await recompute();
-}
 </script>
 
 <template>
@@ -237,25 +230,24 @@ async function toggleCoords(value: boolean): Promise<void> {
           @change="save({ celebrationSeconds: Number(($event.target as HTMLInputElement).value) })"
         />
       </label>
-    </div>
 
-    <div class="group">
-      <h3>Dart coordinates</h3>
-      <p class="hint">
-        The board reports a position for each dart, but its units and origin are
-        not yet established, so achievements that depend on it stay off. Nothing
-        is lost by waiting &mdash; they evaluate over stored history, so enabling
-        them later unlocks them retroactively.
-      </p>
-      <label class="toggle">
-        <input
-          type="checkbox"
-          :checked="settings.coordsEnabled"
-          :disabled="busy || recomputing"
-          @change="toggleCoords(($event.target as HTMLInputElement).checked)"
-        />
-        <span>Enable coordinate-based achievements</span>
+      <label class="row">
+        <span>Bust &amp; Gotcha burst</span>
+        <select
+          class="wide-select"
+          :value="settings.effects"
+          :disabled="busy"
+          @change="save({ effects: ($event.target as HTMLSelectElement).value as EffectLevel })"
+        >
+          <option value="full">Full &mdash; shockwave and debris</option>
+          <option value="subtle">Subtle &mdash; flash and shake only</option>
+          <option value="off">Off</option>
+        </select>
       </label>
+      <p class="hint">
+        What the dartboard does when a turn busts or a Gotcha knockback lands.
+        It fires under the dart that caused it.
+      </p>
     </div>
 
     <div class="group">
@@ -308,6 +300,7 @@ h3 { margin: 0 0 0.5rem; font-size: 0.78rem; text-transform: uppercase; letter-s
 .toggle input { margin-top: 0.2rem; }
 .row { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.6rem; font-size: 0.9rem; }
 .row input { width: 5rem; }
+.row .wide-select { margin-left: auto; }
 input[type='number'] {
   background: #0f1216; border: 1px solid #262b33; color: #e8e6e1;
   border-radius: 6px; padding: 0.35rem 0.5rem; font: inherit;

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { toRawCoords } from '@darts/fakeboard';
+import { SEGMENT_ANGLE, SEGMENT_ORDER, type Segment } from '@darts/schema';
 import { normalizeThrow, toCoords, toSegment, ThrowShapeError } from './autodarts.ts';
 
 describe('segment translation', () => {
@@ -51,8 +53,31 @@ describe('failing loudly on an unexpected payload', () => {
 });
 
 describe('coordinates', () => {
-  it('scales by 170 and flips y, board-down to schema-up', () => {
-    expect(toCoords({ x: 0.5, y: 0.25 })).toEqual({ x: 85, y: -42.5 });
+  it('scales by 170 and leaves both axes alone', () => {
+    expect(toCoords({ x: 0.5, y: 0.25 })).toEqual({ x: 85, y: 42.5 });
+  });
+
+  /*
+   * The axis direction, stated as intent rather than as a number.
+   *
+   * This is the assertion that was missing: the board's y points up, like our
+   * own Coords, and negating it mirrored every dart top-to-bottom -- 20 came
+   * out at 3. A raw dart in the top half has to stay in the top half.
+   */
+  it('keeps a dart in the half of the board it was thrown into', () => {
+    expect(toCoords({ x: 0, y: 0.9 })!.y).toBeGreaterThan(0);
+    expect(toCoords({ x: 0, y: -0.9 })!.y).toBeLessThan(0);
+    expect(toCoords({ x: 0.9, y: 0 })!.x).toBeGreaterThan(0);
+  });
+
+  /*
+   * The three darts of the real capture (FINDINGS §3), which is what settled
+   * the direction: S4 and S1 both sit in the upper right of the board and both
+   * were reported with a positive y.
+   */
+  it('plots the real capture where those darts actually landed', () => {
+    expect(toCoords({ x: 0.5476268779047749, y: 0.33845423262136143 })!.y).toBeGreaterThan(0);
+    expect(toCoords({ x: 0.18832737995641766, y: 0.37901887299768106 })!.y).toBeGreaterThan(0);
   });
 
   it('is null for anything that does not parse as {x, y}', () => {
@@ -63,7 +88,7 @@ describe('coordinates', () => {
 
   it('carries real coords through onto the normalised throw', () => {
     const t = normalizeThrow({ segment: { name: 'T20', bed: 'Triple' }, coords: { x: 0.6, y: -0.1 } });
-    expect(t.coords).toEqual({ x: 102, y: 17 });
+    expect(t.coords).toEqual({ x: 102, y: -17 });
   });
 });
 
@@ -78,5 +103,42 @@ describe('normalised throws', () => {
     const a = normalizeThrow({ segment: { name: 'T20', bed: 'Triple' } });
     const b = normalizeThrow({ segment: { name: 'T20', bed: 'Triple' } });
     expect(a.id).not.toBe(b.id);
+  });
+});
+
+/*
+ * The whole coordinate path, end to end: the fake board emits what the real
+ * board emits, the adapter reads it, and the dart has to come back out inside
+ * the wedge it was thrown into.
+ *
+ * This is the test that would have caught the mirrored y. The ones above check
+ * a radius or a single number; only an angle can tell the two conventions
+ * apart, because a radius is the same under either sign.
+ */
+describe('the coordinate round trip', () => {
+  /** Degrees clockwise from 12 o'clock, which is how segments are laid out. */
+  function bearing(c: { x: number; y: number }): number {
+    return (((Math.atan2(c.x, c.y) * 180) / Math.PI) + 360) % 360;
+  }
+
+  it('lands every segment back inside its own wedge', () => {
+    for (const ring of ['SINGLE_INNER', 'SINGLE_OUTER', 'TRIPLE', 'DOUBLE'] as const) {
+      for (const [index, number] of SEGMENT_ORDER.entries()) {
+        const segment: Segment = { number, ring };
+        const coords = toCoords(toRawCoords(segment));
+        expect(coords, `${ring} ${number} lost its coordinates`).not.toBeNull();
+
+        const want = index * SEGMENT_ANGLE;
+        // Signed difference, so 359 vs 1 degree reads as 2 rather than 358.
+        const off = Math.abs(((bearing(coords!) - want + 540) % 360) - 180);
+        expect(off, `${ring} ${number} plotted ${off.toFixed(1)}° from its wedge`)
+          .toBeLessThan(SEGMENT_ANGLE / 2);
+      }
+    }
+  });
+
+  it('keeps 20 at the top and 3 at the bottom, the way they are read', () => {
+    expect(toCoords(toRawCoords({ number: 20, ring: 'TRIPLE' }))!.y).toBeGreaterThan(0);
+    expect(toCoords(toRawCoords({ number: 3, ring: 'TRIPLE' }))!.y).toBeLessThan(0);
   });
 });

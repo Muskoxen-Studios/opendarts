@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { resolve } from 'node:path';
+import { networkInterfaces } from 'node:os';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   CoordsSchema,
@@ -12,9 +14,23 @@ import { CATALOGUE } from '@darts/stats';
 import { connectToBridge } from './bridgeClient.ts';
 import { openDatabase } from './db.ts';
 import { MatchManager, type ServerEvent } from './matchManager.ts';
+import { resolveStatic, sendStatic } from './static.ts';
 import { Store } from './store.ts';
 
 const PORT = Number(process.env.PORT ?? 8080);
+/**
+ * 0.0.0.0 so phones and tablets on the same network can watch the scoreboard.
+ * The desktop app relies on this; set it to 127.0.0.1 to keep it to one machine.
+ */
+const HOST = process.env.HOST ?? '0.0.0.0';
+/**
+ * Serve the built frontend ourselves when this points at a `dist` directory.
+ *
+ * Unset under docker compose, where nginx does it. Set by the desktop app,
+ * which has no nginx to hand -- and serving both from one origin is what lets
+ * the frontend keep using relative `/api` and `/ws` urls in both worlds.
+ */
+const WEB_ROOT = process.env.WEB_ROOT ? resolve(process.env.WEB_ROOT) : null;
 const DB_FILE = process.env.DB_FILE ?? 'data/darts.db';
 const BRIDGE_WS = process.env.BRIDGE_WS ?? 'ws://localhost:8081/events';
 const BRIDGE_HTTP = process.env.BRIDGE_HTTP ?? 'http://localhost:8081';
@@ -152,17 +168,15 @@ route('GET', '/api/profiles/:id/handicap/:gameType', (req, res, params) => {
 
 route('GET', '/api/profiles/:id/achievements', (_req, res, params) => {
   const rows = new Map(store.readAchievements(params.id ?? '').map((a) => [a.achievementId, a]));
-  const coordsEnabled = store.getSetting('coordsEnabled', false);
   json(
     res,
     200,
-    CATALOGUE.filter((a) => coordsEnabled || !a.requiresCoords).map((a) => ({
+    CATALOGUE.map((a) => ({
       id: a.id,
       name: a.name,
       description: a.description,
       icon: a.icon,
       tier: a.tier ?? null,
-      requiresCoords: a.requiresCoords ?? false,
       unlockedAt: rows.get(a.id)?.unlockedAt ?? null,
       progress: rows.get(a.id)?.progress ?? 0,
       // Fall back to the catalogue's own target so a player who has never
@@ -472,6 +486,15 @@ route('POST', '/api/board/:action', async (_req, res, params) => {
 
 // -- settings ---------------------------------------------------------------
 
+/**
+ * How loud the bust / knockback burst on the dartboard is.
+ *
+ * A setting rather than a constant because it is genuinely divisive: it is a
+ * big motion on a screen people are staring at all evening.
+ */
+const EFFECT_LEVELS = ['full', 'subtle', 'off'] as const;
+type EffectLevel = (typeof EFFECT_LEVELS)[number];
+
 route('GET', '/api/settings', async (_req, res) => {
   let bridge: unknown = null;
   try {
@@ -482,9 +505,9 @@ route('GET', '/api/settings', async (_req, res) => {
     // show what the bridge is currently running.
   }
   json(res, 200, {
-    coordsEnabled: store.getSetting('coordsEnabled', process.env.COORDS_ENABLED === '1'),
     celebrations: store.getSetting('celebrations', true),
     celebrationSeconds: store.getSetting('celebrationSeconds', 6),
+    effects: store.getSetting('effects', 'full'),
     bridge,
     runtime: {
       bridgeWs: BRIDGE_WS,
@@ -496,18 +519,18 @@ route('GET', '/api/settings', async (_req, res) => {
 
 route('PUT', '/api/settings', (_req, res, _p, body) => {
   const b = (body ?? {}) as Record<string, unknown>;
-  if (typeof b.coordsEnabled === 'boolean') store.setSetting('coordsEnabled', b.coordsEnabled);
   if (typeof b.celebrations === 'boolean') store.setSetting('celebrations', b.celebrations);
   if (typeof b.celebrationSeconds === 'number') {
     store.setSetting('celebrationSeconds', Math.min(30, Math.max(1, b.celebrationSeconds)));
   }
+  // Only the three known intensities. Anything else is dropped rather than
+  // stored, so the frontend never has to defend against a junk value.
+  if (EFFECT_LEVELS.includes(b.effects as EffectLevel)) store.setSetting('effects', b.effects);
   json(res, 200, store.allSettings());
 });
 
 route('POST', '/api/recompute', (_req, res) => {
-  const result = store.recomputeAll({
-    coordsEnabled: store.getSetting('coordsEnabled', process.env.COORDS_ENABLED === '1'),
-  });
+  const result = store.recomputeAll();
   // A rebuild only sees finished matches; re-apply anything earned in the match
   // still being played.
   manager.revalidateAchievements();
@@ -545,8 +568,27 @@ const server = createServer(async (req, res) => {
     }
     return;
   }
+  if (WEB_ROOT && (req.method === 'GET' || req.method === 'HEAD')) {
+    const file = await resolveStatic(WEB_ROOT, url.pathname);
+    if (file) return sendStatic(res, file, req.method === 'HEAD');
+  }
+
   json(res, 404, { error: 'not found' });
 });
+
+/**
+ * The addresses another device on the same network can reach us on.
+ *
+ * Logged on boot so "open it on your phone" does not require going and
+ * finding the machine's IP by hand. Empty when bound to loopback only.
+ */
+function lanAddresses(): string[] {
+  if (HOST !== '0.0.0.0' && HOST !== '::') return [];
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((i) => i && i.family === 'IPv4' && !i.internal)
+    .map((i) => i!.address);
+}
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (socket) => {
@@ -555,8 +597,12 @@ wss.on('connection', (socket) => {
   socket.on('close', () => clients.delete(socket));
 });
 
-server.listen(PORT, () => {
-  console.log(`[server] listening on :${PORT}  db=${DB_FILE}`);
+server.listen(PORT, HOST, () => {
+  console.log(`[server] listening on ${HOST}:${PORT}  db=${DB_FILE}`);
+  if (WEB_ROOT) console.log(`[server] serving the scoreboard from ${WEB_ROOT}`);
+  for (const address of lanAddresses()) {
+    console.log(`[server] on this network: http://${address}:${PORT}`);
+  }
   connectToBridge(BRIDGE_WS, (e) => manager.onBoardEvent(e), {
     onConnect: () => void syncSourceToBridge(),
   });

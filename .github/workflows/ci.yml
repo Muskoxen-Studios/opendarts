@@ -1,0 +1,23 @@
+name: check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # The backend has no build step -- Node runs the TypeScript sources
+      # directly -- so `check` (typecheck + tests) is the whole gate.
+      - run: npm ci
+      - run: npm run check

@@ -9,14 +9,12 @@ import { openDatabase } from '../db.ts';
 import { Store } from '../store.ts';
 
 const DB_FILE = process.env.DB_FILE ?? 'data/darts.db';
-const coordsEnabled = process.env.COORDS_ENABLED === '1';
-
 const db = openDatabase(DB_FILE);
 const store = new Store(db);
 
-console.log(`Backfilling from ${DB_FILE}${coordsEnabled ? ' (coordinate achievements enabled)' : ''}...`);
+console.log(`Backfilling from ${DB_FILE}...`);
 const started = Date.now();
-const result = store.recomputeAll({ coordsEnabled });
+const result = store.recomputeAll();
 const seconds = ((Date.now() - started) / 1000).toFixed(2);
 
 console.log(

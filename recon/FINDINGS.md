@@ -96,18 +96,43 @@ segment. We get heatmaps/grouping for free without owning segment mapping.
 `segment.bed` enum: `Single · SingleInner · SingleOuter · Double · Triple · Outside`
 `segment.name`: `"D20"`, `"M20"` (miss ring), etc. — a 1-char prefix + number.
 
-`packages/fakeboard` **emitted exactly this inferred shape** ahead of the real
-capture — `toRawCoords`'s `{x, y}` / normalised-by-170 / bull-origin / y-down
+`packages/fakeboard` **emitted almost exactly this inferred shape** ahead of the
+real capture — `toRawCoords`'s `{x, y}` / normalised-by-170 / bull-origin
 formula lands within noise of the real board's numbers for all three darts
-above (e.g. predicted `(-r, 0)` for a dead-centre S11 vs. the observed
-`(-0.2409, 0.0063)`). The one guess it got wrong: `multiplier` **is** present on
-the real segment (`1` for singles here) — the adapter already ignored it and
-derived the ring from `bed` instead, so nothing downstream needed to change.
+above. Two guesses it got wrong: `multiplier` **is** present on the real segment
+(`1` for singles here) — harmless, the adapter derives the ring from `bed` and
+ignores it — and the **direction of the y axis**, which was not harmless. See
+the correction below.
+
+### Correction: y points UP, not down
+
+This section originally read "y down (screen convention)", and both the fake
+board and `toCoords` were built to match. It is wrong, and it mirrored every
+board-sourced dart top-to-bottom: a dart at 20 plotted at 3, which is 20's
+opposite segment.
+
+**How it was missed.** The original check was that each captured dart landed at
+the *predicted radius* for its segment. A radius is identical under either sign
+of y, so that check could never have distinguished the two conventions — and
+the one dart whose angle was quoted, S11, sits at 9 o'clock with `y ≈ 0.006`,
+which is also sign-agnostic. Checking the *angles* of the other two settles it:
+
+| dart | raw coords | bearing if y is up | its segment's true bearing |
+|---|---|---|---|
+| S11 | `(-0.2409, 0.0063)` | 268.5° | 270° (9 o'clock) — sign-agnostic |
+| S4  | `(0.5476, 0.3385)`  | 58.3°  | 54° |
+| S1  | `(0.1883, 0.3790)`  | 26.4°  | 18° |
+
+(Bearings clockwise from 12 o'clock.) S4 and S1 both sit in the **upper** right
+of the board and both were reported with **positive y**. Under "y down" they
+would have to be in the lower right, 90°+ from their own wedge.
 
 **Settled:**
 - `coords`: `{x, y}`, normalised by 170 (board-mm / 170), origin at the bull,
-  x right, y down (screen convention). Confirmed by all three captured darts
-  landing at the predicted radius/angle for their segment.
+  x right, **y up** — the same orientation as `@darts/schema`'s `Coords`, so
+  `toCoords` only scales and does not flip. Guarded by a round-trip test in
+  `packages/bridge/src/adapters/autodarts.test.ts` that asserts every segment
+  lands back inside its own wedge, i.e. by **angle**, not by radius.
 - `segment` carries `number` and `multiplier` in addition to `name`/`bed`.
 - `throws[]` is **cumulative for the visit**: it grew from 1 to 3 entries as
   each dart landed, each element's `segment`/`coords` staying fixed once set.
@@ -151,10 +176,13 @@ auto-calibrate on start enabled, motion standby 15 min.
 
 ## Next step
 
-§3 is settled. `packages/bridge/src/adapters/autodarts.ts` (`toCoords`) now
-parses the confirmed `{x,y}` shape instead of discarding it, and
-`packages/fakeboard/src/payload.ts`'s comments are updated from ASSUMED to
-CONFIRMED — the formula itself did not need to change.
+§3 is settled, including the y-axis correction above: `toCoords` in
+`packages/bridge/src/adapters/autodarts.ts` scales by 170 and nothing else, and
+`packages/fakeboard/src/payload.ts` emits the matching y-up formula.
+
+The lesson worth keeping: **a radius cannot confirm an axis direction.** Any
+future claim about the board's coordinate frame has to be checked by angle,
+against a dart that is not on an axis.
 
 The capture that settled it, `recon/captures/live-ws-2026-08-20T10-06-03-291Z.ndjson`,
 is worth keeping as a `replay` fixture: it is a real three-dart-then-takeout

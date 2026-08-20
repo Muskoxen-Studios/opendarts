@@ -173,14 +173,13 @@ export const CATALOGUE: Achievement[] = [
     },
   },
 
-  // --- Blocked on the throw payload ---------------------------------------
+  // --- Coordinate-based ----------------------------------------------------
   {
     id: 'tight-grouping',
     name: 'Tight Grouping',
     description: 'Land three darts within a 20 mm circle.',
     icon: '\u{1F3AF}',
     tier: 'gold',
-    requiresCoords: true,
     evaluate: () => ({ unlocked: false }),
   },
   {
@@ -189,7 +188,6 @@ export const CATALOGUE: Achievement[] = [
     description: 'Land a dart in the shaft of another.',
     icon: '\u{1F3F9}',
     tier: 'gold',
-    requiresCoords: true,
     evaluate: () => ({ unlocked: false }),
   },
 ];

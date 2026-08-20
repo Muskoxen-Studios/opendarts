@@ -14,7 +14,7 @@ import { BOARD_NORM, segmentValue, type Ring, type Segment } from '@darts/schema
  *   - each element has `coords: {x, y}` and `segment: {name, bed, number,
  *     multiplier}`
  *   - `coords` is normalised by 170 (board millimetres / 170), origin at the
- *     bull, x right, y down
+ *     bull, x right, y **up** -- the same orientation as our own `Coords`
  *   - `multiplier` is present but unused here: the ring is derived from `bed`,
  *     which is confirmed and does not need it
  */
@@ -112,12 +112,17 @@ export function toSegment(raw: unknown): Segment {
 
 /**
  * Board coordinates are `{x, y}`, normalised by 170 (board millimetres / 170),
- * origin at the bull, x right, y **down** (screen convention) -- confirmed
- * against a real board, recon/FINDINGS.md §3.
+ * origin at the bull, x right, y **up** -- confirmed against a real board,
+ * recon/FINDINGS.md §3.
  *
- * `@darts/schema`'s `Coords` is board millimetres, x right, y **up** (the
- * orientation a person would draw on paper -- see boardGeometry.ts), so this
- * is the one place that scales by 170 and flips the axis.
+ * That is the same orientation as `@darts/schema`'s `Coords` (board
+ * millimetres, x right, y up -- what a person would draw on paper, see
+ * boardGeometry.ts), so both axes pass straight through and the only thing
+ * this does is scale by 170.
+ *
+ * It used to negate y, on the inference that the board used the screen
+ * convention. It does not, and the darts came out mirrored top-to-bottom --
+ * a dart at 20 plotted at 3. See §3 of FINDINGS for how that was missed.
  *
  * Still returns null on anything that doesn't parse: a malformed `coords`
  * should not take the whole throw down with it, since the segment alone is
@@ -126,7 +131,7 @@ export function toSegment(raw: unknown): Segment {
 export function toCoords(raw: unknown): { x: number; y: number } | null {
   const parsed = RawCoordsSchema.safeParse(raw);
   if (!parsed.success) return null;
-  return { x: parsed.data.x * BOARD_NORM, y: -parsed.data.y * BOARD_NORM };
+  return { x: parsed.data.x * BOARD_NORM, y: parsed.data.y * BOARD_NORM };
 }
 
 let seq = 0;

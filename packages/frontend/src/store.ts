@@ -1,5 +1,6 @@
 import { reactive, readonly } from 'vue';
 import type { MatchView, Segment } from '@darts/schema';
+import { C, mmToSvg } from './boardGeometry.ts';
 
 export interface Profile {
   id: string;
@@ -15,7 +16,6 @@ export interface AchievementView {
   description: string;
   icon: string;
   tier: string | null;
-  requiresCoords: boolean;
   unlockedAt: string | null;
   progress: number;
   goal: number;
@@ -235,10 +235,13 @@ export interface BridgeStatus {
   stored?: SourceConfig | null;
 }
 
+/** How loud the bust / knockback burst on the board is. */
+export type EffectLevel = 'full' | 'subtle' | 'off';
+
 export interface Settings {
-  coordsEnabled: boolean;
   celebrations: boolean;
   celebrationSeconds: number;
+  effects: EffectLevel;
   /** Null when the bridge cannot be reached. */
   bridge: BridgeStatus | null;
   runtime: {
@@ -257,6 +260,27 @@ export interface Celebration {
   description: string;
   icon: string;
   tier: string | null;
+}
+
+/**
+ * A burst on the dartboard, fired by a bust or a Gotcha knockback.
+ *
+ * `key` is what makes a repeat replay: two busts in a row are two separate
+ * events, and re-keying the overlay restarts its animations. `origin` is in
+ * the Dartboard's own SVG units so the burst starts under the dart that
+ * caused it, and is null when that dart carried no coordinates.
+ *
+ * `title` and `body` ride along with the burst rather than going to a toast:
+ * the news and the animation belong to the same moment, and eyes are on the
+ * board when it happens, not on the corner of the screen.
+ */
+export interface BoardEffect {
+  key: number;
+  kind: 'bust' | 'gotcha';
+  color: string;
+  origin: { x: number; y: number } | null;
+  title: string;
+  body: string;
 }
 
 export interface Toast {
@@ -281,6 +305,8 @@ interface State {
   celebrationQueue: Celebration[];
   celebrationsEnabled: boolean;
   celebrationSeconds: number;
+  effects: EffectLevel;
+  boardEffect: BoardEffect | null;
 }
 
 const state = reactive<State>({
@@ -296,6 +322,8 @@ const state = reactive<State>({
   celebrationQueue: [],
   celebrationsEnabled: true,
   celebrationSeconds: 6,
+  effects: 'full',
+  boardEffect: null,
 });
 
 let toastId = 0;
@@ -490,6 +518,7 @@ export const api = {
     const s = await request<Settings>('/api/settings');
     state.celebrationsEnabled = s.celebrations;
     state.celebrationSeconds = s.celebrationSeconds;
+    state.effects = s.effects ?? 'full';
     return s;
   },
   saveSettings(patch: Partial<Settings>): Promise<unknown> {
@@ -588,9 +617,53 @@ export function connect(): void {
 }
 
 function announce(event: { type: string; [k: string]: unknown }): void {
-  if (event.type === 'player.busted') pushToast('Bust', String(event.reason ?? ''), '\u{1F4A5}');
-  if (event.type === 'gotcha.knockback') pushToast('Gotcha!', 'Knocked back', '\u{1F4A5}');
+  if (event.type === 'player.busted') {
+    fireBoardEffect('bust', String(event.playerId ?? ''), 'Bust', String(event.reason ?? ''));
+  }
+  if (event.type === 'gotcha.knockback') {
+    // The victim's colour, not the thrower's: the victim is what exploded.
+    const victimId = String(event.victimPlayerId ?? '');
+    const victim = state.view?.players.find((p) => p.playerId === victimId)?.name ?? 'Knocked back';
+    fireBoardEffect('gotcha', victimId, 'Gotcha!', `${victim}: ${event.from} \u2192 ${event.to}`);
+  }
   if (event.type === 'leg.won') pushToast('Leg won', `in ${event.darts} darts`, '\u{1F3AF}');
+}
+
+let effectKey = 0;
+let effectTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * How long the overlay stays up. Longer than the burst itself, because the
+ * label under it carries the reason ("bust: 3 left") and has to be readable.
+ */
+const EFFECT_MS = 2600;
+
+/**
+ * Blow up the board.
+ *
+ * The burst starts under the dart that caused it when that dart carried
+ * coordinates, and at the bull otherwise -- board-sourced darts only started
+ * carrying them recently, and a burst in the middle still reads fine.
+ *
+ * The reason text rides on the overlay itself, so this fires even with the
+ * burst turned off -- the news must not disappear with the animation.
+ */
+function fireBoardEffect(
+  kind: BoardEffect['kind'],
+  playerId: string,
+  title: string,
+  body: string,
+): void {
+  const color = state.view?.players.find((p) => p.playerId === playerId)?.color ?? '#d8453f';
+  const last = state.view?.turn.throws.at(-1);
+  const origin = last?.coords ? mmToSvg(last.coords) : { x: C, y: C };
+
+  state.boardEffect = { key: effectKey++, kind, color, origin, title, body };
+  if (effectTimer) clearTimeout(effectTimer);
+  effectTimer = setTimeout(() => {
+    state.boardEffect = null;
+    effectTimer = null;
+  }, EFFECT_MS);
 }
 
 export const store = readonly(state);

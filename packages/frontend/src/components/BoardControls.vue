@@ -9,7 +9,15 @@ import { api, pushToast, store, type BoardAction, type BoardStateResult } from '
  * else: "stop" stops detection, it does not end a match. Keeping that mapping
  * one-to-one is the point -- it is the panel you reach for when the hardware,
  * rather than the game, is misbehaving.
+ *
+ * `compact` renders the buttons alone, for the app header: Reset and
+ * Calibrate are wanted mid-game, with darts in hand, so they live one press
+ * away rather than behind a disclosure. The indicator and the explanatory
+ * text are dropped there because the header already carries a board pill --
+ * the full panel on the Settings screen is where the explanation belongs.
  */
+const props = defineProps<{ compact?: boolean }>();
+
 const result = ref<BoardStateResult | null>(null);
 const busy = ref<BoardAction | null>(null);
 const error = ref<string | null>(null);
@@ -85,8 +93,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="board">
-    <div class="indicator">
+  <div class="board" :class="{ compact: props.compact }">
+    <div v-if="!props.compact" class="indicator">
       <span class="light" :class="{ on: store.boardOnline }" />
       <b>{{ store.boardOnline ? 'Board connected' : 'Board not connected' }}</b>
       <span v-if="reachable" class="chip" :class="{ live: running }">
@@ -103,22 +111,29 @@ onUnmounted(() => {
         :key="action"
         :class="{ danger: action === 'calibrate' }"
         :disabled="busy !== null || noBoard"
-        :title="LABELS[action].title"
+        :title="noBoard ? 'No board attached — set one up on the Settings screen' : LABELS[action].title"
         @click="run(action)"
       >
         {{ busy === action ? '…' : LABELS[action].button }}
       </button>
     </div>
 
-    <p v-if="noBoard" class="hint">
-      No board attached &mdash; the bridge is running the simulator or a replay.
-      Point it at a board on the Settings screen to use these.
-    </p>
-    <p v-else-if="error" class="hint bad">{{ error }}</p>
-    <p v-else class="hint">
-      These call the Board Manager directly. Stopping detection stops darts
-      arriving; it does not end the match.
-    </p>
+    <!--
+      The compact form says none of this: a failed command already raises a
+      toast, and "why is this greyed out" is answered by the button's own
+      tooltip. Prose in the header would push the whole app down a row.
+    -->
+    <template v-if="!props.compact">
+      <p v-if="noBoard" class="hint">
+        No board attached &mdash; the bridge is running the simulator or a replay.
+        Point it at a board on the Settings screen to use these.
+      </p>
+      <p v-else-if="error" class="hint bad">{{ error }}</p>
+      <p v-else class="hint">
+        These call the Board Manager directly. Stopping detection stops darts
+        arriving; it does not end the match.
+      </p>
+    </template>
   </div>
 </template>
 
@@ -149,4 +164,11 @@ onUnmounted(() => {
 .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 .hint { margin: 0; font-size: 0.78rem; color: #8b93a1; line-height: 1.45; }
 .hint.bad { color: #d8453f; }
+
+/* In the header the buttons are the whole component. */
+.board.compact { flex-direction: row; align-items: center; gap: 0; }
+.board.compact .actions { gap: 0.3rem; flex-wrap: nowrap; }
+.board.compact .actions button { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+.board.compact .hint.bad { font-size: 0.72rem; }
+
 </style>

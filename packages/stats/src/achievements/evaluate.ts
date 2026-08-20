@@ -5,16 +5,6 @@ import type { Achievement, UnlockedAchievement } from './types.ts';
 
 export interface EvaluateOptions {
   catalogue?: Achievement[];
-  /**
-   * Enable achievements that need dart coordinates. Off until the board's
-   * throw payload is understood; see recon/FINDINGS.md.
-   */
-  coordsEnabled?: boolean;
-}
-
-function active(opts: EvaluateOptions): Achievement[] {
-  const list = opts.catalogue ?? CATALOGUE;
-  return opts.coordsEnabled ? list : list.filter((a) => !a.requiresCoords);
 }
 
 /** Evaluate the catalogue against a single finished match. */
@@ -25,7 +15,7 @@ export function evaluateMatch(
   opts: EvaluateOptions = {},
 ): Map<string, UnlockedAchievement> {
   const out = new Map<string, UnlockedAchievement>();
-  for (const a of active(opts)) {
+  for (const a of opts.catalogue ?? CATALOGUE) {
     const r = a.evaluate({ playerId, match, career });
     out.set(a.id, {
       achievementId: a.id,

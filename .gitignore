@@ -8,3 +8,6 @@ recon/captures/*
 
 # Skilld references (recreated by `skilld install`)
 .skilld
+
+# Packaging output (scripts/package/prepare.mjs, electron-builder)
+build/

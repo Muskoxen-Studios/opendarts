@@ -1,6 +1,11 @@
-# darts
+# open-darts
 
-
+> [!IMPORTANT]
+> This project is entirely AI-generated, since it was made as a small side project for our office dart board.
+> We primarily built this for our own use, but we are happy to share it with the world. 
+> Please note that this project should not be considered actively maintained, and we cannot guarantee its stability or security. Use at your own risk.
+> If you do find any bugs however, feel free to report them!
+> This project is in no way affiliated or endorsed by Autodarts.
 
 A self-hosted darts game server and scoreboard built on Autodarts camera
 hardware, using the Autodarts Board Manager purely as a **local detection
@@ -8,11 +13,44 @@ source**. No dependency on `api.autodarts.io` and no cloud game service.
 
 ## Status
 
-Playable end to end today with a clickable virtual dartboard. Switching to real
-hardware is one environment variable.
+Playable end to end, on real hardware or with a clickable virtual dartboard.
+Switching between them is one environment variable, or a click on the Settings
+screen.
 
-One thing is still unknown: the exact shape of the board's throw payload. It is
-isolated to a single function — see [Waiting on the throw payload](#waiting-on-the-throw-payload).
+The board's throw payload is understood, including the coordinate frame — see
+[The anti-corruption boundary](#the-anti-corruption-boundary).
+
+## Download and install
+
+Windows and Linux builds are on the
+[releases page](https://github.com/Muskoxen-Studios/opendarts/releases):
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows | `Darts-Setup-<version>.exe` | Installer; choose where it goes. |
+| Linux | `Darts-<version>.AppImage` | `chmod +x` it and run it. |
+
+The app updates itself: it checks the releases page on startup, downloads a new
+version in the background, and offers to restart. "Check for updates" in the
+**Darts** menu forces a check.
+
+**Windows will warn you on first run.** The installer is not code-signed — that
+needs a certificate that costs real money — so SmartScreen shows "Windows
+protected your PC". Click **More info → Run anyway**. If you would rather not,
+run it with Docker instead (below); nothing about the app differs.
+
+Your games live in a database outside the app, so updating and uninstalling
+never touch them:
+
+| Platform | Database |
+|---|---|
+| Windows | `%APPDATA%\Darts\darts.db` |
+| Linux | `~/.config/Darts/darts.db` |
+
+**On the phone by the board too.** The app serves the same scoreboard to your
+network. **Other devices** in the menu bar copies the address to open —
+something like `http://192.168.0.12:8080`. Windows will ask to allow it through
+the firewall the first time; it has to be allowed for this to work.
 
 ## Architecture
 
@@ -42,6 +80,8 @@ is no native module to compile.
 
 ## Running it
 
+The installer above is the easy path. To run it from source instead:
+
 ```bash
 npm install
 cp .env.example .env
@@ -57,6 +97,12 @@ For local development without containers:
 npm run dev:bridge     # terminal 1
 npm run dev:server     # terminal 2
 npm run dev:frontend   # terminal 3, serves on :5173
+```
+
+Or, as the desktop app does it — one window, both backends started for you:
+
+```bash
+npm run dev:desktop
 ```
 
 ### Event sources
@@ -319,9 +365,11 @@ is computed from.
 ## Controlling the board
 
 Start and stop detection, reset the throw counter and re-run auto-calibration,
-from the **Board** button on the play screen or the Settings page. Each button
-is exactly one Board Manager endpoint and nothing more — stopping detection
-stops darts arriving, it does not end the match.
+from the buttons in the app header, or the fuller panel on the Settings page.
+They are in the header because Reset and Calibrate are wanted mid-game, with
+darts in hand and the board misreading — not somewhere you have to go looking.
+Each button is exactly one Board Manager endpoint and nothing more — stopping
+detection stops darts arriving, it does not end the match.
 
 The calls go frontend → server → bridge → board, because the bridge is the only
 process that knows a board's address, and the board lives on the house network
@@ -330,20 +378,22 @@ path used here is confirmed against real hardware (`recon/FINDINGS.md` §2).
 
 Two indicators, answering different questions. The pill in the header is the
 bridge's heartbeat — *is the board talking to us* — and shows the board's own
-status word when it is. The chip beside the buttons is the board's `running`
+status word when it is. The chip on the Settings panel is the board's `running`
 flag — *is detection actually armed*. A board can be perfectly online and
 detecting nothing, and that is worth being able to see.
 
-With the simulator or a replay as the source there is no board to control, and
-the panel says so rather than offering dead buttons.
+With the simulator or a replay as the source there is no board to control. The
+buttons grey out and say why, rather than offering dead controls.
 
 ## Settings
 
 Reachable from the Settings tab:
 
 - **Celebrations** — on/off, and how long they stay on screen.
-- **Dart coordinates** — enable coordinate-based achievements. Turning this on
-  automatically runs a rebuild, which is what unlocks them retroactively.
+- **Bust & Gotcha burst** — how loud the dartboard gets when a turn busts or a
+  knockback lands: *full* (shockwave and debris), *subtle* (flash and shake), or
+  *off*. It fires under the dart that caused it. The label naming what happened
+  sits on the board itself and shows at every setting, *off* included.
 - **Data** — rebuild all statistics and achievements from the command log.
 - **The board** — its own start, stop, reset and calibrate controls, plus a
   live connection indicator.
@@ -351,43 +401,77 @@ Reachable from the Settings tab:
   database, so you can see what the bridge is attached to without reading
   compose files.
 
-## Waiting on the throw payload
+## The anti-corruption boundary
 
 `packages/bridge/src/adapters/autodarts.ts` is the **only** file that knows
 Autodarts field *names*. (`packages/bridge/src/boardControl.ts` knows its control
-*paths*, but every one of those is confirmed — see §2 below.) Everything else
-depends on `@darts/schema`.
+*paths*.) Everything else depends on `@darts/schema`.
 
-Confirmed against the real board (see `recon/FINDINGS.md`): the transport, the
-`{type, data}` envelope, the channel names and rates, and the full local control
-API. Not yet confirmed: whether `coords` is `{x,y}` or `[x,y]`, its units and
-origin, whether `segment` carries `number`/`multiplier`, and whether `throws[]`
-is cumulative per turn.
+All of it is now confirmed against the real board (`recon/FINDINGS.md`): the
+transport, the `{type, data}` envelope, the channel names and rates, the full
+local control API, and the throw payload — `coords` is `{x, y}` normalised by
+170, origin at the bull, **x right and y up**; `segment` carries `number` and
+`multiplier` alongside `name`/`bed`; and `throws[]` is cumulative for the visit
+rather than per turn.
 
-Two rules keep that unknown contained:
+Two rules keep the boundary worth having:
 
 - **`coords` is nullable and nothing depends on it.** Game logic, statistics and
-  the scoreboard all work with `coords: null`. Achievements that would need
-  coordinates are written but disabled behind `COORDS_ENABLED`; enabling that
-  and running the backfill unlocks them retroactively.
+  the scoreboard all work with `coords: null`, because a dart's segment is
+  enough to score it. Achievements that need coordinates simply evaluate to
+  nothing for a dart without them.
 - **The adapter parses strictly and fails loudly.** A silent mis-parse would
   produce a plausible-but-wrong score and quietly corrupt career statistics. An
   unexpected payload logs the offending frame and names the file to fix.
 
-To capture the real payload:
+### The one that got through anyway
+
+The coordinate frame was originally recorded as *y down*, and it was wrong. Every
+board-sourced dart plotted mirrored top-to-bottom — a dart at 20 appeared at 3.
+
+It survived because of how it was checked. Each captured dart landed at the
+*radius* predicted for its segment, and a radius is identical under either sign
+of y. The one dart whose angle was examined sat at 9 o'clock, where y ≈ 0 and
+both conventions agree. Two darts in the upper right, both reported with
+positive y, settle it — and that is what the round-trip test in
+`packages/bridge/src/adapters/autodarts.test.ts` now asserts: every segment must
+plot back inside its own wedge, by **angle**, not by radius.
+
+The lesson, which is in `recon/FINDINGS.md` too: a radius cannot confirm an axis
+direction.
+
+## Packaging
+
+The desktop app is an Electron shell around the **unmodified** backend — it
+starts `packages/bridge` and `packages/server` as child processes and points a
+window at the scoreboard. No game logic lives in it. The docker deployment and
+the desktop app run the same program, which is the only way both stay tested.
+
+It ships with its own Node 24 runtime rather than using Electron's embedded
+Node, which is currently Node 20. That is not caution — the backend runs
+TypeScript by type stripping and stores data through `node:sqlite`, and Node 20
+has neither.
 
 ```bash
-./recon/capture-throws.sh 192.168.120.40
+npm run dev:desktop    # run the shell against the working tree
+npm run package        # stage, then build an installer into build/release
 ```
 
-That capture is the only thing that settles it. When it lands, it corrects two
-files — `packages/bridge/src/adapters/autodarts.ts`, which reads those field
-names, and `packages/fakeboard/src/payload.ts`, which writes them — and drops
-into `replay` as a regression fixture. Nothing else changes.
+`scripts/package/prepare.mjs` assembles a self-contained app in `build/app`:
+backend sources, the built frontend, third-party dependencies, and a checksummed
+Node runtime downloaded from nodejs.org. `scripts/package/verify-package.mjs`
+then runs the *packed* app from a temporary directory outside this repo — which
+matters more than it sounds, because Node resolves bare imports by walking up
+parent directories, so a packed app sitting inside the workspace will find
+`@darts/*` in the repo's own `node_modules` and pass a test it should fail.
+
+Tagging `v*` builds both platforms on GitHub Actions and uploads them to a
+**draft** release, so the notes can be written before anyone's app offers them
+the update.
 
 ## Checks
 
 ```bash
 npm run check      # typecheck (backend + frontend) and tests
-npm test           # 303 tests, no hardware required
+npm test           # 361 tests, no hardware required
 ```

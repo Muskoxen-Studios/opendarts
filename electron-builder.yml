@@ -1,0 +1,71 @@
+appId: org.muskoxen.darts
+productName: Open Darts
+copyright: Muskoxen Studios
+
+# This config is copied into the staged app by scripts/package/prepare.mjs, and
+# electron-builder is pointed at that directory rather than at the repo root:
+#   node scripts/package/prepare.mjs
+#   npx electron-builder --projectDir build/app
+# electron-builder reads the *project* package.json for name and version, and
+# the repo root is a private workspace with neither, so the staged tree has to
+# be the project as far as it is concerned.
+directories:
+  output: ../release
+
+# Restores the @darts/* workspace links that electron-builder prunes. Without
+# it the packaged app cannot import its own backend packages -- see the hook.
+# The path is relative to the working directory electron-builder is run from
+# (the repo root, via `npm run package`), NOT to --projectDir -- which is why
+# it reaches into scripts/ rather than sitting beside this file.
+afterPack: ./scripts/package/afterPack.cjs
+
+# The backend is spawned as a real child process by a real Node binary, which
+# cannot read out of an asar archive. Everything must exist as plain files.
+asar: false
+
+# Nothing here is a native module -- persistence is node:sqlite, which is part
+# of Node itself -- so there is nothing to rebuild, and letting electron-builder
+# try only invites a toolchain failure on a clean CI runner.
+npmRebuild: false
+nodeGypRebuild: false
+
+files:
+  - '**/*'
+  - '!**/*.map'
+  - '!**/*.test.ts'
+  - '!package-lock.json'
+  - '!electron-builder.yml'
+  # The icon source, consumed by electron-builder; no need to ship it as well.
+  - '!build${/*}'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Unsigned. SmartScreen will warn on first run until a certificate is bought;
+  # see the README.
+  artifactName: Open-Darts-Setup-${version}.${ext}
+
+nsis:
+  # Not one-click: a scoreboard tends to live on a shared machine, and being
+  # able to choose where it lands is worth a couple of extra clicks once.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Open Darts
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Game
+  artifactName: Open-Darts-${version}.${ext}
+
+publish:
+  provider: github
+  owner: Muskoxen-Studios
+  repo: opendarts
+  # Uploaded as a draft: the release notes are worth writing before anyone's
+  # app offers them the update.
+  releaseType: draft

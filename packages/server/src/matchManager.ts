@@ -206,7 +206,6 @@ export class MatchManager {
 
     const analysis = analyzeMatch(record);
     const history = [...this.finishedAnalyses, analysis];
-    const coordsEnabled = this.store.getSetting('coordsEnabled', false);
 
     for (const player of this.match.view.players) {
       const id = player.playerId;
@@ -235,8 +234,6 @@ export class MatchManager {
       const progressRows: Array<{ achievementId: string; progress: number; goal: number }> = [];
 
       for (const achievement of CATALOGUE) {
-        if (achievement.requiresCoords && !coordsEnabled) continue;
-
         const result = achievement.evaluate({ playerId: id, match: analysis, career });
         const progress = result.progress ?? (result.unlocked ? 1 : 0);
         const goal = result.goal ?? achievement.goal ?? 1;
@@ -358,9 +355,7 @@ export class MatchManager {
     }
 
     this.store.finishMatch(this.matchId, view.winnerId);
-    this.store.recomputeAll({
-      coordsEnabled: this.store.getSetting('coordsEnabled', false),
-    });
+    this.store.recomputeAll();
     this.refreshHistory();
 
     for (const p of roster) {

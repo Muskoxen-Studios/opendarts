@@ -632,7 +632,7 @@ export class Store {
    * unlock retroactively, and what lets a corrected statistic definition be
    * applied to history rather than only to future matches.
    */
-  recomputeAll(opts: { coordsEnabled?: boolean } = {}): {
+  recomputeAll(): {
     matches: number;
     profiles: number;
     unlocked: number;
@@ -652,9 +652,7 @@ export class Store {
     let unlocked = 0;
     for (const profileId of profileIds) {
       this.writeCareer(profileId, computeCareer(profileId, analyses));
-      const entries = backfillPlayer(profileId, analyses, {
-        coordsEnabled: opts.coordsEnabled ?? false,
-      });
+      const entries = backfillPlayer(profileId, analyses);
       this.writeAchievements(profileId, entries);
       unlocked += entries.filter((e) => e.unlockedAt !== null).length;
     }

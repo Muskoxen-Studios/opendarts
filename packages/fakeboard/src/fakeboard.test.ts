@@ -96,14 +96,14 @@ describe('the throw payload', () => {
 
   it('puts 20 at the top and 3 at the bottom', () => {
     // Guards the coordinate convention this file assumes: origin at the bull,
-    // y down. If a real capture says otherwise, this test changes with it.
+    // y up -- settled by the angles of the real capture, FINDINGS §3.
     const top = toRawThrow({ number: 20, ring: 'DOUBLE' }).coords;
     expect(top.x).toBeCloseTo(0, 3);
-    expect(top.y).toBeLessThan(0);
+    expect(top.y).toBeGreaterThan(0);
 
     const bottom = toRawThrow({ number: 3, ring: 'DOUBLE' }).coords;
     expect(bottom.x).toBeCloseTo(0, 3);
-    expect(bottom.y).toBeGreaterThan(0);
+    expect(bottom.y).toBeLessThan(0);
 
     expect(toRawThrow({ number: 25, ring: 'BULL' }).coords).toEqual({ x: 0, y: 0 });
   });

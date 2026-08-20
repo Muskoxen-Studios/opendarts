@@ -30,15 +30,6 @@ export interface Achievement {
    * see every progress bar as "0 / 1".
    */
   goal?: number;
-  /**
-   * Set when the achievement needs dart coordinates.
-   *
-   * Coordinates are reported by the board but their units and origin are not
-   * yet established, so these stay disabled. Because achievements are evaluated
-   * over the stored command log rather than live, enabling them later unlocks
-   * them retroactively across all history -- no data is lost by waiting.
-   */
-  requiresCoords?: boolean;
   evaluate(ctx: AchievementContext): AchievementResult;
 }
 

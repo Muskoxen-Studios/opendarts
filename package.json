@@ -18,12 +18,19 @@
     "dev:frontend": "npm -w @darts/frontend run dev",
     "achievements:backfill": "node packages/server/src/scripts/backfill.ts",
     "build": "npm -w @darts/frontend run build",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "dev:desktop": "npm -w @darts/desktop run start",
+    "package:prepare": "node scripts/package/prepare.mjs",
+    "package": "npm run package:prepare && electron-builder --projectDir build/app --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.18.1",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "electron-builder": "^25.1.8"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
   }
 }

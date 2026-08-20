@@ -88,9 +88,11 @@ function radiusMm(segment: Segment): number {
 
 /**
  * `{x, y}`, normalised by 170 (the divisor the UI bundle uses for its own
- * radii), origin at the bull, x right, y **down** — screen convention.
- * Confirmed by a real capture (FINDINGS §3): the same three darts landed
- * within noise of what this formula predicts for their segment.
+ * radii), origin at the bull, x right, y **up**.
+ *
+ * The axis direction is settled by the *angles* of the three darts in the real
+ * capture, not their radii: a radius matches either sign, which is exactly how
+ * the original "y down" reading survived (FINDINGS §3).
  */
 export function toRawCoords(segment: Segment): { x: number; y: number } {
   const r = radiusMm(segment) / BOARD_NORM;
@@ -103,7 +105,7 @@ export function toRawCoords(segment: Segment): { x: number; y: number } {
 
   return {
     x: round(r * Math.sin(theta)),
-    y: round(-r * Math.cos(theta)),
+    y: round(r * Math.cos(theta)),
   };
 }
 
