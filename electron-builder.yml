@@ -12,12 +12,13 @@ copyright: Muskoxen Studios
 directories:
   output: ../release
 
-# Restores the @darts/* workspace links that electron-builder prunes. Without
-# it the packaged app cannot import its own backend packages -- see the hook.
-# The path is relative to the working directory electron-builder is run from
-# (the repo root, via `npm run package`), NOT to --projectDir -- which is why
-# it reaches into scripts/ rather than sitting beside this file.
-afterPack: ./scripts/package/afterPack.cjs
+# The afterPack hook -- which restores the @darts/* workspace links that
+# electron-builder prunes, without which the packaged app cannot import its own
+# backend packages -- is NOT configured here. electron-builder resolves a
+# relative hook path against its own working directory and then rejects it if
+# the result falls outside --projectDir, so no single relative path can name a
+# file in scripts/. prepare.mjs copies the hook into the staged tree and writes
+# an absolute `afterPack:` onto the end of the copy of this file it stages.
 
 # The backend is spawned as a real child process by a real Node binary, which
 # cannot read out of an asar archive. Everything must exist as plain files.

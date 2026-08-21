@@ -215,10 +215,27 @@ async function stage() {
   await mkdir(join(OUT, 'build'), { recursive: true });
   await copyFile(join(REPO, 'build-resources', 'icon.png'), join(OUT, 'build', 'icon.png'));
 
+  /*
+   * The afterPack hook has to live inside the staged tree.
+   *
+   * electron-builder resolves a relative hook path against its own working
+   * directory (the repo root) and then rejects it unless it lands inside
+   * --projectDir, so `./scripts/package/afterPack.cjs` cannot be named from
+   * either side. Staging a copy and pointing at it absolutely satisfies both:
+   * the path is written the moment before electron-builder runs, on the same
+   * machine, so it cannot go stale. It goes in `build/`, which the config
+   * already excludes from `files`, so it is not shipped inside the app.
+   */
+  await copyFile(join(REPO, 'scripts', 'package', 'afterPack.cjs'), join(OUT, 'build', 'afterPack.cjs'));
+
   const builderConfig = await readFile(join(REPO, 'electron-builder.yml'), 'utf8');
   await writeFile(
     join(OUT, 'electron-builder.yml'),
-    `${builderConfig}\n# Written by scripts/package/prepare.mjs; see the comment there.\nelectronVersion: ${electronVersion}\n`,
+    `${builderConfig}\n# Written by scripts/package/prepare.mjs; see the comments there.\n` +
+      `electronVersion: ${electronVersion}\n` +
+      // JSON quoting is also valid YAML double-quoted style, and is what keeps
+      // a Windows path's backslashes from being read as escapes.
+      `afterPack: ${JSON.stringify(join(OUT, 'build', 'afterPack.cjs'))}\n`,
   );
   log(`packaging against Electron ${electronVersion}`);
   log(`staged ${BACKEND_PACKAGES.length} backend packages and the built frontend`);
