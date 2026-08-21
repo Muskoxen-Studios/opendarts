@@ -339,6 +339,12 @@ npm run achievements:backfill        # after adding an achievement
 Achievements live in `packages/stats/src/achievements/catalogue.ts`, one entry
 each. The same rebuild is available from the Settings page.
 
+Two of them read `coords`: **Tight Grouping** (three darts of one turn inside a
+20 mm circle, measured as the smallest circle enclosing all three) and **Robin
+Hood** (two darts of one turn landing within 5 mm of each other, a shaft's
+width). Both compare darts *within a single turn only* — darts are pulled out
+between turns — and a turn with any unlocated dart cannot unlock either.
+
 ### Unlocks, celebrations and corrections
 
 Achievements are evaluated **after every dart**, not at the final whistle, so an

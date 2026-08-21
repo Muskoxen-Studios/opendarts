@@ -22,6 +22,65 @@ const threshold = (
 });
 
 /**
+ * Coordinate geometry for the achievements below.
+ *
+ * `coords` is normalised by the board radius (170 mm) with the origin at the
+ * bull, so a distance in those units scales straight back to millimetres.
+ */
+const BOARD_RADIUS_MM = 170;
+
+/** Diameter of the circle three darts must fit inside for Tight Grouping. */
+const GROUPING_MM = 20;
+
+/**
+ * How close two darts must land to count as one in the other's shaft. A dart
+ * shaft is roughly 5 mm across, so centres within that are physically touching.
+ */
+const SHAFT_MM = 5;
+
+type Point = { x: number; y: number };
+
+const distMm = (a: Point, b: Point): number =>
+  Math.hypot(a.x - b.x, a.y - b.y) * BOARD_RADIUS_MM;
+
+/** The darts of a turn the board actually located. */
+const locatedPoints = (throws: Array<{ coords: Point | null }>): Point[] =>
+  throws.map((t) => t.coords).filter((c): c is Point => c != null);
+
+/**
+ * Radius of the smallest circle containing every point, in millimetres.
+ *
+ * For two or three points the answer is either the circle on the longest pair
+ * as its diameter, or -- when no such circle covers the rest -- the circumcircle.
+ */
+function enclosingRadiusMm(points: Point[]): number {
+  if (points.length < 2) return 0;
+
+  let best = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const a = points[i]!;
+      const b = points[j]!;
+      const centre = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const r = distMm(a, b) / 2;
+      if (points.every((p) => distMm(p, centre) <= r + 1e-9)) best = Math.min(best, r);
+    }
+  }
+  if (best < Infinity) return best;
+
+  // Three points with none of the pair circles covering the third: the smallest
+  // enclosing circle is their circumcircle.
+  const [a, b, c] = points as [Point, Point, Point];
+  const ab = distMm(a, b);
+  const bc = distMm(b, c);
+  const ca = distMm(c, a);
+  const area =
+    Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2 * BOARD_RADIUS_MM ** 2;
+  if (area === 0) return Math.max(ab, bc, ca) / 2;   // collinear
+  return (ab * bc * ca) / (4 * area);
+}
+
+/**
  * The achievement catalogue.
  *
  * Adding one is a single entry here. Because evaluation runs over the stored
@@ -174,13 +233,23 @@ export const CATALOGUE: Achievement[] = [
   },
 
   // --- Coordinate-based ----------------------------------------------------
+  // These read `coords`, which is nullable by design: a turn the board did not
+  // localise simply cannot unlock them, and never blocks anything else.
   {
     id: 'tight-grouping',
     name: 'Tight Grouping',
     description: 'Land three darts within a 20 mm circle.',
     icon: '\u{1F3AF}',
     tier: 'gold',
-    evaluate: () => ({ unlocked: false }),
+    evaluate: ({ playerId, match }) => ({
+      unlocked: match.turns.some((t) => {
+        if (t.playerId !== playerId) return false;
+        if (t.throws.length !== 3) return false;
+        const points = locatedPoints(t.throws);
+        if (points.length !== 3) return false;         // one dart unlocated: no claim
+        return enclosingRadiusMm(points) * 2 <= GROUPING_MM;
+      }),
+    }),
   },
   {
     id: 'robin-hood',
@@ -188,7 +257,15 @@ export const CATALOGUE: Achievement[] = [
     description: 'Land a dart in the shaft of another.',
     icon: '\u{1F3F9}',
     tier: 'gold',
-    evaluate: () => ({ unlocked: false }),
+    evaluate: ({ playerId, match }) => ({
+      // Only within one turn: darts from earlier turns are already out of the
+      // board, so there is nothing left to hit.
+      unlocked: match.turns.some((t) => {
+        if (t.playerId !== playerId) return false;
+        const points = locatedPoints(t.throws);
+        return points.some((a, i) => points.slice(i + 1).some((b) => distMm(a, b) <= SHAFT_MM));
+      }),
+    }),
   },
 ];
 

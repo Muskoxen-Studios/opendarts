@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Match } from '@darts/engine';
-import type { GameConfig, MatchCommand, Player } from '@darts/schema';
+import type { Coords, GameConfig, MatchCommand, Player } from '@darts/schema';
 import { play, players, resetDartIds } from '../../engine/src/testkit.ts';
 import { analyzeMatch, type MatchAnalysis, type MatchRecord } from './analysis.ts';
 import { computeCareer } from './career.ts';
@@ -53,6 +53,28 @@ function solo(labels: string[]): string[] {
 
 /** A nine-dart leg: 180, 180, then 141 out. */
 const NINE_DARTER = solo(['T20', 'T20', 'T20', 'T20', 'T20', 'T20', 'T20', 'T19', 'D12']);
+
+/** A coordinate given in millimetres from the bull, in the stored normalised form. */
+function mm(x: number, y: number): Coords {
+  return { x: x / 170, y: y / 170 };
+}
+
+/**
+ * Attach coordinates to Alice's darts, in order.
+ *
+ * The testkit deliberately reports `coords: null`, so a coordinate-dependent
+ * test has to add them to the log the way the board would have.
+ */
+function withCoords(rec: MatchRecord, coords: Array<Coords | null>): MatchRecord {
+  let i = 0;
+  return {
+    ...rec,
+    commands: rec.commands.map((c) => {
+      if (c.type !== 'THROW' || c.throw.segment.ring === 'MISS') return c;
+      return { ...c, throw: { ...c.throw, coords: coords[i++] ?? null } };
+    }),
+  };
+}
 
 function alice(a: MatchAnalysis) {
   return a.throws.filter((t) => t.playerId === ALICE);
@@ -224,6 +246,46 @@ describe('achievements', () => {
     );
     expect(ids).toContain('tight-grouping');
     expect(ids).toContain('robin-hood');
+  });
+
+  it('does not unlock the coordinate achievements without coordinates', () => {
+    // The whole point of `coords` being nullable: a match the board never
+    // localised is simply silent about them.
+    const ids = unlockedIds([analyzeMatch(record(X01, NINE_DARTER))]);
+    expect(ids).not.toContain('tight-grouping');
+    expect(ids).not.toContain('robin-hood');
+  });
+
+  it('unlocks Tight Grouping for three darts inside a 20 mm circle', () => {
+    // An equilateral triangle 17 mm on a side: circumcircle diameter ~19.6 mm.
+    const tight = withCoords(record(X01, solo(['T20', 'T20', 'T20'])), [
+      mm(0, 10), mm(-8.66, -5), mm(8.66, -5),
+    ]);
+    expect(unlockedIds([analyzeMatch(tight)])).toContain('tight-grouping');
+  });
+
+  it('does not unlock Tight Grouping for a spread the circle cannot cover', () => {
+    // Same shape, 21 mm to a side: the enclosing circle is over 20 mm across.
+    const loose = withCoords(record(X01, solo(['T20', 'T20', 'T20'])), [
+      mm(0, 12.2), mm(-10.5, -6.1), mm(10.5, -6.1),
+    ]);
+    expect(unlockedIds([analyzeMatch(loose)])).not.toContain('tight-grouping');
+  });
+
+  it('unlocks Robin Hood for two darts in the same spot', () => {
+    const stuck = withCoords(record(X01, solo(['T20', 'T20', 'T20'])), [
+      mm(0, 100), mm(2, 101), mm(-40, 20),
+    ]);
+    expect(unlockedIds([analyzeMatch(stuck)])).toContain('robin-hood');
+  });
+
+  it('does not count darts of different turns as a Robin Hood', () => {
+    // Darts are pulled out between turns, so there is nothing left to hit.
+    const acrossTurns = withCoords(record(X01, solo(['T20', 'T20', 'T20', 'T20', 'T20', 'T20'])), [
+      mm(0, 100), mm(-40, 20), mm(40, 20),
+      mm(0, 100), mm(-40, -20), mm(40, -20),
+    ]);
+    expect(unlockedIds([analyzeMatch(acrossTurns)])).not.toContain('robin-hood');
   });
 
   it('stamps the unlock with the match it happened in', () => {
