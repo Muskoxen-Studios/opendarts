@@ -139,9 +139,9 @@ under `/sim`, never `/api`, so nothing there can be mistaken for a real board
 path.
 
 **It proves the bridge, not the protocol.** The fake emits the throw payload
-that `recon/FINDINGS.md` §3 *infers* from the board UI bundle — see below. A
-green test says the bridge handles the shape we guessed, not that the guess is
-right.
+recorded in `recon/FINDINGS.md` §3 — now confirmed against the real board,
+coordinate frame included — but a green test still only says the bridge handles
+the shape the fake sends. The protocol claim rests on the capture, not the fake.
 
 ## Games
 

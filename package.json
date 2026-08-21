@@ -1,6 +1,7 @@
 {
   "name": "darts",
   "private": true,
+  "version": "0.1.1",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -21,16 +22,19 @@
     "check": "npm run typecheck && npm test",
     "dev:desktop": "npm -w @darts/desktop run start",
     "package:prepare": "node scripts/package/prepare.mjs",
-    "package": "npm run package:prepare && electron-builder --projectDir build/app --publish never"
+    "package": "npm run package:prepare && electron-builder --projectDir build/app --publish never",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.18.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.7",
-    "electron-builder": "^25.1.8"
+    "vitest": "^3.2.7"
   },
   "allowScripts": {
-    "electron@33.4.11": true
+    "electron@33.4.11": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true
   }
 }

@@ -19,11 +19,11 @@ export const SegmentSchema = z.object({
 /**
  * Board-space coordinates of a dart.
  *
- * DELIBERATELY UNUSED BY GAME LOGIC. The Autodarts board reports a `coords`
- * field on each throw, but its units, origin and axis directions are not yet
- * established (see recon/FINDINGS.md §3). Until a real throw capture settles
- * that, this stays null for board-sourced throws and nothing downstream may
- * depend on it.
+ * DELIBERATELY UNUSED BY GAME LOGIC. The frame is settled (recon/FINDINGS.md
+ * §3): normalised by 170 -- board millimetres / 170 -- origin at the bull,
+ * x right and y UP. Board-sourced throws carry it, but it stays nullable and
+ * nothing downstream may depend on it: a dart's segment is enough to score it,
+ * and the adapter yields null rather than guessing at a payload it cannot parse.
  *
  * Scoring, engines, stats and achievements must all behave correctly when this
  * is null. Only optional visualisations may read it, and they must degrade.

@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, clipboard, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, session, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const { join } = require('node:path');
 const { findFreePort, findNodeRuntime, lanAddresses, waitForServer } = require('./runtime.js');
@@ -206,7 +206,42 @@ function checkForUpdates(interactive = false) {
   void autoUpdater.checkForUpdates();
 }
 
+/**
+ * The content security policy for everything the window loads.
+ *
+ * Applied here rather than as a `<meta>` tag in the frontend, or as a header
+ * from the server, because the window is the thing being protected and it
+ * outlives whatever happens to be serving it: the same policy then covers the
+ * scoreboard, an error page, and anything a stray `loadURL` ever points at.
+ * Without it Electron warns on every start, and rightly so -- the renderer had
+ * no policy at all.
+ *
+ * `'unsafe-inline'` for styles only: Vue writes `:style` bindings out as inline
+ * style attributes (player colours), which CSP counts as inline styles. Scripts
+ * stay locked to bundled files, which is where the risk actually lives.
+ * `connect-src 'self'` covers the `/ws` socket -- CSP matches `ws:` against
+ * `'self'` when the host and port match the page's.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 app.whenReady().then(async () => {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [CSP] },
+    });
+  });
+
   win = new BrowserWindow({
     width: 1280,
     height: 860,
