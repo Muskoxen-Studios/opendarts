@@ -11,3 +11,11 @@ recon/captures/*
 
 # Packaging output (scripts/package/prepare.mjs, electron-builder)
 build/
+
+# graphify
+graphify-out/cost.json
+graphify-out/cache/
+graphify-out/memory/
+graphify-out/reflections/
+graphify-out/.graphify_*
+graphify-out/????-??-??/
