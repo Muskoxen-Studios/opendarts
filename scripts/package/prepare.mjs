@@ -6,6 +6,7 @@ import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +26,10 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = join(REPO, 'build', 'app');
+
+// The same shim builder the afterPack hook uses, so the tree this script
+// verifies resolves @darts/* exactly the way the installed app will.
+const { relinkDartsPackages } = createRequire(import.meta.url)('./relink.cjs');
 
 /** The packages the backend needs at runtime. The frontend ships as `dist`. */
 const BACKEND_PACKAGES = ['schema', 'engine', 'stats', 'bridge', 'server', 'fakeboard'];
@@ -146,13 +151,12 @@ async function stage() {
   const desktopManifest = JSON.parse(await readFile(join(REPO, 'packages/desktop/package.json'), 'utf8'));
 
   /*
-   * The staged root is itself a workspace.
+   * The staged root is itself a workspace, so `npm install` places the
+   * third-party dependencies where the backend can resolve them.
    *
-   * That is not incidental: `@darts/*` has to resolve through symlinks rather
-   * than copies, because Node refuses to type-strip anything whose real path
-   * is inside node_modules. `npm install` on a workspace produces exactly
-   * those symlinks (junctions on Windows), which is why this leans on npm
-   * instead of laying out node_modules by hand.
+   * It also links `@darts/*` into node_modules, but those links are not what
+   * ships: relink.cjs replaces them with re-export shims below, because a
+   * link does not survive the Windows installer. See the comment there.
    */
   await writeFile(
     join(OUT, 'package.json'),
@@ -227,6 +231,7 @@ async function stage() {
    * already excludes from `files`, so it is not shipped inside the app.
    */
   await copyFile(join(REPO, 'scripts', 'package', 'afterPack.cjs'), join(OUT, 'build', 'afterPack.cjs'));
+  await copyFile(join(REPO, 'scripts', 'package', 'relink.cjs'), join(OUT, 'build', 'relink.cjs'));
 
   const builderConfig = await readFile(join(REPO, 'electron-builder.yml'), 'utf8');
   await writeFile(
@@ -242,6 +247,9 @@ async function stage() {
 
   log('installing runtime dependencies');
   run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: OUT });
+
+  const relinked = await relinkDartsPackages(OUT);
+  log(`@darts/{${relinked.join(',')}} resolve through re-export shims`);
 }
 
 // -- a check that the result actually runs -----------------------------------
@@ -250,8 +258,8 @@ async function stage() {
  * Prove the staged tree resolves and type-strips before it is ever packaged.
  *
  * This is the failure this script exists to prevent: `@darts/*` resolving to a
- * copy inside node_modules rather than a symlink, which Node refuses to
- * type-strip. It fails at startup, in an installer, on someone else's machine.
+ * file that lives inside node_modules, which Node refuses to type-strip. It
+ * fails at startup, in an installer, on someone else's machine.
  */
 async function verify(version) {
   const node =
