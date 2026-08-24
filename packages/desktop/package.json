@@ -1,6 +1,6 @@
 {
   "name": "@darts/desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Desktop shell: runs the darts server and bridge, and shows the scoreboard.",
   "main": "src/main.js",
