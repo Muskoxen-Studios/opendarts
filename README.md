@@ -232,6 +232,17 @@ skipped for the rest of the match — last player standing wins.
 already becoming a killer cost you a life too, for groups who want the extra
 risk.
 
+### Manuals
+
+Each game has a manual — its full rules — behind the **manual** button on the
+setup screen, next to the game tabs. They are plain markdown files in
+`packages/frontend/src/manuals/`, one per game type and named after it, pulled
+into the bundle as raw text and rendered by the small markdown subset in
+`packages/frontend/src/markdown.ts` (headings, lists, tables, code, quotes and
+rules; everything escaped, since it goes through `v-html`). Editing a manual is
+editing a document — nothing else needs wiring up, and a file left empty simply
+reports that there is no manual yet.
+
 Adding a new game is one file in `packages/engine/src/` plus one line in
 `registry.ts`.
 

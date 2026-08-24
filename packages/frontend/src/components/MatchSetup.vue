@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { api, store, type GolfHandicap, type ModeHandicap } from '../store.ts';
+import GameManual from './GameManual.vue';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
@@ -79,6 +80,9 @@ const friendlyFire = ref(false);
 const useKillerHandicaps = ref(false);
 const killerHandicaps = ref<Record<string, number>>({});
 const killerHistory = ref<Record<string, ModeHandicap>>({});
+
+/** Whether the manual for the currently selected game is open. */
+const showManual = ref(false);
 
 const busy = ref(false);
 const error = ref<string | null>(null);
@@ -353,7 +357,12 @@ async function start(): Promise<void> {
     <p v-if="lastError" class="hint">Could not load the last match: {{ lastError }}</p>
 
     <div class="field">
-      <label>Game</label>
+      <div class="field-head">
+        <label>Game</label>
+        <button class="ghost manual-btn" @click="showManual = true">
+          {{ GAME_LABELS[gameType] }} manual
+        </button>
+      </div>
       <div class="tabs">
         <button
           v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer'] as GameType[])"
@@ -363,6 +372,13 @@ async function start(): Promise<void> {
         >{{ GAME_LABELS[g] }}</button>
       </div>
     </div>
+
+    <GameManual
+      v-if="showManual"
+      :game-type="gameType"
+      :label="GAME_LABELS[gameType]"
+      @close="showManual = false"
+    />
 
     <div class="field">
       <label>Players</label>
@@ -690,6 +706,12 @@ h2 { margin: 0; font-size: 1.1rem; }
   border-radius: 999px; padding: 0.3rem 0.85rem; cursor: pointer; font: inherit; font-size: 0.8rem;
 }
 .head .ghost:hover { border-color: #4f8ef7; color: #fff; }
+.field-head { display: flex; align-items: center; gap: 0.75rem; }
+.manual-btn {
+  margin-left: auto; background: none; border: 1px solid #333b49; color: #cdd3dc;
+  border-radius: 999px; padding: 0.25rem 0.75rem; cursor: pointer; font: inherit; font-size: 0.78rem;
+}
+.manual-btn:hover { border-color: #4f8ef7; color: #fff; }
 .golf-row { grid-template-columns: 7rem 5rem 1fr; }
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
 label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: #8b93a1; }

@@ -169,6 +169,14 @@ and stats types are re-declared in `store.ts` deliberately.
 Add a section to the **Games** part of [README.md](../../../README.md) — rules,
 each config knob and why it exists. The README is where behaviour is specified;
 CLAUDE.md only covers working in the tree.
+Also add a manual in [frontend/src/manuals](../../../packages/frontend/src/manuals/) in a similar style to the existing ones.
+
+Implemenation details on manuals:
+- Manuals live as plain markdown in packages/frontend/src/manuals/<gameType>.md, one per game type, named after it.
+- packages/frontend/src/manuals.ts:11 picks them up with a Vite ?raw glob, so adding or editing a manual is just editing a document — no registration step. An empty file counts as "no manual yet".
+- packages/frontend/src/markdown.ts is a ~160-line renderer covering headings, lists, tables, fenced code, blockquotes, rules and inline code/**bold**/*italic*. Hand-rolled rather than adding a dependency (the frontend still depends on vue and @darts/schema alone), and it HTML-escapes everything before emitting a tag since the output goes through v-html. 9 tests in markdown.test.ts, including the escaping cases.
+- components/GameManual.vue is the overlay, styled to match MatchOverview.vue (same sheet/backdrop, click-outside and × to close).
+- MatchSetup.vue gets a "<Game> manual" button on the right of the Game row; it opens the manual for whichever tab is selected.
 
 ## Done check
 
