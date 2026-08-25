@@ -13,6 +13,7 @@ const X01: GameConfig = {
   outMode: 'double',
   legsToWin: 1,
   setsToWin: 1,
+  roundLimit: null,
   legEnd: 'first',
   perPlayer: {},
 };
@@ -157,6 +158,36 @@ describe('holding the handover for a real takeout', () => {
     expect(manager.view?.awaitingTakeout).toBe(false);
     expect(manager.view?.activePlayerId).toBe(bob.id);
     expect(manager.view?.turn.throws).toHaveLength(0);
+  });
+
+  it('ends a short turn too, when a dart missed the board and went undetected', () => {
+    const [alice, bob] = seedPlayers();
+    manager.start(X01, [alice, bob]);
+    boardThrow('T20');
+    boardThrow('T20');
+    // The third dart missed the board entirely, so it was never detected: the
+    // engine still thinks a dart is owed and the turn is not held.
+    expect(manager.view?.awaitingTakeout).toBe(false);
+
+    events = [];
+    manager.onBoardEvent({ type: 'takeout.completed' });
+
+    expect(manager.view?.activePlayerId).toBe(bob.id);
+    expect(manager.view?.turn.throws).toHaveLength(0);
+    const completed = events
+      .flatMap((e) => (e.type === 'domain' ? e.events : []))
+      .find((e) => e.type === 'turn.completed');
+    expect(completed).toMatchObject({ playerId: alice.id, darts: 2, busted: false });
+  });
+
+  it('ignores a takeout with nothing thrown, rather than skipping a player', () => {
+    const [alice, bob] = seedPlayers();
+    manager.start(X01, [alice, bob]);
+
+    manager.onBoardEvent({ type: 'takeout.completed' });
+
+    expect(manager.view?.activePlayerId).toBe(alice.id);
+    expect(bob).toBeDefined();
   });
 
   it('advances immediately for a simulated or manually-entered dart', () => {
@@ -694,6 +725,7 @@ describe('golf', () => {
     handicaps: {},
     legsToWin: 1,
     setsToWin: 1,
+    roundLimit: null,
   };
 
   it('starts a newcomer on a handicap of 36', () => {
@@ -790,7 +822,7 @@ describe('the leaderboard', () => {
   it('carries the best golf card, hole by hole', () => {
     const [alice] = seedPlayers();
     manager.start(
-      { gameType: 'golf', holes: 2, par: 4, handicaps: { [alice.id]: 0 }, legsToWin: 1, setsToWin: 1 },
+      { gameType: 'golf', holes: 2, par: 4, handicaps: { [alice.id]: 0 }, legsToWin: 1, setsToWin: 1, roundLimit: null },
       [alice],
     );
     throwAt('MISS');
@@ -880,7 +912,7 @@ describe('resetting the leaderboard', () => {
   it('shows the handicap a golfer would actually play off, not a seasonal one', () => {
     const [alice] = seedPlayers();
     manager.start(
-      { gameType: 'golf', holes: 2, par: 4, handicaps: { [alice.id]: 0 }, legsToWin: 1, setsToWin: 1 },
+      { gameType: 'golf', holes: 2, par: 4, handicaps: { [alice.id]: 0 }, legsToWin: 1, setsToWin: 1, roundLimit: null },
       [alice],
     );
     throwAt('S1');

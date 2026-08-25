@@ -35,9 +35,17 @@ const selectedProfiles = computed(() =>
 // X01
 const startScore = ref(501);
 const inMode = ref<'straight' | 'double' | 'master'>('straight');
-const outMode = ref<'straight' | 'double' | 'master'>('double');
+const outMode = ref<'straight' | 'double' | 'master'>('straight');
 const legsToWin = ref(1);
 const setsToWin = ref(1);
+// Empty means no cap, which is why this is null rather than 0 -- see the
+// roundLimit note in @darts/schema. An emptied number input hands back '', so
+// the config is built from the normalised value, never the raw ref.
+const roundLimit = ref<number | null>(null);
+const roundLimitValue = computed<number | null>(() => {
+  const n = Number(roundLimit.value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+});
 const legEnd = ref<'first' | 'all-but-one'>('first');
 
 /** Per-player handicaps: an override of start score and/or in-out rules. */
@@ -192,11 +200,12 @@ async function useLastSettings(): Promise<void> {
 
     legsToWin.value = Number(cfg.legsToWin ?? 1);
     setsToWin.value = Number(cfg.setsToWin ?? 1);
+    roundLimit.value = (cfg.roundLimit as number | null) ?? null;
 
     if (setup.gameType === 'x01') {
       startScore.value = Number(cfg.startScore ?? 501);
       inMode.value = (cfg.inMode as typeof inMode.value) ?? 'straight';
-      outMode.value = (cfg.outMode as typeof outMode.value) ?? 'double';
+      outMode.value = (cfg.outMode as typeof outMode.value) ?? 'straight';
       legEnd.value = (cfg.legEnd as typeof legEnd.value) ?? 'first';
       handicaps.value = { ...((cfg.perPlayer as Record<string, never>) ?? {}) };
       // Handicaps are opt-in per match, not carried over -- see the Golf note below.
@@ -251,6 +260,7 @@ function buildConfig(): unknown {
       scoring: true,
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
+      roundLimit: roundLimitValue.value,
     };
   }
   if (gameType.value === 'golf') {
@@ -265,6 +275,7 @@ function buildConfig(): unknown {
       ),
       legsToWin: 1,
       setsToWin: 1,
+      roundLimit: roundLimitValue.value,
     };
   }
   if (gameType.value === 'gotcha') {
@@ -282,6 +293,7 @@ function buildConfig(): unknown {
         : {},
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
+      roundLimit: roundLimitValue.value,
     };
   }
   if (gameType.value === 'shanghai') {
@@ -292,6 +304,7 @@ function buildConfig(): unknown {
       instantWin: instantWin.value,
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
+      roundLimit: roundLimitValue.value,
     };
   }
   if (gameType.value === 'killer') {
@@ -308,6 +321,7 @@ function buildConfig(): unknown {
         : {},
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
+      roundLimit: roundLimitValue.value,
     };
   }
 
@@ -329,6 +343,7 @@ function buildConfig(): unknown {
     outMode: outMode.value,
     legsToWin: legsToWin.value,
     setsToWin: setsToWin.value,
+    roundLimit: roundLimitValue.value,
     legEnd: legEnd.value,
     perPlayer,
   };
@@ -590,13 +605,15 @@ async function start(): Promise<void> {
           <label>Friendly fire</label>
           <select v-model="friendlyFire">
             <option :value="false">Off</option>
-            <option :value="true">On &mdash; hitting your own double after becoming a killer costs a life</option>
+            <option :value="true">On &mdash; hitting your own number after becoming a killer costs a third of a life
+            </option>
           </select>
         </div>
       </div>
       <p class="hint">
-        Each player throws for a number of their own, then must hit its double
-        to become a killer before knocking lives off opponents' doubles. Last
+        Each player throws for a number of their own, then needs three hits on it
+        &mdash; a triple counts as three &mdash; to become a killer. After that
+        every hit on an opponent's number takes a third of a life off them. Last
         player standing wins.
       </p>
 
@@ -690,6 +707,16 @@ async function start(): Promise<void> {
         <label>Sets to win</label>
         <input v-model.number="setsToWin" type="number" min="1" max="11" />
       </div>
+    </div>
+
+    <!--
+      Every game gets a round limit, golf included: it is the escape hatch for a
+      leg that would otherwise run all night. Left empty it does nothing.
+    -->
+    <div class="field">
+      <label>Round limit</label>
+      <input v-model.number="roundLimit" type="number" min="1" max="99" placeholder="no limit" />
+      <p class="hint">A round is a turn each. At the limit the leg goes to whoever leads.</p>
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>

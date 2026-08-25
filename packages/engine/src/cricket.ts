@@ -13,10 +13,12 @@ import {
   addPlayerToBase,
   advanceTurn,
   awardLeg,
+  awardLegOnRoundLimit,
   clone,
   createBaseState,
   endMatchEarly,
   removePlayerFromBase,
+  resetRound,
   turnIsComplete,
 } from './base.ts';
 import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './types.ts';
@@ -97,6 +99,34 @@ function closeRound(state: CricketState, playerId: string): void {
   state.turnMarks[playerId] = 0;
 }
 
+/**
+ * How well a player is doing this leg -- higher is better -- for both END_MATCH
+ * and the round limit.
+ *
+ * Marks closed dominate: the game is won by closing everything, and points only
+ * decide between players who are level on closures. In cut-throat a low score
+ * is the good one, so the sign flips.
+ */
+function progress(state: CricketState, cfg: CricketConfig, playerId: string): number {
+  const row = state.marks[playerId] ?? {};
+  const closed = cfg.targets.reduce((sum, t) => sum + Math.min(row[t] ?? 0, MARKS_TO_CLOSE), 0);
+  const points = state.scores[playerId] ?? 0;
+  return closed * 1000 + (cfg.variant === 'cutthroat' ? -points : points);
+}
+
+/**
+ * Stop the leg if the configured round limit has just been passed. Called after
+ * every handover, since `advanceTurn` is what moves the round on.
+ */
+function checkRoundLimit(state: CricketState, cfg: CricketConfig): DomainEvent[] {
+  return awardLegOnRoundLimit(
+    state.base,
+    cfg,
+    (id) => progress(state, cfg, id),
+    () => resetLeg(state, cfg),
+  );
+}
+
 export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
   id: 'cricket',
 
@@ -135,6 +165,7 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
         if (base.status !== 'playing') return { state: prev, events: [] };
         if (base.turnEnded) {
           advanceTurn(base);
+          events.push(...checkRoundLimit(state, cfg));
           return { state, events };
         }
         const p = activePlayer(base);
@@ -147,12 +178,14 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
         });
         closeRound(state, p.id);
         advanceTurn(base);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
       case 'ADVANCE_TURN': {
         if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -184,20 +217,7 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
       }
 
       case 'END_MATCH': {
-        // Marks closed dominate: the game is won by closing everything, and
-        // points only decide between players who are level on closures. In
-        // cut-throat a low score is the good one, so the sign flips.
-        events.push(
-          ...endMatchEarly(base, (id) => {
-            const row = state.marks[id] ?? {};
-            const closed = cfg.targets.reduce(
-              (sum, t) => sum + Math.min(row[t] ?? 0, MARKS_TO_CLOSE),
-              0,
-            );
-            const points = state.scores[id] ?? 0;
-            return closed * 1000 + (cfg.variant === 'cutthroat' ? -points : points);
-          }),
-        );
+        events.push(...endMatchEarly(base, (id) => progress(state, cfg, id)));
         return { state, events };
       }
 
@@ -206,6 +226,7 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
         base.turn = [];
         base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
+        resetRound(base);
         resetLeg(state, cfg);
         return { state, events };
       }
@@ -353,6 +374,8 @@ export const cricketEngine: GameEngine<CricketConfig, CricketState> = {
       },
       leg: base.leg,
       set: base.set,
+      round: base.round,
+      roundLimit: cfg.roundLimit,
       winnerId: base.winnerId,
       // Filled in by Match, which owns the command log.
       recent: [],

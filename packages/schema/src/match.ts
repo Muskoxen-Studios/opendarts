@@ -17,6 +17,18 @@ export type InOutMode = z.infer<typeof InOutModeSchema>;
 // ---------------------------------------------------------------------------
 
 /**
+ * Cap on how long a leg may run, in rounds -- one round being a turn each for
+ * every player still in the leg. Passing it ends the leg and awards it to
+ * whoever the engine judges closest to winning, exactly as END_MATCH does for
+ * the match. `null`, the default, means no cap: legs end on their own terms.
+ *
+ * Every game has one, including the ones with a natural end (golf's holes,
+ * Shanghai's rounds), where it acts as an extra ceiling rather than the only
+ * one.
+ */
+const RoundLimitSchema = z.number().int().positive().nullable().default(null);
+
+/**
  * Per-player overrides are the handicap mechanism: one player can play 501
  * double-out while another plays 301 straight-out in the same leg.
  */
@@ -31,9 +43,10 @@ export const X01ConfigSchema = z.object({
   gameType: z.literal('x01'),
   startScore: z.number().int().positive().default(501),
   inMode: InOutModeSchema.default('straight'),
-  outMode: InOutModeSchema.default('double'),
+  outMode: InOutModeSchema.default('straight'),
   legsToWin: z.number().int().positive().default(3),
   setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
   /**
    * When the leg stops.
    *
@@ -59,6 +72,7 @@ export const CricketConfigSchema = z.object({
   scoring: z.boolean().default(true),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
 });
 export type CricketConfig = z.infer<typeof CricketConfigSchema>;
 
@@ -77,6 +91,7 @@ export const GotchaConfigSchema = z.object({
   handicaps: z.record(z.string(), z.number().int().min(0)).default({}),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
 });
 export type GotchaConfig = z.infer<typeof GotchaConfigSchema>;
 
@@ -104,6 +119,7 @@ export const GolfConfigSchema = z.object({
   handicaps: z.record(z.string(), z.number().int().min(0).max(72)).default({}),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
 });
 export type GolfConfig = z.infer<typeof GolfConfigSchema>;
 
@@ -116,6 +132,7 @@ export const ShanghaiConfigSchema = z.object({
   instantWin: z.boolean().default(true),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
 });
 export type ShanghaiConfig = z.infer<typeof ShanghaiConfigSchema>;
 
@@ -132,6 +149,7 @@ export const KillerConfigSchema = z.object({
   handicaps: z.record(z.string(), z.number().int().min(1).max(9)).default({}),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
 });
 export type KillerConfig = z.infer<typeof KillerConfigSchema>;
 
@@ -174,7 +192,10 @@ export const MatchCommandSchema = z.discriminatedUnion('type', [
    * for takeout -- see `BaseState.turnEnded`. Sent once the board's own
    * darts have actually been pulled out, or synthesised immediately for
    * sources with no physical takeout to wait for (the simulator, manual
-   * entry). A no-op if no turn is currently being held.
+   * entry). A no-op if no turn is currently being held -- when a takeout
+   * arrives on a turn that is short (a dart missed the board and went
+   * undetected) the server sends NEXT_PLAYER instead, since the darts being
+   * out is proof the turn is over whatever the engine still expects.
    */
   z.object({ type: z.literal('ADVANCE_TURN') }),
   /**
@@ -230,7 +251,15 @@ export type DomainEvent =
   | { type: 'shanghai.win'; playerId: string; round: number }
   | { type: 'killer.assigned'; playerId: string; number: number; auto: boolean }
   | { type: 'killer.becameKiller'; playerId: string }
-  | { type: 'killer.hit'; byPlayerId: string; victimPlayerId: string; livesLeft: number }
+  | {
+      type: 'killer.hit';
+      byPlayerId: string;
+      victimPlayerId: string;
+      /** Thirds of a life taken: a single is 1, a double 2, a triple 3. */
+      hits: number;
+      /** Victim's remaining lives, in thirds. */
+      livesLeftThirds: number;
+    }
   | { type: 'killer.eliminated'; playerId: string }
   /** The match was stopped early and awarded to whoever led. */
   | { type: 'match.conceded'; playerId: string };
@@ -298,6 +327,10 @@ export interface MatchView {
   turn: TurnView;
   leg: number;
   set: number;
+  /** 1-based round within the current leg -- one round is a turn each. */
+  round: number;
+  /** The configured cap on rounds, or null when the leg is uncapped. */
+  roundLimit: number | null;
   winnerId: string | null;
   /** Most recent darts across turn boundaries, newest last. Populated by Match. */
   recent: RecentThrow[];

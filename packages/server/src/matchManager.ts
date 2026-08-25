@@ -320,10 +320,23 @@ export class MatchManager {
         }
         return;
       }
-      case 'takeout.completed':
-        this.apply({ type: 'ADVANCE_TURN' });
+      case 'takeout.completed': {
+        // A takeout is physical proof the turn is over. Usually the turn is
+        // already held (`awaitingTakeout`) and this just releases it -- but a
+        // dart that misses the board entirely is never detected, so the engine
+        // still thinks darts are owed and ADVANCE_TURN would be a no-op,
+        // stranding the turn until someone pressed "End turn". End it instead.
+        const view = this.view;
+        if (view?.awaitingTakeout) {
+          this.apply({ type: 'ADVANCE_TURN' });
+        } else if (view?.status === 'playing' && view.turn.throws.length > 0) {
+          this.apply({ type: 'NEXT_PLAYER' });
+        }
+        // With nothing thrown there is no turn to end: a stray takeout at a
+        // fresh oche must not skip a player.
         this.broadcast({ type: 'board', event });
         return;
+      }
       default:
         break;
     }

@@ -33,6 +33,7 @@ const X01: GameConfig = {
   outMode: 'double',
   legsToWin: 1,
   setsToWin: 1,
+  roundLimit: null,
   legEnd: 'first',
   perPlayer: {},
 };
@@ -175,7 +176,7 @@ describe('career statistics', () => {
   it('counts gotcha knockbacks on both sides', () => {
     const cfg: GameConfig = {
       gameType: 'gotcha', target: 200, knockback: 'zero', exactFinish: true, handicaps: {},
-      legsToWin: 1, setsToWin: 1,
+      legsToWin: 1, setsToWin: 1, roundLimit: null,
     };
     const a = analyzeMatch(record(cfg, [
       'T20', 'MISS', 'MISS',    // Alice 60

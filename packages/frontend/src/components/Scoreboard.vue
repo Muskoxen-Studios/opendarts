@@ -112,9 +112,36 @@ function killer(player: View['players'][number]) {
     number: (d.number as number | null | undefined) ?? null,
     isKiller: (d.isKiller as boolean | undefined) ?? false,
     lives: (d.lives as number | undefined) ?? 0,
+    livesThirds: (d.livesThirds as number | undefined) ?? 0,
     startingLives: (d.startingLives as number | undefined) ?? 0,
+    ownHits: (d.ownHits as number | undefined) ?? 0,
+    hitsToKill: (d.hitsToKill as number | undefined) ?? 3,
     eliminated: (d.eliminated as boolean | undefined) ?? false,
   };
+}
+
+/**
+ * How much of heart `i` (1-based) is still filled, as a CSS width. Damage comes
+ * in thirds of a life, so the heart taking it is drawn partly eaten rather than
+ * rounded away -- losing two thirds has to look different from losing one.
+ */
+function heartFill(player: View['players'][number], i: number): string {
+  const thirds = Math.min(3, Math.max(0, killer(player).livesThirds - (i - 1) * 3));
+  return `${(thirds / 3) * 100}%`;
+}
+
+/**
+ * The big number on the active player's card. Killer's lives run in thirds, so
+ * they are written as a fraction rather than a recurring decimal -- and it
+ * matches the partly-eaten heart drawn underneath.
+ */
+function scoreText(player: View['players'][number]): string {
+  if (!isKiller.value) return String(player.score);
+  const thirds = killer(player).livesThirds;
+  const whole = Math.floor(thirds / 3);
+  const part = ['', '\u2153', '\u2154'][thirds % 3]!;
+  if (part === '') return String(whole);
+  return whole === 0 ? part : `${whole}${part}`;
 }
 
 /**
@@ -139,6 +166,7 @@ function ordinal(place: number): string {
       <span class="game">{{ view.gameType.toUpperCase() }}</span>
       <span>Leg {{ view.leg }}</span>
       <span v-if="view.set > 1">Set {{ view.set }}</span>
+      <span v-if="view.roundLimit">Round {{ view.round }}/{{ view.roundLimit }}</span>
       <span v-if="view.status === 'finished'" class="done">Finished</span>
     </header>
 
@@ -161,7 +189,7 @@ function ordinal(place: number): string {
           </span>
           <span class="mini-lives">
             <span v-for="i in killer(p).startingLives" :key="i" class="life"
-              :class="{ lost: i > killer(p).lives }">&hearts;</span>
+              :style="{ '--fill': heartFill(p, i) }" />
           </span>
         </template>
         <span v-else class="mini-score">{{ p.score }}</span>
@@ -209,7 +237,7 @@ function ordinal(place: number): string {
           <span class="legs">{{ p!.setsWon }}&ndash;{{ p!.legsWon }}</span>
         </div>
 
-        <div class="score">{{ p!.score }}</div>
+        <div class="score">{{ scoreText(p!) }}</div>
 
         <div v-if="isGolf" class="golf">
           <div class="golf-line">
@@ -249,12 +277,14 @@ function ordinal(place: number): string {
               <template v-else>
                 <span class="number">No. {{ killer(p!).number }}</span>
                 <span v-if="killer(p!).isKiller" class="killer-tag">killer</span>
+                <!-- Until you are a killer, how close you are is the only thing worth knowing. -->
+                <span v-else class="killer-progress">{{ killer(p!).ownHits }}/{{ killer(p!).hitsToKill }} hits</span>
               </template>
             </template>
           </div>
           <div class="lives">
             <span v-for="i in killer(p!).startingLives" :key="i" class="life"
-              :class="{ lost: i > killer(p!).lives }">&hearts;</span>
+              :style="{ '--fill': heartFill(p!, i) }" />
           </div>
         </div>
 
@@ -298,6 +328,9 @@ function ordinal(place: number): string {
 
 <style scoped>
 .scoreboard {
+  /* The heart silhouette the life pips are masked with. */
+  --heart:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='black'/%3E%3C/svg%3E");
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -330,15 +363,25 @@ function ordinal(place: number): string {
  *
  * "Small" is relative: these are sized to be read from the oche, several
  * metres away, not from a desk. That is why the type here is larger than the
- * usual secondary-text scale -- scroll width is the thing being spent.
+ * usual secondary-text scale -- scroll width is the thing being spent, and a
+ * roster that overflows is the intended trade, since the strip stays centred
+ * on whoever is throwing.
  */
 .strip {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.7rem;
   overflow-x: auto;
   padding: 0.15rem;
   scroll-behavior: smooth;
-  scrollbar-width: thin;
+  /*
+   * No scrollbar: nobody drags this from the oche, it scrolls itself to
+   * whoever is throwing. The bar would only eat height under the cards.
+   */
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
 }
 
 .mini {
@@ -347,18 +390,18 @@ function ordinal(place: number): string {
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
-  min-width: 5.4rem;
+  min-width: 9.5rem;
   border: 1px solid #262b33;
   border-top: 3px solid var(--accent);
   border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem 1.1rem;
   background: #14171c;
   transition: background 120ms ease, border-color 120ms ease;
 }
 
 .mini.active {
   background: #1b2029;
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .mini.winner {
@@ -370,19 +413,19 @@ function ordinal(place: number): string {
 }
 
 .mini-score {
-  font-size: 1.9rem;
+  font-size: 3.4rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .mini-name {
-  font-size: 0.95rem;
+  font-size: 1.4rem;
   color: #8b93a1;
   white-space: nowrap;
 }
 
 .mini-place {
-  font-size: 0.8rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: #e0b84a;
   text-transform: uppercase;
@@ -391,20 +434,17 @@ function ordinal(place: number): string {
 .mini-lives {
   display: flex;
   align-items: center;
-  gap: 0.15rem;
-  font-size: 1.05rem;
+  gap: 0.2rem;
+  font-size: 1.6rem;
 }
 
 .mini-lives .life {
-  color: #d8453f;
-}
-
-.mini-lives .life.lost {
-  color: #333a45;
+  /* Slightly tighter than the surrounding text, which is sized for the score. */
+  font-size: 1.2rem;
 }
 
 .mini-knife {
-  font-size: 1rem;
+  font-size: 1.5rem;
   margin-left: 0.1rem;
 }
 
@@ -682,12 +722,24 @@ function ordinal(place: number): string {
   font-size: 1rem;
 }
 
+/*
+  A heart is a box masked into the heart shape and filled left-to-right by a
+  hard-stop gradient, so a third of a life lost reads as a third of a heart
+  eaten. Drawn rather than typed: the text glyph renders as a colour emoji on
+  some systems, where neither `color` nor a clipped overlay does anything.
+*/
 .life {
-  color: #d8453f;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background: linear-gradient(90deg, #d8453f var(--fill, 100%), #333a45 var(--fill, 100%));
+  -webkit-mask: var(--heart) center / contain no-repeat;
+  mask: var(--heart) center / contain no-repeat;
 }
 
-.life.lost {
-  color: #333a45;
+.killer-progress {
+  font-size: 0.85rem;
+  color: #8b94a3;
 }
 
 .checkout {

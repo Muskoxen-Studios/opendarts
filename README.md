@@ -146,7 +146,9 @@ the shape the fake sends. The protocol claim rests on the capture, not the fake.
 ## Games
 
 **X01** — 301/501/701, straight/double/master in and out, legs and sets, bust
-handling, and checkout hints.
+handling, and checkout hints. Out defaults to **straight**: this is a pub board,
+and a leg that cannot be finished without a double is a leg that stops being
+fun. Set out to `double` for match rules.
 
 The suggested route is also lit up on the board itself: the dart to throw now
 is brightest, the rest of the route dimmer behind it.
@@ -223,14 +225,22 @@ wins.
 **Killer** — each player throws for a number of their own: the first dart to
 land on an unclaimed 1–20 in any ring claims it, and anyone who finds nothing
 in three darts is handed a random unclaimed number so no one gets stuck. Once
-everyone has a number, play begins. A player who is not yet a killer can only
-become one by hitting their own double; once a killer, hitting an opponent's
-double costs that opponent a life. A player at zero lives is eliminated and
-skipped for the rest of the match — last player standing wins.
+everyone has a number, play begins. Play is counted in *hits* — a dart's
+multiplier on the number it lands in, so a single is one hit and a triple three.
+A player becomes a killer on their third hit on their own number, in any ring
+and across as many darts as it takes; once a killer, every hit on an opponent's
+number costs that opponent a third of a life, so a triple takes a whole one. A
+player at zero lives is eliminated and skipped for the rest of the match — last
+player standing wins.
 
-`friendlyFire` (off by default) makes hitting your own double *again* after
-already becoming a killer cost you a life too, for groups who want the extra
-risk.
+`friendlyFire` (off by default) makes hits on your own number cost you a third
+of a life once you are already a killer, for groups who want the extra risk.
+That includes the hits left over from the dart that crowned you: two doubles is
+four hits, three to become a killer and one straight back at you.
+
+Lives are held internally in thirds so that every re-fold of the command log is
+integer arithmetic; only the scoreboard divides back into hearts, drawing the
+one taking damage partly eaten.
 
 ### Manuals
 
@@ -245,6 +255,47 @@ reports that there is no manual yet.
 
 Adding a new game is one file in `packages/engine/src/` plus one line in
 `registry.ts`.
+
+### Takeout ends the turn
+
+A finished turn is not handed over the instant the third dart lands: the darts
+are still in the board, so the scoreboard holds the player, their three darts
+and their total until the board reports the takeout. That moment is what moves
+the highlight on.
+
+Pulling the darts out ends the turn **whatever the engine was still expecting**.
+A dart that misses the board entirely is never detected, so the engine thinks a
+dart is still owed — and before, the takeout did nothing at all and the turn sat
+there until somebody pressed "end turn". The darts being out of the board is
+physical proof the turn is over, so it is treated as one. The undetected dart is
+simply recorded as never thrown, which shows up as a two-dart turn in the
+statistics; correcting it is what the dart-correction control is for.
+
+A takeout with nothing thrown is ignored, so tidying up between turns cannot
+skip a player. Simulated and manually-entered darts have no physical takeout to
+wait for and hand over immediately.
+
+### The round limit
+
+Every game takes an optional **round limit**, a cap on how long a single leg may
+run. A round is a turn each — for everyone still in the leg, so it stays honest
+when the rotation skips people, as X01 played to finishing places and Killer
+after an elimination both do. Passing the limit ends the **leg** and hands it to
+whoever is closest to winning, on exactly the same comparator "end game" uses
+(see below). Legs and sets still decide the match, so a limit plus `legsToWin: 3`
+gives three capped legs rather than one capped match.
+
+Left empty it does nothing, which is the default. It exists for the games with no
+natural end — Cricket, Gotcha and Killer can all run all night between evenly
+matched players — but Golf and Shanghai take one too, where it acts as a ceiling
+above their own holes and rounds rather than replacing them.
+
+The round counter appears next to the leg and set in the scoreboard header, and
+only when a limit is set: an uncapped leg has no round worth counting down.
+
+```json
+{ "gameType": "cricket", "variant": "standard", "roundLimit": 20 }
+```
 
 ### Ending a game early
 

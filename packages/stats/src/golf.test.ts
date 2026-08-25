@@ -17,6 +17,7 @@ function config(handicap: number, holes = 2): GolfConfig {
     handicaps: { alice: handicap },
     legsToWin: 1,
     setsToWin: 1,
+    roundLimit: null,
   };
 }
 

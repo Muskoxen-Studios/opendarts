@@ -21,6 +21,7 @@ function config(over: Partial<GolfConfig> = {}): GolfConfig {
     handicaps: {},
     legsToWin: 1,
     setsToWin: 1,
+    roundLimit: null,
     ...over,
   };
 }

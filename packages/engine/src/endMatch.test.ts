@@ -17,6 +17,7 @@ const X01: GameConfig = {
   outMode: 'double',
   legsToWin: 1,
   setsToWin: 1,
+  roundLimit: null,
   legEnd: 'first',
   perPlayer: {},
 };
@@ -79,6 +80,7 @@ describe('ending a match early', () => {
       handicaps: {},
       legsToWin: 1,
       setsToWin: 1,
+      roundLimit: null,
     });
     play(m, 'S5', 'S5', 'S5'); // Alice 15
     play(m, 'T20', 'T20', 'T20'); // Bob 180
@@ -95,6 +97,7 @@ describe('ending a match early', () => {
       scoring: true,
       legsToWin: 1,
       setsToWin: 1,
+      roundLimit: null,
     });
     play(m, 'T20', 'T19', 'T18'); // Alice closes three
     play(m, 'S20', 'MISS', 'MISS'); // Bob has one mark
@@ -111,6 +114,7 @@ describe('ending a match early', () => {
       handicaps: { alice: 0, bob: 0 },
       legsToWin: 1,
       setsToWin: 1,
+      roundLimit: null,
     });
     play(m, 'MISS', 'MISS', 'MISS'); // Alice: nothing yet
     play(m, 'S1', 'S2', 'S3'); // Bob: three albatrosses

@@ -13,10 +13,12 @@ import {
   addPlayerToBase,
   advanceTurn,
   awardLeg,
+  awardLegOnRoundLimit,
   clone,
   createBaseState,
   endMatchEarly,
   removePlayerFromBase,
+  resetRound,
   turnIsComplete,
 } from './base.ts';
 import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './types.ts';
@@ -128,6 +130,30 @@ function resetLeg(state: GolfState): void {
   for (const p of state.base.players) seatPlayer(state, p.id);
 }
 
+/**
+ * How well a player is doing this leg -- higher is better -- for both END_MATCH
+ * and the round limit. Stableford: most points wins.
+ */
+function progress(state: GolfState, playerId: string): number {
+  return state.points[playerId] ?? 0;
+}
+
+/**
+ * Stop the leg if the configured round limit has just been passed. Called after
+ * every handover, since `advanceTurn` is what moves the round on.
+ */
+function checkRoundLimit(state: GolfState, cfg: GolfConfig): DomainEvent[] {
+  return awardLegOnRoundLimit(
+    state.base,
+    cfg,
+    (id) => progress(state, id),
+    () => {
+      resetLeg(state);
+      beginTurn(state);
+    },
+  );
+}
+
 export const golfEngine: GameEngine<GolfConfig, GolfState> = {
   id: 'golf',
 
@@ -167,6 +193,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
         if (base.turnEnded) {
           advanceTurn(base, makeSkip(state, cfg));
           beginTurn(state);
+          events.push(...checkRoundLimit(state, cfg));
           return { state, events };
         }
         const p = activePlayer(base);
@@ -179,6 +206,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
         });
         advanceTurn(base, makeSkip(state, cfg));
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -186,6 +214,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
         if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base, makeSkip(state, cfg));
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -211,7 +240,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
       }
 
       case 'END_MATCH': {
-        events.push(...endMatchEarly(base, (id) => state.points[id] ?? 0));
+        events.push(...endMatchEarly(base, (id) => progress(state, id)));
         return { state, events };
       }
 
@@ -220,6 +249,7 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
         base.turn = [];
         base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
+        resetRound(base);
         resetLeg(state);
         beginTurn(state);
         return { state, events };
@@ -374,6 +404,8 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
       },
       leg: base.leg,
       set: base.set,
+      round: base.round,
+      roundLimit: cfg.roundLimit,
       winnerId: base.winnerId,
       // Filled in by Match, which owns the command log.
       recent: [],

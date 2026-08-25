@@ -18,6 +18,8 @@ export function createBaseState(players: Player[]): BaseState {
     winnerId: null,
     legDarts: { ...zero },
     legStartIndex: 0,
+    round: 1,
+    roundTurns: [],
     turnEnded: false,
   };
 }
@@ -32,6 +34,32 @@ export function playerById(base: BaseState, id: string): Player | undefined {
   return base.players.find((p) => p.id === id);
 }
 
+/** Start the round counter over, as a new leg does. */
+export function resetRound(base: BaseState): void {
+  base.round = 1;
+  base.roundTurns = [];
+}
+
+/**
+ * Record that the active player has had their turn, and roll the round counter
+ * once everyone still in the leg has had theirs.
+ *
+ * Counting players rather than watching `activeIndex` wrap past `legStartIndex`
+ * is what makes this correct when the rotation skips people -- X01 played to
+ * finishing places, or Killer once someone is eliminated, would otherwise never
+ * come back round to the player the leg started with.
+ */
+function countTurnForRound(base: BaseState, skip?: (playerId: string) => boolean): void {
+  const current = base.players[base.activeIndex];
+  if (current && !base.roundTurns.includes(current.id)) base.roundTurns.push(current.id);
+
+  const stillIn = base.players.filter((p) => !skip || !skip(p.id));
+  if (stillIn.every((p) => base.roundTurns.includes(p.id))) {
+    base.round += 1;
+    base.roundTurns = [];
+  }
+}
+
 /**
  * Clear the current turn and hand over to the next player.
  *
@@ -44,6 +72,8 @@ export function advanceTurn(base: BaseState, skip?: (playerId: string) => boolea
   base.turnEnded = false;
   const count = base.players.length;
   if (count === 0) return;
+
+  countTurnForRound(base, skip);
 
   for (let step = 1; step <= count; step++) {
     const index = (base.activeIndex + step) % count;
@@ -105,6 +135,7 @@ export function awardLeg(
   base.turn = [];
   base.turnEnded = false;
   for (const p of base.players) base.legDarts[p.id] = 0;
+  resetRound(base);
   onNewLeg();
   return events;
 }
@@ -151,6 +182,37 @@ export function endMatchEarly(
   ];
 }
 
+/**
+ * End the leg when the configured round limit has been passed, awarding it to
+ * whoever is closest to winning.
+ *
+ * `progress` is the same comparator the engine already hands `endMatchEarly` --
+ * higher is better -- so a game only has to decide once what "ahead" means.
+ * Returns the events produced, or an empty array when there is no limit, it has
+ * not been reached, or the match is not running.
+ *
+ * Call this after `advanceTurn`, which is what moves `base.round`: the limit is
+ * a cap on the leg, not the match, so `legsToWin` and `setsToWin` still decide
+ * when the match itself is over.
+ */
+export function awardLegOnRoundLimit(
+  base: BaseState,
+  limits: { roundLimit: number | null; legsToWin: number; setsToWin: number },
+  progress: (playerId: string) => number,
+  onNewLeg: () => void,
+): DomainEvent[] {
+  if (limits.roundLimit === null) return [];
+  if (base.status !== 'playing') return [];
+  if (base.round <= limits.roundLimit) return [];
+  if (base.players.length === 0) return [];
+
+  // Ties fall to seat order, same rule and same reasoning as endMatchEarly.
+  const leader = [...base.players].sort((a, b) => progress(b.id) - progress(a.id))[0];
+  if (!leader) return [];
+
+  return awardLeg(base, leader.id, limits.legsToWin, limits.setsToWin, onNewLeg);
+}
+
 /** Deep clone that is safe for our plain-object state. */
 export function clone<T>(value: T): T {
   return structuredClone(value);
@@ -189,12 +251,14 @@ export function removePlayerFromBase(base: BaseState, playerId: string): number 
   delete base.legsWon[playerId];
   delete base.setsWon[playerId];
   delete base.legDarts[playerId];
+  base.roundTurns = base.roundTurns.filter((id) => id !== playerId);
 
   if (base.players.length === 0) {
     base.activeIndex = 0;
     base.legStartIndex = 0;
     base.turn = [];
     base.turnEnded = false;
+    resetRound(base);
     base.status = 'finished';
     return index;
   }

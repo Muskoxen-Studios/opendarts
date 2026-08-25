@@ -16,10 +16,12 @@ import {
   addPlayerToBase,
   advanceTurn,
   awardLeg,
+  awardLegOnRoundLimit,
   clone,
   createBaseState,
   endMatchEarly,
   removePlayerFromBase,
+  resetRound,
   turnIsComplete,
 } from './base.ts';
 import { suggestCheckout } from './checkout.ts';
@@ -73,6 +75,33 @@ function satisfiesMode(segment: Segment, mode: InOutMode): boolean {
 function makeSkip(state: X01State, cfg: X01Config): ((playerId: string) => boolean) | undefined {
   if (cfg.legEnd !== 'all-but-one') return undefined;
   return (playerId: string) => state.places.includes(playerId);
+}
+
+/**
+ * How well a player is doing this leg -- higher is better -- for both END_MATCH
+ * and the round limit.
+ *
+ * Anyone who has already checked out is ahead of everyone still throwing, in
+ * the order they finished; among those still in, the lowest remaining score is
+ * the closest to the finish, so the sign flips.
+ */
+function progress(state: X01State, playerId: string): number {
+  const place = state.places.indexOf(playerId);
+  if (place >= 0) return 1_000_000 - place;
+  return -(state.scores[playerId] ?? 0);
+}
+
+/**
+ * Stop the leg if the configured round limit has just been passed. Called after
+ * every handover, since `advanceTurn` is what moves the round on.
+ */
+function checkRoundLimit(state: X01State, cfg: X01Config): DomainEvent[] {
+  return awardLegOnRoundLimit(
+    state.base,
+    cfg,
+    (id) => progress(state, id),
+    () => resetLegScores(state, cfg),
+  );
 }
 
 function beginTurn(state: X01State): void {
@@ -132,6 +161,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
         if (base.turnEnded) {
           advanceTurn(base, makeSkip(state, cfg));
           beginTurn(state);
+          events.push(...checkRoundLimit(state, cfg));
           return { state, events };
         }
         const p = activePlayer(base);
@@ -144,6 +174,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
         });
         advanceTurn(base, makeSkip(state, cfg));
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -151,6 +182,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
         if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base, makeSkip(state, cfg));
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -180,16 +212,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
       }
 
       case 'END_MATCH': {
-        // Closest to winning is the lowest remaining score -- except that
-        // anyone who has already checked out this leg is ahead of everyone
-        // still throwing, in the order they finished.
-        events.push(
-          ...endMatchEarly(base, (id) => {
-            const place = state.places.indexOf(id);
-            if (place >= 0) return 1_000_000 - place;
-            return -(state.scores[id] ?? 0);
-          }),
-        );
+        events.push(...endMatchEarly(base, (id) => progress(state, id)));
         return { state, events };
       }
 
@@ -198,6 +221,7 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
         base.turn = [];
         base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
+        resetRound(base);
         resetLegScores(state, cfg);
         return { state, events };
       }
@@ -389,6 +413,8 @@ export const x01Engine: GameEngine<X01Config, X01State> = {
       },
       leg: base.leg,
       set: base.set,
+      round: base.round,
+      roundLimit: cfg.roundLimit,
       winnerId: base.winnerId,
       // Filled in by Match, which owns the command log.
       recent: [],

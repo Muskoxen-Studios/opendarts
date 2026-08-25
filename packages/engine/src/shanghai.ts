@@ -12,10 +12,12 @@ import {
   addPlayerToBase,
   advanceTurn,
   awardLeg,
+  awardLegOnRoundLimit,
   clone,
   createBaseState,
   endMatchEarly,
   removePlayerFromBase,
+  resetRound,
   turnIsComplete,
 } from './base.ts';
 import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './types.ts';
@@ -94,6 +96,30 @@ function completeRoundIfDone(
   return false;
 }
 
+/**
+ * How well a player is doing this leg -- higher is better -- for both END_MATCH
+ * and the round limit. Highest total wins, same as running out of rounds does.
+ */
+function progress(state: ShanghaiState, playerId: string): number {
+  return state.scores[playerId] ?? 0;
+}
+
+/**
+ * Stop the leg if the configured round limit has just been passed. Called after
+ * every handover, since `advanceTurn` is what moves the round on.
+ */
+function checkRoundLimit(state: ShanghaiState, cfg: ShanghaiConfig): DomainEvent[] {
+  return awardLegOnRoundLimit(
+    state.base,
+    cfg,
+    (id) => progress(state, id),
+    () => {
+      resetLeg(state, cfg);
+      beginTurn(state);
+    },
+  );
+}
+
 export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
   id: 'shanghai',
 
@@ -134,6 +160,7 @@ export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
         if (base.turnEnded) {
           advanceTurn(base);
           beginTurn(state);
+          events.push(...checkRoundLimit(state, cfg));
           return { state, events };
         }
         const p = activePlayer(base);
@@ -152,6 +179,7 @@ export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
         if (!ended) {
           advanceTurn(base);
           beginTurn(state);
+          events.push(...checkRoundLimit(state, cfg));
         }
         return { state, events };
       }
@@ -160,6 +188,7 @@ export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
         if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base);
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -183,7 +212,7 @@ export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
       }
 
       case 'END_MATCH': {
-        events.push(...endMatchEarly(base, (id) => state.scores[id] ?? 0));
+        events.push(...endMatchEarly(base, (id) => progress(state, id)));
         return { state, events };
       }
 
@@ -192,6 +221,7 @@ export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
         base.turn = [];
         base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
+        resetRound(base);
         resetLeg(state, cfg);
         beginTurn(state);
         return { state, events };
@@ -320,6 +350,8 @@ export const shanghaiEngine: GameEngine<ShanghaiConfig, ShanghaiState> = {
       },
       leg: base.leg,
       set: base.set,
+      round: base.round,
+      roundLimit: cfg.roundLimit,
       winnerId: base.winnerId,
       recent: [],
     };

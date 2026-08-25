@@ -12,10 +12,12 @@ import {
   addPlayerToBase,
   advanceTurn,
   awardLeg,
+  awardLegOnRoundLimit,
   clone,
   createBaseState,
   endMatchEarly,
   removePlayerFromBase,
+  resetRound,
   turnIsComplete,
 } from './base.ts';
 import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './types.ts';
@@ -48,6 +50,31 @@ function resetLeg(state: GotchaState, cfg: GotchaConfig): void {
     state.scores[p.id] = startingScore(cfg, p.id);
     state.turnStartScore[p.id] = state.scores[p.id]!;
   }
+}
+
+/**
+ * How well a player is doing this leg -- higher is better -- for both END_MATCH
+ * and the round limit. Counting up: the highest score is the closest to the
+ * target.
+ */
+function progress(state: GotchaState, playerId: string): number {
+  return state.scores[playerId] ?? 0;
+}
+
+/**
+ * Stop the leg if the configured round limit has just been passed. Called after
+ * every handover, since `advanceTurn` is what moves the round on.
+ */
+function checkRoundLimit(state: GotchaState, cfg: GotchaConfig): DomainEvent[] {
+  return awardLegOnRoundLimit(
+    state.base,
+    cfg,
+    (id) => progress(state, id),
+    () => {
+      resetLeg(state, cfg);
+      beginTurn(state);
+    },
+  );
 }
 
 export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
@@ -86,6 +113,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
         if (base.turnEnded) {
           advanceTurn(base);
           beginTurn(state);
+          events.push(...checkRoundLimit(state, cfg));
           return { state, events };
         }
         const p = activePlayer(base);
@@ -98,6 +126,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
         });
         advanceTurn(base);
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -105,6 +134,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
         if (!base.turnEnded) return { state: prev, events: [] };
         advanceTurn(base);
         beginTurn(state);
+        events.push(...checkRoundLimit(state, cfg));
         return { state, events };
       }
 
@@ -127,8 +157,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
       }
 
       case 'END_MATCH': {
-        // Counting up: the highest score is the closest to the target.
-        events.push(...endMatchEarly(base, (id) => state.scores[id] ?? 0));
+        events.push(...endMatchEarly(base, (id) => progress(state, id)));
         return { state, events };
       }
 
@@ -137,6 +166,7 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
         base.turn = [];
         base.turnEnded = false;
         for (const p of base.players) base.legDarts[p.id] = 0;
+        resetRound(base);
         resetLeg(state, cfg);
         beginTurn(state);
         return { state, events };
@@ -286,6 +316,8 @@ export const gotchaEngine: GameEngine<GotchaConfig, GotchaState> = {
       },
       leg: base.leg,
       set: base.set,
+      round: base.round,
+      roundLimit: cfg.roundLimit,
       winnerId: base.winnerId,
       // Filled in by Match, which owns the command log.
       recent: [],

@@ -55,33 +55,98 @@ describe('Killer play', () => {
     return m;
   }
 
-  it('requires a player to hit their own double before they can kill', () => {
+  it('takes three hits on your own number to become a killer', () => {
     const m = readyMatch();
+    play(m, 'S5', 'S5');
     expect(detail(m, ALICE).isKiller).toBe(false);
-    play(m, 'D5');
+    expect(detail(m, ALICE).ownHits).toBe(2);
+    play(m, 'S5');
     expect(detail(m, ALICE).isKiller).toBe(true);
   });
 
-  it("a killer hitting an opponent's double costs them a life", () => {
+  it('counts a triple of your own number as all three hits at once', () => {
     const m = readyMatch();
-    play(m, 'D5', 'D6', 'MISS'); // Alice becomes killer, then hits Bob's double
+    play(m, 'T5');
+    expect(detail(m, ALICE).isKiller).toBe(true);
+  });
+
+  it('carries killer progress across turns', () => {
+    const m = readyMatch();
+    play(m, 'D5', 'MISS', 'MISS'); // Alice: 2 hits
+    play(m, 'MISS', 'MISS', 'MISS'); // Bob
+    expect(detail(m, ALICE).ownHits).toBe(2);
+    play(m, 'S5');
+    expect(detail(m, ALICE).isKiller).toBe(true);
+  });
+
+  it("a killer's single on an opponent's number costs them a third of a life", () => {
+    const m = readyMatch();
+    play(m, 'T5', 'S6', 'MISS'); // Alice becomes killer, then a single on Bob's 6
+    expect(detail(m, BOB).lives).toBeCloseTo(2 + 2 / 3);
+  });
+
+  it("a killer's triple on an opponent's number costs them a whole life", () => {
+    const m = readyMatch();
+    play(m, 'T5', 'T6', 'MISS');
     expect(detail(m, BOB).lives).toBe(2);
   });
 
-  it('eliminates a player at zero lives and skips them in turn order', () => {
+  it('does nothing when a player who is not yet a killer hits an opponent', () => {
     const m = readyMatch();
-    play(m, 'D5', 'D6', 'MISS'); // Alice: killer, Bob -> 2 lives
+    play(m, 'T6', 'MISS', 'MISS');
+    expect(detail(m, BOB).lives).toBe(3);
+  });
+
+  it('eliminates a player at zero lives and ends the match', () => {
+    const m = readyMatch();
+    play(m, 'T5', 'T6', 'T6'); // Alice: killer, Bob 3 -> 2 -> 1
     play(m, 'MISS', 'MISS', 'MISS'); // Bob's turn, nothing happens
-    play(m, 'D6', 'D6'); // Alice: Bob 2 -> 1 -> 0, eliminated, match ends
+    play(m, 'T6'); // Bob -> 0, eliminated, match ends
     expect(detail(m, BOB).eliminated).toBe(true);
     expect(m.view.winnerId).toBe(ALICE);
     expect(m.view.status).toBe('finished');
   });
 
+  it('leaves your own number harmless with friendly fire off', () => {
+    const m = readyMatch();
+    play(m, 'T5', 'S5', 'MISS');
+    expect(detail(m, ALICE).lives).toBe(3);
+  });
+
+  it('costs a killer a third of a life per hit on their own number with friendly fire on', () => {
+    const m = newMatch({ friendlyFire: true });
+    play(m, 'S5');
+    play(m, 'S6');
+    play(m, 'T5', 'S5', 'MISS');
+    expect(detail(m, ALICE).lives).toBeCloseTo(3 - 1 / 3);
+  });
+
+  it('spends the leftover hits of the crowning dart on friendly fire', () => {
+    const m = newMatch({ friendlyFire: true });
+    play(m, 'S5');
+    play(m, 'S6');
+    play(m, 'D5', 'D5', 'MISS'); // 4 hits: 3 crown Alice, the 4th hits her
+    expect(detail(m, ALICE).isKiller).toBe(true);
+    expect(detail(m, ALICE).lives).toBeCloseTo(3 - 1 / 3);
+  });
+
   it('emits a killer.becameKiller event', () => {
     const m = readyMatch();
-    const events = m.apply(throwCmd('D5'));
+    const events = m.apply(throwCmd('T5'));
     expect(events).toContainEqual({ type: 'killer.becameKiller', playerId: ALICE });
+  });
+
+  it('reports the damage and the remaining thirds on a hit', () => {
+    const m = readyMatch();
+    m.apply(throwCmd('T5'));
+    const events = m.apply(throwCmd('D6'));
+    expect(events).toContainEqual({
+      type: 'killer.hit',
+      byPlayerId: ALICE,
+      victimPlayerId: BOB,
+      hits: 2,
+      livesLeftThirds: 7,
+    });
   });
 });
 
@@ -96,7 +161,7 @@ describe('Killer handicaps', () => {
     const m = newMatch({ startingLives: 3, handicaps: { alice: 5 } });
     play(m, 'S5');
     play(m, 'S6');
-    play(m, 'D5', 'D6', 'MISS'); // Alice becomes killer, Bob loses a life
+    play(m, 'T5', 'T6', 'MISS'); // Alice becomes killer, Bob loses a life
     expect(detail(m, BOB).lives).toBe(2);
     m.apply({ type: 'RESTART_LEG' });
     expect(detail(m, ALICE).lives).toBe(5);

@@ -63,6 +63,14 @@ export interface BaseState {
   /** Which player starts the current leg, rotated each leg. */
   legStartIndex: number;
   /**
+   * 1-based round within the current leg. A round is one turn each for every
+   * player still in the leg -- see `advanceTurn`, which is the only thing that
+   * moves it, and `awardLegOnRoundLimit`, which is the only thing that reads it.
+   */
+  round: number;
+  /** Ids of the players who have already taken their turn in this round. */
+  roundTurns: string[];
+  /**
    * The active player's turn is over (3 darts, a bust, or a hole/round/all-out
    * finish) but the handover to the next player is being held.
    *
