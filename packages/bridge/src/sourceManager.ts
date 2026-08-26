@@ -73,6 +73,14 @@ export class SourceManager {
     }
   }
 
+  /**
+   * Tell the active source we are about to zero the board's throw counter, so
+   * the darts already in the board are not read as having been pulled out.
+   */
+  noteCounterReset(): void {
+    this.source?.noteCounterReset?.();
+  }
+
   inject(segment: Segment, coords?: Coords | null): boolean {
     if (!this.source?.inject) return false;
     this.source.inject(segment, coords);

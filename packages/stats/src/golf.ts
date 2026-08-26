@@ -1,10 +1,14 @@
-import { GOLF_BASE_HANDICAP } from '@darts/schema';
+import { GOLF_BASE_HANDICAP, GOLF_HOLES } from '@darts/schema';
 import type { MatchAnalysis } from './analysis.ts';
 
-/** How many past rounds the handicap looks back over. */
+/** How many past rounds are kept for display. The handicap itself only needs the last one. */
 export const GOLF_HANDICAP_WINDOW = 20;
-/** How many of those rounds count, once a player has a full window. */
-export const GOLF_HANDICAP_BEST = 8;
+/**
+ * Points over or under the par target that move the handicap by one stroke,
+ * over a full 18-hole round. Shorter rounds scale it down to match -- see
+ * `handicapStep`.
+ */
+export const GOLF_HANDICAP_STEP = 10;
 
 export interface GolfRound {
   matchId: string;
@@ -16,44 +20,54 @@ export interface GolfRound {
   /** What playing every hole of this round to par would have scored. */
   parTarget: number;
   /**
-   * The handicap this round was actually played to.
+   * What this round did to the handicap: negative brings it down.
    *
-   * Playing every hole to personal par scores two points a hole, so the round's
-   * own verdict is `handicap + parTarget - points`: beat par and it comes out
-   * lower. Over a full 18 holes the target is the familiar 36; a nine-hole
-   * round is judged against 18, so short rounds stay comparable rather than
-   * inflating everybody's handicap.
+   * Every ten points clear of the par target is worth a stroke, any part of a
+   * ten counting as a whole one in whichever direction it fell: 87 points off
+   * an 18-hole round is 51 clear, so six strokes off, while 10 points is 26
+   * short, so three back on. Over a full 18 holes the target is the familiar
+   * 36; a nine-hole round is judged against 18 and against a step of five
+   * points a stroke, so half a round moves the handicap by what the same
+   * standard of play would have moved it over a whole one.
    */
-  playedTo: number;
+  adjustment: number;
+  /** The handicap this round leaves the player on. */
+  handicapAfter: number;
 }
 
 export interface GolfHandicap {
   /** The handicap to play the next round off. */
   handicap: number;
-  /** Rounds available in the window. */
+  /** Rounds played. */
   rounds: number;
-  /** How many of them the handicap is averaged over. */
-  counted: number;
-  /** The rounds in the window, newest first. */
+  /** The most recent rounds, newest first. */
   recent: GolfRound[];
-}
-
-/**
- * How many rounds count toward the handicap.
- *
- * The target is the best 8 of the last 20. With fewer rounds behind you only a
- * proportional slice counts: the best single round up to five rounds played,
- * then one more for every further two rounds, reaching eight at a full window.
- * Averaging over a wide field too early would peg a newcomer to their worst
- * night out.
- */
-export function countedRounds(rounds: number): number {
-  if (rounds <= 0) return 0;
-  return Math.min(GOLF_HANDICAP_BEST, 1 + Math.floor(Math.max(0, rounds - 5) / 2));
 }
 
 function clamp(n: number): number {
   return Math.max(0, Math.min(GOLF_BASE_HANDICAP, n));
+}
+
+/**
+ * Points worth a stroke over a round with this par target.
+ *
+ * Half a round offers half the points, so ten over nine holes is twice the
+ * performance ten over eighteen is: the step shrinks with the round (5 points
+ * a stroke over nine holes) and the handicap stays the full-round figure it is
+ * everywhere else.
+ */
+export function handicapStep(parTarget: number): number {
+  const holes = Math.max(1, parTarget / 2);
+  return (GOLF_HANDICAP_STEP * Math.min(holes, GOLF_HOLES)) / GOLF_HOLES;
+}
+
+/** What a round's score is worth in strokes off the handicap. */
+export function handicapAdjustment(points: number, parTarget: number): number {
+  const margin = points - parTarget;
+  if (margin === 0) return 0;
+  // Rounded away from zero, so a round either side of the target always moves
+  // the handicap: two points short is still a stroke back on.
+  return -Math.sign(margin) * Math.ceil(Math.abs(margin) / handicapStep(parTarget));
 }
 
 /** Every golf round this player completed, oldest first. */
@@ -69,6 +83,7 @@ export function golfRounds(playerId: string, analyses: MatchAnalysis[]): GolfRou
     // The round the match was set up as, not the holes actually reached: a
     // round abandoned half way through should read as the poor round it was.
     const parTarget = 2 * (a.golf.holeCount || holes.length);
+    const adjustment = handicapAdjustment(points, parTarget);
     out.push({
       matchId: a.matchId,
       endedAt: a.endedAt,
@@ -76,7 +91,8 @@ export function golfRounds(playerId: string, analyses: MatchAnalysis[]): GolfRou
       points,
       holesPlayed: holes.length,
       parTarget,
-      playedTo: clamp(handicap + parTarget - points),
+      adjustment,
+      handicapAfter: clamp(handicap + adjustment),
     });
   }
   return out;
@@ -85,25 +101,22 @@ export function golfRounds(playerId: string, analyses: MatchAnalysis[]): GolfRou
 /**
  * The handicap a player carries into their next round.
  *
+ * It is a running figure, not an average of past form: each round moves the
+ * handicap the player went into it with, and the result carries into the next
+ * one. Three good rounds in a row therefore compound. The base for a round is
+ * the handicap actually played off, so a hand-corrected one is respected from
+ * then on.
+ *
  * A player with no rounds behind them starts on 36, which is what a full set of
  * par holes is worth. Analyses must be in chronological order.
  */
 export function computeGolfHandicap(playerId: string, analyses: MatchAnalysis[]): GolfHandicap {
   const all = golfRounds(playerId, analyses);
-  const window = all.slice(-GOLF_HANDICAP_WINDOW);
-  const counted = countedRounds(window.length);
-
-  if (counted === 0) {
-    return { handicap: GOLF_BASE_HANDICAP, rounds: 0, counted: 0, recent: [] };
-  }
-
-  const best = [...window].sort((a, b) => a.playedTo - b.playedTo).slice(0, counted);
-  const mean = best.reduce((sum, r) => sum + r.playedTo, 0) / best.length;
+  const last = all[all.length - 1];
 
   return {
-    handicap: clamp(Math.round(mean)),
-    rounds: window.length,
-    counted,
-    recent: [...window].reverse(),
+    handicap: last ? last.handicapAfter : GOLF_BASE_HANDICAP,
+    rounds: all.length,
+    recent: all.slice(-GOLF_HANDICAP_WINDOW).reverse(),
   };
 }

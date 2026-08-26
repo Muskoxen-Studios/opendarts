@@ -746,7 +746,6 @@ describe('golf', () => {
     // scratch handicap is far better than that -- so it floors at 0.
     const handicap = store.handicapFor(alice.id, 'golf');
     expect(handicap.rounds).toBe(1);
-    expect(handicap.counted).toBe(1);
     expect(handicap.recent[0]?.parTarget).toBe(4);
     expect(handicap.handicap).toBe(0);
   });

@@ -206,10 +206,26 @@ so a handicap of 20 gives two extra strokes on holes 1 and 2 and one everywhere
 else. Playing every hole to personal par scores two points a hole — 36 over a
 full round, which is exactly why a new player starts on a handicap of 36.
 
-The handicap itself is **the best 8 of the last 20 rounds**, and a proportional
-slice below that: the best single round up to five played, then one more for
-every further two. Each round's verdict is `handicap + par target - points`, so
-beating your handicap brings it down and playing to it leaves it alone. It is
+The handicap is always a **full-round figure**, so a shorter round is played off
+a proportional share of it: nine holes off 36 is 18 strokes, the same two a hole
+— and the same net par 6 — an eighteen-hole round gets. Spreading the whole 36
+over nine would hand out four strokes a hole and make the short round twice as
+easy as the number describing it.
+
+The handicap is a **running figure carried on from the last round**, not an
+average of past form: every ten points clear of the round's par target takes a
+stroke off, every ten short puts one back on, any part of a ten counting as a
+whole one — `-ceil(|points - par target| / step)` with the sign of the margin.
+So 87 points off a full round is 51 clear and six strokes off, 10 points is 26
+short and three strokes back on, and a round scored exactly on target leaves it
+alone. Both halves of that sum scale with the length of the round: nine holes
+are judged against a par target of 18 and a step of five points, so half a round
+moves the handicap by exactly what the same standard of play would have moved it
+over a whole one. Three good rounds in a row therefore compound rather than averaging out.
+The current handicap is deliberately *not* in that sum: it already priced the
+round, since a low handicap makes points harder to come by in the first place.
+The base each round moves is the handicap actually played off, so a corrected
+one is respected from then on, and the result is clamped to 0–36. It is
 computed from finished matches like every other statistic — never stored on the
 profile — and is resolved into the match config at start time, so recomputing it
 later cannot rewrite a round already played.

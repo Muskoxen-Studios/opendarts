@@ -125,6 +125,38 @@ describe('a turn', () => {
     expect(darts[3]?.throw.value).toBe(32);
   });
 
+  it('does not read a reset we asked for as a takeout', async () => {
+    // Reset is a detection control, pressed mid-visit with the darts still in
+    // the board. Its counter drop looks exactly like a takeout on the wire, so
+    // the source is told first -- otherwise the server would end the turn.
+    const { fake, harness } = await connect();
+    await post(`${fake.url}/sim/throw`, { segment: 'T20' });
+    await harness.until((e) => throwsOf(e).length >= 1);
+
+    source?.noteCounterReset?.();
+    await fetch(`${fake.url}/api/reset`, { method: 'POST' });
+
+    // The dart after the reset still arrives, and no takeout was reported.
+    await post(`${fake.url}/sim/throw`, { segment: 'D16' });
+    await harness.until((e) => throwsOf(e).length >= 2);
+    expect(throwsOf(harness.events).map((d) => d.throw.value)).toEqual([60, 32]);
+    expect(harness.events.some((e) => e.type === 'takeout.completed')).toBe(false);
+  });
+
+  it('still reports a real takeout after a reset', async () => {
+    // One reset arms one silent drop and no more: the takeout that follows is
+    // a person pulling darts out, and the turn must end on it.
+    const { fake, harness } = await connect();
+    await post(`${fake.url}/sim/throw`, { segment: 'T20' });
+    await harness.until((e) => throwsOf(e).length >= 1);
+
+    source?.noteCounterReset?.();
+    await fetch(`${fake.url}/api/reset`, { method: 'POST' });
+    await post(`${fake.url}/sim/turn`, { segments: ['T20'] });
+
+    await harness.until((e) => e.some((x) => x.type === 'takeout.completed'));
+  });
+
   it('scores every ring the board can report', async () => {
     const { fake, harness } = await connect();
     await post(`${fake.url}/sim/turn`, { segments: ['BULL', '25', 'MISS'] });

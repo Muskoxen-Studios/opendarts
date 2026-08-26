@@ -1,5 +1,6 @@
 import {
   GOLF_BASE_HANDICAP,
+  GOLF_HOLES,
   GolfConfigSchema,
   segmentLabel,
   type DomainEvent,
@@ -33,7 +34,9 @@ import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './type
  *
  * Handicap strokes are dealt out one hole at a time from hole 1, so a handicap
  * of 20 over 18 holes gives two extra strokes on holes 1 and 2 and one
- * everywhere else. Playing every hole to personal par scores 2 points a hole,
+ * everywhere else. The handicap is always a full-round figure: a nine-hole
+ * round is played off half of it, so net par per hole -- and what par is worth
+ * per hole -- is the same whichever length is played. Playing every hole to personal par scores 2 points a hole,
  * i.e. 36 -- which is exactly what a handicap of 36 predicts, and why that is
  * the number a new player starts on.
  */
@@ -66,15 +69,30 @@ export function handicapOf(cfg: GolfConfig, playerId: string): number {
 }
 
 /**
+ * Strokes a round of this length is played off.
+ *
+ * The handicap is a full-round figure -- 36 means "two strokes a hole over
+ * eighteen" -- so a shorter round gets a proportional share of it, rounded to
+ * whole strokes. Spreading the whole 36 over nine holes instead would hand out
+ * four strokes a hole and make a nine-hole round twice as easy as the eighteen
+ * the same number describes.
+ */
+export function roundStrokes(handicap: number, holes: number): number {
+  if (holes <= 0) return 0;
+  return Math.round((handicap * Math.min(holes, GOLF_HOLES)) / GOLF_HOLES);
+}
+
+/**
  * Handicap strokes allocated to one hole.
  *
- * The handicap is spread evenly and the remainder handed out from hole 1
- * upwards, so the earlier holes are the generous ones.
+ * The round's strokes are spread evenly and the remainder handed out from hole
+ * 1 upwards, so the earlier holes are the generous ones.
  */
 export function strokeAllowance(handicap: number, holes: number, hole: number): number {
   if (holes <= 0) return 0;
-  const flat = Math.floor(handicap / holes);
-  const extra = handicap % holes;
+  const total = roundStrokes(handicap, holes);
+  const flat = Math.floor(total / holes);
+  const extra = total % holes;
   return flat + (hole <= extra ? 1 : 0);
 }
 

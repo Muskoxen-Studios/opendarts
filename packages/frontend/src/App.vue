@@ -36,7 +36,15 @@ async function addToMatch(profileId: string): Promise<void> {
   }
 }
 
+/**
+ * Take a player out of the running match.
+ *
+ * Confirmed by name: mid-match this drops their score, and the
+ * button sits next to the one that adds a player.
+ */
 async function removeFromMatch(profileId: string): Promise<void> {
+  const name = store.profiles.find((p) => p.id === profileId)?.name ?? 'this player';
+  if (!confirm(`Remove ${name} from the match? Their score in this match goes with them.`)) return;
   try {
     await api.removePlayerFromMatch(profileId);
   } catch (err) {

@@ -57,20 +57,29 @@ left over, dealt from hole 1 up — so he gets two extra strokes on holes 1 to 9
 and one on holes 10 to 18. Net par 6 on the front nine, net par 5 on the back
 nine.
 
-A 9-hole round works the same way, on the first nine numbers, with the handicap
-spread over nine holes instead of eighteen.
+A 9-hole round works the same way, on the first nine numbers — but off half the
+handicap, since the handicap is a figure for a full round. Adam's 27 becomes 14
+strokes over the nine, so he plays much the same net pars he would over
+eighteen. Playing them all to net par is 2 points a hole again: 18.
 
 ## Improving your handicap
 
-Your handicap is recorded and moves with your play: rounds under par bring it
-down, rounds over par push it back up, and a round played exactly to it leaves it
-alone.
+Your handicap is recorded and moves with your play: rounds over the par target
+bring it down, rounds under push it back up, and a round scored exactly on
+target leaves it alone.
 
-It is read from your recent form rather than from your last round alone — the
-best 8 of your last 20 rounds, or a proportional slice of that while you have
-fewer behind you. Each round is valued at `handicap + par target - points`,
-clamped to 0–36, where the par target is 2 points a hole so 9- and 18-hole
-rounds stay comparable.
+It carries on from the handicap you played your last round off: every ten points
+clear of the round's par target takes a stroke off, every ten short puts one
+back on, and any part of a ten counts as a whole one. Score 87 in a full round
+and that is 51 clear of 36 — six strokes off. Score 10 and that is 26 short —
+three strokes back on. Good rounds therefore compound: three of those in a row
+and you are 18 strokes better off than you started.
+
+The par target is 2 points a hole, so a 9-hole round is judged against 18 — and
+against five points a stroke rather than ten, since half a round offers half the
+points. Half a round therefore moves your handicap by exactly what the same
+standard of play would have moved it over a whole one. The handicap itself is
+clamped to 0–36.
 
 The number is worked out from your finished rounds and never stored against your
 profile, but it is fixed into the match when the round starts — so a handicap

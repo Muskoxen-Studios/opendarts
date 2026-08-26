@@ -45,7 +45,23 @@ async function add(): Promise<void> {
   }
 }
 
+/**
+ * Delete a player.
+ *
+ * Confirmed by name: it cannot be walked back from the UI. The deletion is
+ * soft on the server, so the matches they played stay on record -- the
+ * confirmation says so rather than implying history is destroyed.
+ */
 async function remove(id: string): Promise<void> {
+  const name = store.profiles.find((p) => p.id === id)?.name ?? 'this player';
+  if (
+    !confirm(
+      `Delete ${name}? They disappear from the players list and the leaderboard. ` +
+        `Matches already played stay on record.`,
+    )
+  ) {
+    return;
+  }
   await api.deleteProfile(id);
   if (openProfile.value === id) openProfile.value = null;
   await api.loadProfiles();

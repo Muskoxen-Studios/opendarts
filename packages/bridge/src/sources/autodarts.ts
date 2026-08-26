@@ -34,6 +34,12 @@ export function autodartsSource(opts: AutodartsOptions): Source {
   let emittedThrows = 0;
   let currentEmit: EventSink | null = null;
   let manualSeq = 0;
+  /**
+   * Set when *we* zeroed the board's throw counter, so the shrinking
+   * `throws[]` that follows is re-baselined silently instead of being read as
+   * a takeout. See `noteCounterReset`.
+   */
+  let counterResetPending = false;
 
   const connect = (emit: EventSink): void => {
     if (closed) return;
@@ -126,7 +132,13 @@ export function autodartsSource(opts: AutodartsOptions): Source {
         // TODO(payload): confirm whether throws[] is cumulative for the turn.
         if (throws.length < emittedThrows) {
           emittedThrows = throws.length;
-          emit({ type: 'takeout.completed' });
+          // A reset we asked for is not a takeout: nobody pulled a dart out,
+          // so the turn in progress must survive it.
+          if (counterResetPending) {
+            counterResetPending = false;
+          } else {
+            emit({ type: 'takeout.completed' });
+          }
         }
 
         for (let i = emittedThrows; i < throws.length; i++) {
@@ -177,6 +189,20 @@ export function autodartsSource(opts: AutodartsOptions): Source {
      * board's own array only ever grows by darts *it* saw, so a manual entry
      * would otherwise make the next real dart look like a repeat.
      */
+    /**
+     * The operator pressed Reset: the board's own throw counter is about to go
+     * back to zero with the darts still in the board.
+     *
+     * Reset is a detection control -- it is pressed mid-visit when the board
+     * has miscounted -- so it must not end the player's turn. Without this the
+     * shrinking `throws[]` reads exactly like a takeout and the scoreboard
+     * hands over. One reset arms one silent shrink; anything else is a real
+     * takeout.
+     */
+    noteCounterReset() {
+      counterResetPending = true;
+    },
+
     inject(segment: Segment, coords?: Coords | null) {
       if (!currentEmit) return;
       const ts = new Date().toISOString();

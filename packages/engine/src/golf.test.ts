@@ -5,6 +5,7 @@ import {
   handicapOf,
   personalPar,
   stablefordPoints,
+  roundStrokes,
   strokeAllowance,
   type GolfHoleResult,
 } from './golf.ts';
@@ -56,6 +57,21 @@ describe('handicap strokes', () => {
     expect(strokeAllowance(20, 18, 2)).toBe(2);
     expect(strokeAllowance(20, 18, 3)).toBe(1);
     expect(strokeAllowance(20, 18, 18)).toBe(1);
+  });
+
+  it('gives a shorter round its share of the handicap, not the whole of it', () => {
+    // The handicap is a full-round figure. Nine holes off 36 is 18 strokes,
+    // which is the same two a hole -- and the same net par 6 -- an eighteen
+    // hole round gets. Spreading all 36 over nine would give four a hole.
+    expect(roundStrokes(36, 9)).toBe(18);
+    expect(strokeAllowance(36, 9, 1)).toBe(2);
+    expect(strokeAllowance(36, 9, 9)).toBe(2);
+    expect(personalPar({ ...config(), holes: 9 }, ALICE, 1)).toBe(6);
+
+    // An odd share is dealt from hole 1 up, same as a full round's remainder.
+    expect(roundStrokes(27, 6)).toBe(9);
+    expect(strokeAllowance(27, 6, 1)).toBe(2);
+    expect(strokeAllowance(27, 6, 4)).toBe(1);
   });
 
   it('gives a newcomer two strokes a hole, so personal par is 6', () => {

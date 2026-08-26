@@ -160,6 +160,10 @@ const server = createServer(async (req, res) => {
 
     const action = req.url.slice('/board/'.length);
     if (req.method === 'POST' && isBoardAction(action)) {
+      // Reset clears the board's throw counter with the darts still in it. Warn
+      // the source first, or it reads the shrinking `throws[]` as a takeout and
+      // the server ends the player's turn -- see `Source.noteCounterReset`.
+      if (action === 'reset') manager.noteCounterReset();
       const result = await boardCommand(boardUrl, action);
       json(res, 200, { ...result, attached: true, action, url: boardUrl });
       return;

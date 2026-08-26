@@ -246,6 +246,13 @@ async function useLastSettings(): Promise<void> {
   }
 }
 
+/** How the player's last round moved their handicap, as a signed figure. */
+function lastGolfMove(id: string): string {
+  const adjustment = golfHistory.value[id]?.recent[0]?.adjustment ?? 0;
+  if (adjustment === 0) return 'level';
+  return adjustment > 0 ? `+${adjustment}` : String(adjustment);
+}
+
 function handicapFor(id: string) {
   handicaps.value[id] ??= {};
   return handicaps.value[id]!;
@@ -545,10 +552,10 @@ async function start(): Promise<void> {
       <div v-if="selected.length" class="field">
         <label>Handicaps</label>
         <p class="hint">
-          From the best of each player's recent rounds &mdash; the best 8 of the
-          last 20, or a proportional slice while there are fewer. A player with
-          no rounds behind them starts on 36, which is what playing every hole
-          to par is worth.
+          Carried on from each player's last round: every ten points clear of
+          the par target takes a stroke off, every ten short puts one back on.
+          A player with no rounds behind them starts on 36, which is what
+          playing every hole to par is worth.
         </p>
         <div v-for="id in selected" :key="id" class="handicap-row golf-row">
           <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
@@ -561,7 +568,7 @@ async function start(): Promise<void> {
           />
           <span class="hint">
             <template v-if="golfHistory[id]?.rounds">
-              {{ golfHistory[id]?.counted }} of {{ golfHistory[id]?.rounds }} rounds counted
+              {{ golfHistory[id]?.rounds }} rounds played, last one {{ lastGolfMove(id) }}
             </template>
             <template v-else>no rounds yet &mdash; starts on 36</template>
           </span>

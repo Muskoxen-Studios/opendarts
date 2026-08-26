@@ -3,8 +3,9 @@
 - [x] add stableford mode, with handicap based on last 10 games
   - shipped as **Golf**, scored Stableford: holes 1-18 on the board's own
     numbers, par 4 plus handicap strokes, every dart a stroke
-  - handicap is the best 8 of the last 20 rounds (a proportional slice below
-    that), starting at 36
+  - handicap starts at 36 and is carried on from each round: a stroke off for
+    every ten points clear of the par target, a stroke back on for every ten
+    short
 - [x] add highlighting for checkout/setup hints
   - the checkout route lights up on the board, brightest for the dart to throw
     now; golf lights the whole hole number

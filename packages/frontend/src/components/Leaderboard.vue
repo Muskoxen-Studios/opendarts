@@ -116,17 +116,22 @@ function toggle(playerId: string): void {
 /**
  * Archive the table and start again from zero.
  *
- * Worth being precise about in the confirmation: this deletes nothing. It files
- * the standings away and moves the date the table counts from, so career stats,
- * achievements and every match report are untouched.
+ * Confirmed first, then named: the confirmation is the decision, the prompt
+ * that follows is only the season's label. Worth being precise about in both:
+ * this deletes nothing. It files the standings away and moves the date the
+ * table counts from, so career stats, achievements and every match report are
+ * untouched.
  */
 async function reset(): Promise<void> {
-  const label = prompt(
-    'Archive the current leaderboard and start a new one?\n\n' +
-      'Nothing is deleted — every match stays on record, and this only changes ' +
-      'what the table counts. Name this season (optional):',
-    '',
-  );
+  if (
+    !confirm(
+      'Reset the leaderboard? The current standings are archived and the table ' +
+        'starts from zero. Nothing is deleted — every match stays on record.',
+    )
+  ) {
+    return;
+  }
+  const label = prompt('Name the season being archived (optional):', '');
   if (label === null) return;
   resetting.value = true;
   try {

@@ -56,14 +56,15 @@ export interface GolfHoleResult {
 export interface GolfHandicap {
   handicap: number;
   rounds: number;
-  counted: number;
   recent: Array<{
     matchId: string;
     endedAt: string | null;
     handicap: number;
     points: number;
     holesPlayed: number;
-    playedTo: number;
+    parTarget: number;
+    adjustment: number;
+    handicapAfter: number;
   }>;
 }
 

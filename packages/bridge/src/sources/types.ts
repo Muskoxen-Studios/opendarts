@@ -16,4 +16,11 @@ export interface Source {
     segment: import('@darts/schema').Segment,
     coords?: import('@darts/schema').Coords | null,
   ): void;
+  /**
+   * Called just before the board's own throw counter is zeroed on our
+   * instruction, so a source that tracks that counter can re-baseline without
+   * mistaking the drop for a takeout. Only the board source has a counter to
+   * keep in step; the others do not implement it.
+   */
+  noteCounterReset?(): void;
 }

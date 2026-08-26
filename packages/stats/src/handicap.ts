@@ -1,7 +1,7 @@
 import type { GameType } from '@darts/schema';
 import type { MatchAnalysis } from './analysis.ts';
 
-/** How many past matches the skill signal looks back over. Mirrors Golf's own window. */
+/** How many past matches the skill signal looks back over. */
 export const HANDICAP_WINDOW = 20;
 /** How many of those matches count, once a player has a full window. */
 export const HANDICAP_BEST = 8;
@@ -9,8 +9,8 @@ export const HANDICAP_BEST = 8;
  * The 3-dart average a "scratch" player throws.
  *
  * A player at or above this gets no adjustment; only players below it are
- * eased, the same asymmetry Golf's own handicap has (a strong player floors
- * at no adjustment, never punished further).
+ * eased -- a strong player floors at no adjustment and is never punished
+ * further.
  */
 export const HANDICAP_REFERENCE_AVG = 40;
 /** Floor an average is clamped to before it is divided by, so a single bad match cannot blow up the mapping. */
@@ -37,9 +37,8 @@ export interface ModeHandicap {
 /**
  * How many matches count toward the skill average.
  *
- * Same proportional ramp-up as Golf's `countedRounds`: the best single match up
- * to five played, then one more for every further two, reaching eight at a
- * full window.
+ * A proportional ramp-up: the best single match up to five played, then one
+ * more for every further two, reaching eight at a full window.
  */
 function countedMatches(matches: number): number {
   if (matches <= 0) return 0;
@@ -55,8 +54,8 @@ function clampInt(n: number, lo: number, hi: number): number {
 }
 
 /**
- * A player's dart-throwing skill, as a 3-dart-average-style number, windowed
- * and averaged the same way Golf's handicap is.
+ * A player's dart-throwing skill, as a 3-dart-average-style number, averaged
+ * over the best of a recent window.
  *
  * Portable across differently configured matches of the same game type -- it
  * is purely about how hard the player throws, not what target they played to.
