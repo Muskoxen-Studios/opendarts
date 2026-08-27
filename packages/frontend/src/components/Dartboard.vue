@@ -180,7 +180,6 @@ const dartMarks = computed(() =>
 .board {
   width: 100%;
   height: auto;
-  max-width: 560px;
   display: block;
 }
 .wedge {

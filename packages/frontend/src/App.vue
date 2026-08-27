@@ -348,7 +348,7 @@ async function rematch(): Promise<void> {
 </template>
 
 <style scoped>
-.app { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+.app { width: 100%; margin: 0; padding: 1rem 1.25rem; }
 .top { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
 h1 { margin: 0; font-size: 1.3rem; letter-spacing: 0.02em; }
 nav { display: flex; gap: 0.4rem; }
@@ -366,8 +366,11 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 .pill.ok { border-color: #1f3a2a; background: #16241c; color: #3f9d54; }
 
 .play-view { display: flex; flex-direction: column; gap: 0.85rem; }
-.play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 1.5rem; align-items: start; }
-@media (max-width: 900px) { .play { grid-template-columns: 1fr; } }
+.play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(33%, 420px)); gap: 1.5rem; align-items: start; }
+@media (max-width: 900px) {
+  .play { grid-template-columns: 1fr; }
+  .board-stage { max-width: 420px; margin: 0 auto; }
+}
 .left, .right { display: flex; flex-direction: column; gap: 0.85rem; }
 
 .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; }
@@ -381,7 +384,7 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 .controls button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Positions the burst overlay over the board, and takes the shake. */
-.board-stage { position: relative; width: 100%; max-width: 560px; }
+.board-stage { position: relative; width: 100%; }
 .board-stage.shake-a { animation: shake-a 420ms ease-in-out; }
 .board-stage.shake-b { animation: shake-b 420ms ease-in-out; }
 
