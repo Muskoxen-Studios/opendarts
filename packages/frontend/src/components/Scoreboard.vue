@@ -17,6 +17,7 @@ const isGolf = computed(() => props.view.gameType === 'golf');
 const isShanghai = computed(() => props.view.gameType === 'shanghai');
 const isKiller = computed(() => props.view.gameType === 'killer');
 const isGotcha = computed(() => props.view.gameType === 'gotcha');
+const isEvenOdd = computed(() => props.view.gameType === 'evenodd');
 
 /**
  * Everyone gets a small card in the strip up top (PlayerStrip, hoisted to the
@@ -75,6 +76,13 @@ function holeClass(points: number): string {
   if (points === 2) return 'par';
   if (points === 1) return 'over';
   return 'blank';
+}
+
+function evenOdd(player: View['players'][number]) {
+  const d = player.detail;
+  return {
+    targetScore: (d.targetScore as number | undefined) ?? 100,
+  };
 }
 
 function shanghai(player: View['players'][number]) {
@@ -177,6 +185,12 @@ function scoreText(player: View['players'][number]): string {
           <div v-if="shanghai(p!).results.length" class="card">
             <span v-for="(r, i) in shanghai(p!).results" :key="i" class="cell" :class="r > 0 ? 'good' : 'blank'">{{ r
               }}</span>
+          </div>
+        </div>
+
+        <div v-if="isEvenOdd" class="shanghai">
+          <div class="shanghai-line">
+            <span class="round">{{ p!.score }} / {{ evenOdd(p!).targetScore }}</span>
           </div>
         </div>
 

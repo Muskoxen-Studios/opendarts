@@ -153,6 +153,18 @@ export const KillerConfigSchema = z.object({
 });
 export type KillerConfig = z.infer<typeof KillerConfigSchema>;
 
+export const EvenOddConfigSchema = z.object({
+  gameType: z.literal('evenodd'),
+  /** Every player's score at the start of a leg. Can be negative. */
+  startingScore: z.number().int().default(0),
+  /** First player to reach or cross this score wins the leg. */
+  targetScore: z.number().int().positive().default(100),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type EvenOddConfig = z.infer<typeof EvenOddConfigSchema>;
+
 export const GameConfigSchema = z.discriminatedUnion('gameType', [
   X01ConfigSchema,
   CricketConfigSchema,
@@ -160,6 +172,7 @@ export const GameConfigSchema = z.discriminatedUnion('gameType', [
   GolfConfigSchema,
   ShanghaiConfigSchema,
   KillerConfigSchema,
+  EvenOddConfigSchema,
 ]);
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 export type GameType = GameConfig['gameType'];

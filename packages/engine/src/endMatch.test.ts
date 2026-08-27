@@ -123,6 +123,22 @@ describe('ending a match early', () => {
     expect(m.view.winnerId).toBe('bob');
   });
 
+  it('gives Even/Odd to the higher score', () => {
+    const m = start({
+      gameType: 'evenodd',
+      startingScore: 0,
+      targetScore: 1000,
+      legsToWin: 1,
+      setsToWin: 1,
+      roundLimit: null,
+    });
+    play(m, 'S4', 'MISS', 'MISS'); // Alice: +4
+    play(m, 'S5', 'MISS', 'MISS'); // Bob: -5
+
+    m.apply({ type: 'END_MATCH' });
+    expect(m.view.winnerId).toBe('alice');
+  });
+
   it('does nothing to a match that is already over', () => {
     const m = start(X01);
     nineDarter(m);

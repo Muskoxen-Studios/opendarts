@@ -258,6 +258,19 @@ Lives are held internally in thirds so that every re-fold of the command log is
 integer arithmetic; only the scoreboard divides back into hearts, drawing the
 one taking damage partly eaten.
 
+**Even/Odd** — every dart moves your score: an **even** number adds its scored
+value, ring multiplier included (a double 6 is +12, a triple 6 is +18), and an
+**odd** number subtracts it. A miss does nothing. Bulls are split like any
+other pair of numbers next to each other on the board — the **outer bull (25)**
+is odd and subtracts 25, the **inner bull (50)** is even and adds 50. Scores
+can go negative; there is no floor. The first player to reach or cross
+`targetScore` wins the leg outright, mid-turn if that is what it takes.
+
+`startingScore` (default 0) is every player's score at the start of a leg, and
+can itself be negative for a harder start. `targetScore` (default 100) is the
+finish line: the higher it is, the longer the game runs and the more a run of
+odd numbers can be clawed back before someone reaches it.
+
 ### Manuals
 
 Each game has a manual — its full rules — behind the **manual** button on the
