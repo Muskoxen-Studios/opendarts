@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, watch, type DeepReadonly } from 'vue';
-import type { MatchView } from '@darts/schema';
-
-// The store is exposed through Vue's readonly() wrapper so components cannot
-// mutate match state directly -- it is server-authoritative. That makes the
-// incoming view deeply readonly, which the prop type has to reflect.
-type View = DeepReadonly<MatchView>;
+import { computed } from 'vue';
+import {
+  gotcha,
+  heartFill,
+  isOut,
+  killer,
+  ordinal,
+  placeOf,
+  type View,
+} from '../gameDetail.ts';
 
 const props = defineProps<{ view: View }>();
 
@@ -13,32 +16,16 @@ const isCricket = computed(() => props.view.gameType === 'cricket');
 const isGolf = computed(() => props.view.gameType === 'golf');
 const isShanghai = computed(() => props.view.gameType === 'shanghai');
 const isKiller = computed(() => props.view.gameType === 'killer');
+const isGotcha = computed(() => props.view.gameType === 'gotcha');
 
 /**
- * Everyone gets a small card in the strip up top; only the player actually
- * throwing gets the big one underneath with the full per-game detail. That
- * keeps a large roster from turning into a wall of full-size cards, while
- * still surfacing every score.
+ * Everyone gets a small card in the strip up top (PlayerStrip, hoisted to the
+ * full window width in App.vue); only the player actually throwing gets the big
+ * one here with the full per-game detail. That keeps a large roster from
+ * turning into a wall of full-size cards, while still surfacing every score.
  */
 const activePlayer = computed<View['players'][number] | null>(
   () => props.view.players.find((p) => p.isActive) ?? null,
-);
-
-/** Keeps the strip scrolled to the player currently throwing. */
-const miniEls = new Map<string, HTMLElement>();
-function setMiniEl(playerId: string, el: Element | null): void {
-  if (el) miniEls.set(playerId, el as HTMLElement);
-  else miniEls.delete(playerId);
-}
-
-watch(
-  () => props.view.activePlayerId,
-  async (playerId) => {
-    if (!playerId) return;
-    await nextTick();
-    miniEls.get(playerId)?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-  },
-  { immediate: true },
 );
 
 const cricketTargets = computed<number[]>(() => {
@@ -58,11 +45,6 @@ function markGlyph(n: number): string {
 
 function fmt(n: number | null | undefined, digits = 1): string {
   return n === null || n === undefined ? '–' : n.toFixed(digits);
-}
-
-/** Finishing place in a leg played to places, or null while still in. */
-function placeOf(player: View['players'][number]): number | null {
-  return (player.detail.place as number | null) ?? null;
 }
 
 interface GolfHole {
@@ -105,31 +87,6 @@ function shanghai(player: View['players'][number]) {
   };
 }
 
-function killer(player: View['players'][number]) {
-  const d = player.detail;
-  return {
-    phase: (d.phase as 'assign' | 'play' | undefined) ?? 'assign',
-    number: (d.number as number | null | undefined) ?? null,
-    isKiller: (d.isKiller as boolean | undefined) ?? false,
-    lives: (d.lives as number | undefined) ?? 0,
-    livesThirds: (d.livesThirds as number | undefined) ?? 0,
-    startingLives: (d.startingLives as number | undefined) ?? 0,
-    ownHits: (d.ownHits as number | undefined) ?? 0,
-    hitsToKill: (d.hitsToKill as number | undefined) ?? 3,
-    eliminated: (d.eliminated as boolean | undefined) ?? false,
-  };
-}
-
-/**
- * How much of heart `i` (1-based) is still filled, as a CSS width. Damage comes
- * in thirds of a life, so the heart taking it is drawn partly eaten rather than
- * rounded away -- losing two thirds has to look different from losing one.
- */
-function heartFill(player: View['players'][number], i: number): string {
-  const thirds = Math.min(3, Math.max(0, killer(player).livesThirds - (i - 1) * 3));
-  return `${(thirds / 3) * 100}%`;
-}
-
 /**
  * The big number on the active player's card. Killer's lives run in thirds, so
  * they are written as a fraction rather than a recurring decimal -- and it
@@ -143,21 +100,6 @@ function scoreText(player: View['players'][number]): string {
   if (part === '') return String(whole);
   return whole === 0 ? part : `${whole}${part}`;
 }
-
-/**
- * Out of the running for the rest of the leg -- either finished (X01 played
- * to places) or eliminated (Killer). Drives the same dimmed styling either
- * way, so "who's still in it" reads at a glance in the strip.
- */
-function isOut(player: View['players'][number]): boolean {
-  if (placeOf(player) !== null) return true;
-  return isKiller.value && killer(player).eliminated;
-}
-
-const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
-function ordinal(place: number): string {
-  return ORDINALS[place - 1] ?? `${place}th`;
-}
 </script>
 
 <template>
@@ -169,37 +111,6 @@ function ordinal(place: number): string {
       <span v-if="view.roundLimit">Round {{ view.round }}/{{ view.roundLimit }}</span>
       <span v-if="view.status === 'finished'" class="done">Finished</span>
     </header>
-
-    <div class="strip">
-      <article v-for="p in view.players" :key="p.playerId" :ref="(el) => setMiniEl(p.playerId, el as Element | null)"
-        class="mini" :class="{ active: p.isActive, winner: view.winnerId === p.playerId, out: isOut(p) }"
-        :style="{ '--accent': p.color }">
-        <!--
-          Killer is played against everyone else's number, lives and killer
-          status, so all of that has to be visible here too -- not just for
-          whoever is throwing. The number takes the big slot other games use
-          for the score; lives are hearts, same idea as the big card's, plus
-          a knife the moment a player becomes a killer.
-        -->
-        <template v-if="isKiller">
-          <span class="mini-score">
-            <template v-if="killer(p).eliminated">OUT</template>
-            <template v-else-if="killer(p).number === null">?</template>
-            <template v-else>{{ killer(p).number }}</template>
-          </span>
-          <span class="mini-lives">
-            <span v-for="i in killer(p).startingLives" :key="i" class="life"
-              :style="{ '--fill': heartFill(p, i) }" />
-          </span>
-        </template>
-        <span v-else class="mini-score">{{ p.score }}</span>
-        <div>
-          <span class="mini-name">{{ p.name }}</span>
-          <span v-if="killer(p).isKiller" class="mini-knife" title="Killer">&#x1F52A;</span>
-        </div>
-        <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>
-      </article>
-    </div>
 
     <!--
       Cricket is played around what everyone ELSE has closed, not just the
@@ -227,7 +138,7 @@ function ordinal(place: number): string {
 
     <div class="players">
       <article v-for="p in activePlayer ? [activePlayer] : []" :key="p!.playerId" class="player"
-        :class="{ active: p!.isActive, winner: view.winnerId === p!.playerId, out: isOut(p!) }"
+        :class="{ active: p!.isActive, winner: view.winnerId === p!.playerId, out: isOut(p!, view.gameType) }"
         :style="{ '--accent': p!.color }">
         <div class="row">
           <span class="name">{{ p!.name }}</span>
@@ -266,6 +177,21 @@ function ordinal(place: number): string {
           <div v-if="shanghai(p!).results.length" class="card">
             <span v-for="(r, i) in shanghai(p!).results" :key="i" class="cell" :class="r > 0 ? 'good' : 'blank'">{{ r
               }}</span>
+          </div>
+        </div>
+
+        <!--
+          Gotcha counts up to a fixed target, and busting knocks you back --
+          how far is left and what a bust costs are the two things worth
+          knowing while you decide what to aim at.
+        -->
+        <div v-if="isGotcha" class="killer">
+          <div class="killer-line">
+            <span class="number">{{ gotcha(p!).remaining }} to go</span>
+            <span class="killer-progress">target {{ gotcha(p!).target }}</span>
+            <span class="killer-tag">
+              {{ gotcha(p!).knockback === 'zero' ? 'bust → zero' : 'bust → turn start' }}
+            </span>
           </div>
         </div>
 
@@ -354,98 +280,6 @@ function ordinal(place: number): string {
 .done {
   color: #3f9d54;
   font-weight: 700;
-}
-
-/*
- * Everyone, small, in turn order. Horizontally scrollable rather than
- * wrapping, so a big roster costs width, not height -- and it stays
- * centred on whoever is throwing (see the activePlayerId watcher).
- *
- * "Small" is relative: these are sized to be read from the oche, several
- * metres away, not from a desk. That is why the type here is larger than the
- * usual secondary-text scale -- scroll width is the thing being spent, and a
- * roster that overflows is the intended trade, since the strip stays centred
- * on whoever is throwing.
- */
-.strip {
-  display: flex;
-  gap: 0.7rem;
-  overflow-x: auto;
-  padding: 0.15rem;
-  scroll-behavior: smooth;
-  /*
-   * No scrollbar: nobody drags this from the oche, it scrolls itself to
-   * whoever is throwing. The bar would only eat height under the cards.
-   */
-  scrollbar-width: none;
-}
-
-.strip::-webkit-scrollbar {
-  display: none;
-}
-
-.mini {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
-  min-width: 9.5rem;
-  border: 1px solid #262b33;
-  border-top: 3px solid var(--accent);
-  border-radius: 8px;
-  padding: 0.75rem 1.1rem;
-  background: #14171c;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.mini.active {
-  background: #1b2029;
-  box-shadow: 0 0 0 2px var(--accent);
-}
-
-.mini.winner {
-  box-shadow: 0 0 0 2px #3f9d54 inset;
-}
-
-.mini.out {
-  opacity: 0.62;
-}
-
-.mini-score {
-  font-size: 3.4rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.mini-name {
-  font-size: 1.4rem;
-  color: #8b93a1;
-  white-space: nowrap;
-}
-
-.mini-place {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #e0b84a;
-  text-transform: uppercase;
-}
-
-.mini-lives {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 1.6rem;
-}
-
-.mini-lives .life {
-  /* Slightly tighter than the surrounding text, which is sized for the score. */
-  font-size: 1.2rem;
-}
-
-.mini-knife {
-  font-size: 1.5rem;
-  margin-left: 0.1rem;
 }
 
 .players {

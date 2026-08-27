@@ -9,6 +9,7 @@ import Leaderboard from './components/Leaderboard.vue';
 import MatchOverview from './components/MatchOverview.vue';
 import MatchSetup from './components/MatchSetup.vue';
 import ProfilePanel from './components/ProfilePanel.vue';
+import PlayerStrip from './components/PlayerStrip.vue';
 import Scoreboard from './components/Scoreboard.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import { api, connect, dismissCelebration, pushToast, store, type MatchReport } from './store.ts';
@@ -217,86 +218,95 @@ async function rematch(): Promise<void> {
 
     <main>
       <template v-if="tab === 'play'">
-        <div v-if="view" class="play">
-          <section class="left">
-            <Scoreboard :view="view" />
-          </section>
+        <div v-if="view" class="play-view">
+          <!--
+            The roster spans the whole window rather than sitting in the left
+            column: it is the one element every game needs room for, and the
+            two-column grid below would otherwise cost it half its width.
+          -->
+          <PlayerStrip :view="view" />
 
-          <section class="right">
-            <div class="board-stage" :class="shakeClass">
-              <Dartboard
-                :highlight="hintSegments"
-                :highlight-numbers="hintNumbers"
-                :marks="view.turn.throws"
-                :mark-color="activePlayer?.color"
-                @throw="correcting ? correctLast($event.segment) : onThrow($event)"
-              />
-              <BoardEffect :effect="store.boardEffect" :level="store.effects" />
-            </div>
-            <p v-if="view.awaitingTakeout" class="hint centered takeout">
-              {{ activePlayer?.name }}'s turn is done -- pull your darts to hand over.
-            </p>
-            <p v-else class="hint centered">
-              Click the board to throw. Simulated darts travel through the bridge,
-              the same path real ones will.
-            </p>
+          <div class="play">
+            <section class="left">
+              <Scoreboard :view="view" />
+            </section>
 
-            <div class="controls">
-              <button @click="undo">Undo dart</button>
-              <button @click="nextPlayer">End turn</button>
-              <button :class="{ on: correcting }" @click="correcting = !correcting">
-                {{ correcting ? 'Pick the real segment…' : 'Correct last dart' }}
-              </button>
-              <button :class="{ on: managingRoster }" @click="managingRoster = !managingRoster">
-                Players
-              </button>
-              <button class="danger" :disabled="view.status !== 'playing'" @click="endGame">
-                End game
-              </button>
-              <button @click="showLastGame">Last game</button>
-            </div>
-
-            <div v-if="managingRoster" class="roster">
-              <p class="hint">
-                Joining players start a fresh score; the leg carries on. Removing
-                the player who is throwing ends their turn.
+            <section class="right">
+              <div class="board-stage" :class="shakeClass">
+                <Dartboard
+                  :highlight="hintSegments"
+                  :highlight-numbers="hintNumbers"
+                  :marks="view.turn.throws"
+                  :mark-color="activePlayer?.color"
+                  @throw="correcting ? correctLast($event.segment) : onThrow($event)"
+                />
+                <BoardEffect :effect="store.boardEffect" :level="store.effects" />
+              </div>
+              <p v-if="view.awaitingTakeout" class="hint centered takeout">
+                {{ activePlayer?.name }}'s turn is done -- pull your darts to hand over.
               </p>
-              <ul>
-                <li v-for="p in view.players" :key="p.playerId">
-                  <span class="dot" :style="{ background: p.color }" />
-                  <span class="who">{{ p.name }}</span>
+              <p v-else class="hint centered">
+                Click the board to throw. Simulated darts travel through the bridge,
+                the same path real ones will.
+              </p>
+
+              <div class="controls">
+                <button @click="undo">Undo dart</button>
+                <button @click="nextPlayer">End turn</button>
+                <button :class="{ on: correcting }" @click="correcting = !correcting">
+                  {{ correcting ? 'Pick the real segment…' : 'Correct last dart' }}
+                </button>
+                <button :class="{ on: managingRoster }" @click="managingRoster = !managingRoster">
+                  Players
+                </button>
+                <button class="danger" :disabled="view.status !== 'playing'" @click="endGame">
+                  End game
+                </button>
+                <button @click="showLastGame">Last game</button>
+              </div>
+
+              <div v-if="managingRoster" class="roster">
+                <p class="hint">
+                  Joining players start a fresh score; the leg carries on. Removing
+                  the player who is throwing ends their turn.
+                </p>
+                <ul>
+                  <li v-for="p in view.players" :key="p.playerId">
+                    <span class="dot" :style="{ background: p.color }" />
+                    <span class="who">{{ p.name }}</span>
+                    <button
+                      class="del"
+                      :disabled="view.players.length <= 1"
+                      :title="view.players.length <= 1 ? 'A match needs at least one player' : 'Remove from match'"
+                      @click="removeFromMatch(p.playerId)"
+                    >&times;</button>
+                  </li>
+                </ul>
+                <div v-if="availableToJoin.length" class="join">
                   <button
-                    class="del"
-                    :disabled="view.players.length <= 1"
-                    :title="view.players.length <= 1 ? 'A match needs at least one player' : 'Remove from match'"
-                    @click="removeFromMatch(p.playerId)"
-                  >&times;</button>
+                    v-for="p in availableToJoin"
+                    :key="p.id"
+                    class="chip"
+                    :style="{ '--accent': p.color }"
+                    @click="addToMatch(p.id)"
+                  >+ {{ p.name }}</button>
+                </div>
+                <p v-else class="hint">Everyone is already in this match.</p>
+              </div>
+
+              <p v-if="correcting" class="hint">
+                Click the segment the dart actually hit. This works even after a
+                misread dart has already busted the turn and handed over.
+              </p>
+
+              <ul v-if="view.recent.length" class="recent">
+                <li v-for="t in [...view.recent].reverse().slice(0, 6)" :key="t.id">
+                  <span class="label">{{ t.label }}</span>
+                  <span class="value">{{ t.value }}</span>
                 </li>
               </ul>
-              <div v-if="availableToJoin.length" class="join">
-                <button
-                  v-for="p in availableToJoin"
-                  :key="p.id"
-                  class="chip"
-                  :style="{ '--accent': p.color }"
-                  @click="addToMatch(p.id)"
-                >+ {{ p.name }}</button>
-              </div>
-              <p v-else class="hint">Everyone is already in this match.</p>
-            </div>
-
-            <p v-if="correcting" class="hint">
-              Click the segment the dart actually hit. This works even after a
-              misread dart has already busted the turn and handed over.
-            </p>
-
-            <ul v-if="view.recent.length" class="recent">
-              <li v-for="t in [...view.recent].reverse().slice(0, 6)" :key="t.id">
-                <span class="label">{{ t.label }}</span>
-                <span class="value">{{ t.value }}</span>
-              </li>
-            </ul>
-          </section>
+            </section>
+          </div>
         </div>
 
         <div v-else class="empty">
@@ -355,6 +365,7 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 }
 .pill.ok { border-color: #1f3a2a; background: #16241c; color: #3f9d54; }
 
+.play-view { display: flex; flex-direction: column; gap: 0.85rem; }
 .play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 1.5rem; align-items: start; }
 @media (max-width: 900px) { .play { grid-template-columns: 1fr; } }
 .left, .right { display: flex; flex-direction: column; gap: 0.85rem; }
