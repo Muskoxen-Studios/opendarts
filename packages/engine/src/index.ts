@@ -7,5 +7,6 @@ export * from './gotcha.ts';
 export * from './golf.ts';
 export * from './shanghai.ts';
 export * from './killer.ts';
+export * from './evenOdd.ts';
 export * from './registry.ts';
 export * from './match.ts';

@@ -5,7 +5,7 @@ import GameManual from './GameManual.vue';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
-type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer';
+type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd';
 
 const GAME_LABELS: Record<GameType, string> = {
   x01: 'X01',
@@ -14,6 +14,7 @@ const GAME_LABELS: Record<GameType, string> = {
   golf: 'Golf',
   shanghai: 'Shanghai',
   killer: 'Killer',
+  evenodd: 'Even/Odd',
 };
 
 const gameType = ref<GameType>('x01');
@@ -80,6 +81,10 @@ const gotchaHistory = ref<Record<string, ModeHandicap>>({});
 const startRound = ref(1);
 const endRound = ref(7);
 const instantWin = ref(true);
+
+// Even/Odd
+const startingScore = ref(0);
+const targetScore = ref(100);
 
 // Killer
 const startingLives = ref(3);
@@ -226,6 +231,10 @@ async function useLastSettings(): Promise<void> {
       endRound.value = Number(cfg.endRound ?? 7);
       instantWin.value = cfg.instantWin !== false;
     }
+    if (setup.gameType === 'evenodd') {
+      startingScore.value = Number(cfg.startingScore ?? 0);
+      targetScore.value = Number(cfg.targetScore ?? 100);
+    }
     if (setup.gameType === 'killer') {
       startingLives.value = Number(cfg.startingLives ?? 3);
       friendlyFire.value = cfg.friendlyFire === true;
@@ -314,6 +323,16 @@ function buildConfig(): unknown {
       roundLimit: roundLimitValue.value,
     };
   }
+  if (gameType.value === 'evenodd') {
+    return {
+      gameType: 'evenodd',
+      startingScore: startingScore.value,
+      targetScore: targetScore.value,
+      legsToWin: legsToWin.value,
+      setsToWin: setsToWin.value,
+      roundLimit: roundLimitValue.value,
+    };
+  }
   if (gameType.value === 'killer') {
     return {
       gameType: 'killer',
@@ -387,7 +406,7 @@ async function start(): Promise<void> {
       </div>
       <div class="tabs">
         <button
-          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer'] as GameType[])"
+          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd'] as GameType[])"
           :key="g"
           :class="{ on: gameType === g }"
           @click="gameType = g"
@@ -649,6 +668,25 @@ async function start(): Promise<void> {
           </div>
         </template>
       </details>
+    </template>
+
+    <!-- Even/Odd -->
+    <template v-else-if="gameType === 'evenodd'">
+      <div class="grid">
+        <div class="field">
+          <label>Starting score</label>
+          <input v-model.number="startingScore" type="number" />
+        </div>
+        <div class="field">
+          <label>Target score</label>
+          <input v-model.number="targetScore" type="number" min="1" />
+        </div>
+      </div>
+      <p class="hint">
+        Even numbers add their scored value, odd numbers subtract it &mdash;
+        the inner bull counts as even, the outer bull as odd. First to reach
+        or cross the target score wins the leg.
+      </p>
     </template>
 
     <!-- Gotcha -->
