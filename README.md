@@ -145,7 +145,7 @@ the shape the fake sends. The protocol claim rests on the capture, not the fake.
 
 ## Games
 
-**X01** — 301/501/701, straight/double/master in and out, legs and sets, bust
+**X01** — 170/301/501/701, straight/double/master in and out, legs and sets, bust
 handling, and checkout hints. Out defaults to **straight**: this is a pub board,
 and a leg that cannot be finished without a double is a leg that stops being
 fun. Set out to `double` for match rules.
