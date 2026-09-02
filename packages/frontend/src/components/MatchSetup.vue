@@ -462,6 +462,7 @@ async function start(): Promise<void> {
         <div class="field">
           <label>Start score</label>
           <select v-model.number="startScore">
+            <option :value="170">170</option>
             <option :value="301">301</option>
             <option :value="501">501</option>
             <option :value="701">701</option>
@@ -516,6 +517,7 @@ async function start(): Promise<void> {
           <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
           <select v-model.number="handicapFor(id).startScore">
             <option :value="undefined">default ({{ startScore }})</option>
+            <option :value="170">170</option>
             <option :value="301">301</option>
             <option :value="501">501</option>
             <option :value="701">701</option>
