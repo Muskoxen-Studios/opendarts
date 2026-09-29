@@ -12,7 +12,7 @@ import ProfilePanel from './components/ProfilePanel.vue';
 import PlayerStrip from './components/PlayerStrip.vue';
 import Scoreboard from './components/Scoreboard.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
-import { api, connect, dismissCelebration, pushToast, store, type MatchReport } from './store.ts';
+import { api, connect, dismissCelebration, dismissStuckTakeout, pushToast, store, type MatchReport } from './store.ts';
 
 const tab = ref<'play' | 'setup' | 'leaderboard' | 'players' | 'settings'>('play');
 const view = computed(() => store.view);
@@ -67,6 +67,13 @@ function undo(): void {
 
 function nextPlayer(): void {
   void api.command({ type: 'NEXT_PLAYER' });
+}
+
+/** The board stuck on "Takeout in progress": hand over, then zero its counter. */
+async function forceTakeout(): Promise<void> {
+  dismissStuckTakeout();
+  await api.command({ type: 'NEXT_PLAYER' });
+  void api.boardAction('reset');
 }
 
 /**
@@ -242,6 +249,10 @@ async function rematch(): Promise<void> {
                 />
                 <BoardEffect :effect="store.boardEffect" :level="store.effects" />
               </div>
+              <p v-if="store.takeoutStuck" class="hint centered takeout stuck">
+                The board seems stuck on “Takeout in progress”.
+                <button @click="forceTakeout">Force takeout</button>
+              </p>
               <p v-if="view.awaitingTakeout" class="hint centered takeout">
                 {{ activePlayer?.name }}'s turn is done -- pull your darts to hand over.
               </p>
@@ -411,6 +422,7 @@ nav button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
 .hint { margin: 0; font-size: 0.8rem; color: #8b93a1; }
 .hint.centered { text-align: center; }
 .hint.takeout { color: #e0a458; font-weight: 600; }
+.hint.stuck button { margin-left: 0.5rem; }
 
 .recent { list-style: none; margin: 0; padding: 0; display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .recent li {

@@ -35,7 +35,14 @@ interface Harness {
   until(predicate: (events: BoardEvent[]) => boolean, timeoutMs?: number): Promise<void>;
 }
 
-async function connect(opts: { heartbeatTimeoutMs?: number; debugMotion?: boolean } = {}) {
+async function connect(
+  opts: {
+    heartbeatTimeoutMs?: number;
+    debugMotion?: boolean;
+    pollIntervalMs?: number;
+    stuckTakeoutMs?: number;
+  } = {},
+) {
   fake = await startFakeBoard({ port: 0, autoStart: true, motion: opts.debugMotion });
   const events: BoardEvent[] = [];
 
@@ -56,6 +63,8 @@ async function connect(opts: { heartbeatTimeoutMs?: number; debugMotion?: boolea
     baseUrl: fake.url,
     debugMotion: opts.debugMotion ?? false,
     ...(opts.heartbeatTimeoutMs ? { heartbeatTimeoutMs: opts.heartbeatTimeoutMs } : {}),
+    ...(opts.pollIntervalMs !== undefined ? { pollIntervalMs: opts.pollIntervalMs } : {}),
+    ...(opts.stuckTakeoutMs !== undefined ? { stuckTakeoutMs: opts.stuckTakeoutMs } : {}),
   });
   source.start((event) => events.push(event));
   await harness.until((e) => e.some((x) => x.type === 'board.connected'));
@@ -72,7 +81,7 @@ async function post(url: string, body: unknown) {
 
 describe('connecting to a board', () => {
   it('reports connected and then heartbeats from the stats channel', async () => {
-    const { harness } = await connect();
+    const { harness } = await connect({ pollIntervalMs: 0 });
     await harness.until((e) => e.some((x) => x.type === 'board.heartbeat'));
     const beat = harness.events.find((e) => e.type === 'board.heartbeat');
     expect(beat).toMatchObject({ fps: 30 });
@@ -208,7 +217,7 @@ describe('losing the board', () => {
     // The heartbeat rule that matters: `state` produced zero frames in a 45s
     // capture of a healthy idle board, so silence there means nothing. Only
     // missing `stats` means the board is gone.
-    const { fake, harness } = await connect({ heartbeatTimeoutMs: 400 });
+    const { fake, harness } = await connect({ heartbeatTimeoutMs: 400, pollIntervalMs: 0 });
     // Go quiet without dropping the socket, so the only thing that can raise
     // the alarm is the missing heartbeat.
     fake.silence();
@@ -216,5 +225,49 @@ describe('losing the board', () => {
     await harness.until((e) =>
       e.some((x) => x.type === 'board.disconnected'),
     );
+  });
+
+  it('stays online on a v2 board that sends no stats, via /api/state polling', async () => {
+    // Board Manager v2 dropped `stats`; a healthy board looks like `state`
+    // frames only. It must not be reported offline.
+    const { fake, harness } = await connect({ heartbeatTimeoutMs: 400, pollIntervalMs: 100 });
+    fake.silence();
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(harness.events.some((x) => x.type === 'board.disconnected')).toBe(false);
+  });
+});
+
+describe('a takeout that never finishes', () => {
+  it('reports takeout.stuck once "Takeout in progress" outlasts the deadline', async () => {
+    const { fake, harness } = await connect({ pollIntervalMs: 0, stuckTakeoutMs: 200 });
+    await post(`${fake.url}/sim/throw`, { segment: 'T20' });
+    await post(`${fake.url}/sim/takeout-start`, {});
+    await harness.until((e) => e.some((x) => x.type === 'takeout.stuck'));
+  });
+
+  it('stays quiet when the takeout finishes in time', async () => {
+    const { fake, harness } = await connect({ pollIntervalMs: 0, stuckTakeoutMs: 300 });
+    await post(`${fake.url}/sim/turn`, { segments: ['T20', 'T20', 'T20'] });
+    await harness.until((e) => e.some((x) => x.type === 'takeout.completed'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(harness.events.some((x) => x.type === 'takeout.stuck')).toBe(false);
+  });
+});
+
+describe('a dart thrown into an unfinished takeout', () => {
+  it('reports an inferred takeout before the dart, so it starts the next visit', async () => {
+    const { fake, harness } = await connect({ pollIntervalMs: 0, stuckTakeoutMs: 0 });
+    await post(`${fake.url}/sim/throw`, { segment: 'T20' });
+    await post(`${fake.url}/sim/throw`, { segment: 'D16' });
+    await post(`${fake.url}/sim/takeout-start`, {});
+    await post(`${fake.url}/sim/throw`, { segment: 'S20' });
+    await harness.until((e) => e.filter((x) => x.type === 'throw.detected').length === 3);
+
+    const kinds = harness.events.map((e) => e.type);
+    const inferred = harness.events.findIndex(
+      (e) => e.type === 'takeout.completed' && e.inferred === true,
+    );
+    expect(inferred).toBeGreaterThan(-1);
+    expect(inferred).toBeLessThan(kinds.lastIndexOf('throw.detected'));
   });
 });

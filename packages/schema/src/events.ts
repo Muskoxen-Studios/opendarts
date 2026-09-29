@@ -72,7 +72,21 @@ export type BoardStatus = z.infer<typeof BoardStatusSchema>;
 export const BoardEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('throw.detected'), throw: DartThrowSchema }),
   z.object({ type: z.literal('takeout.started') }),
-  z.object({ type: z.literal('takeout.completed') }),
+  z.object({
+    type: z.literal('takeout.completed'),
+    /**
+     * Not reported by the board: the source concluded the darts were pulled
+     * because a new dart arrived while a takeout was still open. The board's
+     * own counter is then still stale and worth resetting.
+     */
+    inferred: z.boolean().optional(),
+  }),
+  /**
+   * The board has said "Takeout in progress" for far longer than a hand takes
+   * to pull three darts, so it is presumed stuck. Advisory only: nothing
+   * downstream may treat it as a takeout.
+   */
+  z.object({ type: z.literal('takeout.stuck') }),
   z.object({
     type: z.literal('board.status'),
     status: BoardStatusSchema,

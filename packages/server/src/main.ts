@@ -44,7 +44,13 @@ function broadcast(event: ServerEvent): void {
   for (const c of clients) if (c.readyState === c.OPEN) c.send(payload);
 }
 
-const manager = new MatchManager(store, broadcast);
+const manager = new MatchManager(store, broadcast, () => {
+  // Through the bridge, not the board: its /board/reset arms the source so the
+  // shrinking throws[] is not misread as a takeout.
+  fetch(`${BRIDGE_HTTP}/board/reset`, { method: 'POST', signal: AbortSignal.timeout(4000) }).catch(
+    () => {},
+  );
+});
 
 // Resume an interrupted match so a restart mid-leg does not lose the game.
 const unfinished = store.findUnfinishedMatch();

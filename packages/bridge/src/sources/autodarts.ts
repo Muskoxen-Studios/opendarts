@@ -6,8 +6,12 @@ export interface AutodartsOptions {
   baseUrl: string;
   /** Forward the 30/s motion channel. Debugging only -- it is very noisy. */
   debugMotion?: boolean;
-  /** Consider the board offline after this long without a `stats` frame. */
+  /** Consider the board offline after this long without any liveness signal. */
   heartbeatTimeoutMs?: number;
+  /** How often to poll `GET /api/state` for liveness. 0 disables polling. */
+  pollIntervalMs?: number;
+  /** Report `takeout.stuck` after "Takeout in progress" lasts this long. 0 disables. */
+  stuckTakeoutMs?: number;
 }
 
 /**
@@ -19,16 +23,29 @@ export interface AutodartsOptions {
  *   - `motion_state` arrives at ~30/s and is dropped unless explicitly enabled
  *   - `state` is EDGE-TRIGGERED: it went completely silent for 45s on an idle
  *     board, so it must never be treated as a liveness signal
- *   - `stats` arrives at ~1/s and is the heartbeat we actually trust
+ *   - `stats` arrived at ~1/s on v1 and was the heartbeat we trusted
+ *
+ * Board Manager v2 no longer sends `stats` (or `motion_state`) at all -- a 25s
+ * capture of a live board showed `state` frames only -- so `stats` alone would
+ * mark a healthy board offline. `GET /api/state` still answers and carries
+ * `connected`, so it is polled as the liveness signal; `stats` still counts
+ * when a v1 board sends it.
  */
 export function autodartsSource(opts: AutodartsOptions): Source {
   const wsUrl = opts.baseUrl.replace(/^http/, 'ws') + '/api/events';
   const heartbeatTimeout = opts.heartbeatTimeoutMs ?? 10_000;
+  const pollInterval = opts.pollIntervalMs ?? 3000;
+  const stuckTakeout = opts.stuckTakeoutMs ?? 15_000;
+  const httpUrl = opts.baseUrl.replace(/\/$/, '');
 
   let socket: WebSocket | null = null;
   let closed = false;
   let backoff = 500;
   let heartbeatTimer: NodeJS.Timeout | null = null;
+  let pollTimer: NodeJS.Timeout | null = null;
+  let stuckTimer: NodeJS.Timeout | null = null;
+  /** A takeout has started and `throws[]` has not shrunk since. */
+  let takeoutOpen = false;
   let online = false;
   /** Number of darts already emitted for the current visit to the board. */
   let emittedThrows = 0;
@@ -40,6 +57,24 @@ export function autodartsSource(opts: AutodartsOptions): Source {
    * a takeout. See `noteCounterReset`.
    */
   let counterResetPending = false;
+
+  const clearStuck = (): void => {
+    if (stuckTimer) clearTimeout(stuckTimer);
+    stuckTimer = null;
+  };
+
+  /**
+   * The board sometimes sticks on "Takeout in progress" after the darts are
+   * long gone. `state` is edge-triggered, so a stuck board is silent: the only
+   * way to notice is that the status we last saw never gets followed up.
+   */
+  const armStuck = (emit: EventSink): void => {
+    if (stuckTakeout <= 0 || stuckTimer) return;
+    stuckTimer = setTimeout(() => {
+      stuckTimer = null;
+      emit({ type: 'takeout.stuck' });
+    }, stuckTakeout);
+  };
 
   const connect = (emit: EventSink): void => {
     if (closed) return;
@@ -67,6 +102,7 @@ export function autodartsSource(opts: AutodartsOptions): Source {
     };
 
     ws.onclose = () => {
+      takeoutOpen = false;
       if (online) {
         online = false;
         emit({ type: 'board.disconnected', reason: 'socket closed' });
@@ -89,16 +125,40 @@ export function autodartsSource(opts: AutodartsOptions): Source {
     }, heartbeatTimeout);
   };
 
+  /** Any sign of life: flip online if needed and push the offline deadline out. */
+  const alive = (emit: EventSink, fps?: number): void => {
+    if (!online) {
+      online = true;
+      emit({ type: 'board.connected' });
+    }
+    emit({ type: 'board.heartbeat', ...(fps !== undefined ? { fps } : {}) });
+    armHeartbeat(emit);
+  };
+
+  const poll = async (emit: EventSink): Promise<void> => {
+    try {
+      const res = await fetch(`${httpUrl}/api/state`, { signal: AbortSignal.timeout(2500) });
+      if (!res.ok || closed) return;
+      const body = (await res.json()) as { connected?: boolean; status?: string };
+      if (body.status && body.status !== 'Takeout in progress') clearStuck();
+      // `connected: false` means the manager is up but the board is not.
+      if (body.connected !== false && !closed) alive(emit);
+    } catch {
+      // Unreachable: let the heartbeat deadline run out.
+    }
+  };
+
+  const startPolling = (emit: EventSink): void => {
+    if (pollInterval <= 0) return;
+    void poll(emit);
+    pollTimer = setInterval(() => void poll(emit), pollInterval);
+  };
+
   const handleFrame = (frame: { type?: string; data?: unknown }, emit: EventSink): void => {
     switch (frame.type) {
       case 'stats': {
         const data = frame.data as { fps?: number } | undefined;
-        if (!online) {
-          online = true;
-          emit({ type: 'board.connected' });
-        }
-        emit({ type: 'board.heartbeat', fps: data?.fps });
-        armHeartbeat(emit);
+        alive(emit, data?.fps);
         return;
       }
 
@@ -122,7 +182,14 @@ export function autodartsSource(opts: AutodartsOptions): Source {
           });
         }
 
-        if (data.status === 'Takeout in progress') emit({ type: 'takeout.started' });
+        const takeoutWasOpen = takeoutOpen;
+        if (data.status === 'Takeout in progress') {
+          takeoutOpen = true;
+          emit({ type: 'takeout.started' });
+          armStuck(emit);
+        } else if (data.status) {
+          clearStuck();
+        }
 
         const throws = Array.isArray(data.throws) ? data.throws : [];
 
@@ -132,6 +199,7 @@ export function autodartsSource(opts: AutodartsOptions): Source {
         // TODO(payload): confirm whether throws[] is cumulative for the turn.
         if (throws.length < emittedThrows) {
           emittedThrows = throws.length;
+          takeoutOpen = false;
           // A reset we asked for is not a takeout: nobody pulled a dart out,
           // so the turn in progress must survive it.
           if (counterResetPending) {
@@ -139,6 +207,17 @@ export function autodartsSource(opts: AutodartsOptions): Source {
           } else {
             emit({ type: 'takeout.completed' });
           }
+          clearStuck();
+        }
+
+        // A new dart while a takeout is still open: the board stuck on
+        // "Takeout in progress" (or a takeout began and the player carried on
+        // throwing). Either way the darts are out, and this dart belongs to the
+        // next visit -- say so first, or it lands on the player who just threw.
+        if (takeoutWasOpen && throws.length > emittedThrows) {
+          takeoutOpen = false;
+          clearStuck();
+          emit({ type: 'takeout.completed', inferred: true });
         }
 
         for (let i = emittedThrows; i < throws.length; i++) {
@@ -172,11 +251,15 @@ export function autodartsSource(opts: AutodartsOptions): Source {
       currentEmit = emit;
       connect(emit);
       armHeartbeat(emit);
+      startPolling(emit);
     },
     stop() {
       closed = true;
       currentEmit = null;
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      if (pollTimer) clearInterval(pollTimer);
+      clearStuck();
+      pollTimer = null;
       socket?.close();
       socket = null;
     },

@@ -298,6 +298,8 @@ interface State {
   /** The board's own status word, e.g. "Throw" or "Takeout". Null when unknown. */
   boardStatus: string | null;
   boardRunning: boolean;
+  /** The board has sat on "Takeout in progress" suspiciously long. */
+  takeoutStuck: boolean;
   connected: boolean;
   toasts: Toast[];
   lastError: string | null;
@@ -316,6 +318,7 @@ const state = reactive<State>({
   boardOnline: false,
   boardStatus: null,
   boardRunning: false,
+  takeoutStuck: false,
   connected: false,
   toasts: [],
   lastError: null,
@@ -360,6 +363,10 @@ function retractCelebration(achievementIds: string[]): void {
     if (ids.has(state.celebrationQueue[i]!.id)) state.celebrationQueue.splice(i, 1);
   }
   if (state.celebration && ids.has(state.celebration.id)) dismissCelebration();
+}
+
+export function dismissStuckTakeout(): void {
+  state.takeoutStuck = false;
 }
 
 export function dismissCelebration(): void {
@@ -574,6 +581,15 @@ export function connect(): void {
           // stale "Throw" on screen next to an offline indicator.
           state.boardStatus = null;
           state.boardRunning = false;
+        }
+        if (msg.event?.type === 'takeout.stuck') state.takeoutStuck = true;
+        if (
+          msg.event?.type === 'takeout.completed' ||
+          msg.event?.type === 'throw.detected' ||
+          msg.event?.type === 'board.disconnected' ||
+          (msg.event?.type === 'board.status' && msg.event.status !== 'Takeout in progress')
+        ) {
+          state.takeoutStuck = false;
         }
         if (msg.event?.type === 'board.status') {
           state.boardStatus = msg.event.status ?? null;

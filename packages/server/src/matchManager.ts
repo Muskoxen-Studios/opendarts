@@ -43,6 +43,7 @@ export type ServerEvent =
 export class MatchManager {
   private store: Store;
   private broadcast: (e: ServerEvent) => void;
+  private resetBoard: (() => void) | undefined;
   private match: Match | null = null;
   private matchId: string | null = null;
   /** Latest board status, surfaced to the UI as a connection indicator. */
@@ -63,9 +64,19 @@ export class MatchManager {
    */
   private heldAtMatchStart = new Map<string, Set<string>>();
 
-  constructor(store: Store, broadcast: (e: ServerEvent) => void) {
+  /**
+   * @param resetBoard Asks the board to zero its throw counter. Called when a
+   *   dart shows up while the previous turn is still held for takeout -- see
+   *   `onBoardEvent`. Optional: only a real board has a counter to reset.
+   */
+  constructor(
+    store: Store,
+    broadcast: (e: ServerEvent) => void,
+    resetBoard?: () => void,
+  ) {
     this.store = store;
     this.broadcast = broadcast;
+    this.resetBoard = resetBoard;
     this.refreshHistory();
   }
 
@@ -309,6 +320,15 @@ export class MatchManager {
         break;
       case 'throw.detected': {
         this.broadcast({ type: 'board', event });
+        // A board dart while the last turn is still held means the takeout
+        // happened but the board never said so (it sticks on "Takeout in
+        // progress"). The engine would drop the dart, so treat it as proof the
+        // darts are out: hand over, score it for the next player, and zero the
+        // board's counter so it does not carry the old darts forward.
+        if (this.view?.awaitingTakeout && event.throw.source === 'board') {
+          this.apply({ type: 'ADVANCE_TURN' });
+          this.resetBoard?.();
+        }
         const view = this.apply({ type: 'THROW', throw: event.throw });
         // A real board holds the finished turn until the darts are physically
         // pulled out (see BaseState.turnEnded), so players get a moment to
@@ -334,6 +354,8 @@ export class MatchManager {
         }
         // With nothing thrown there is no turn to end: a stray takeout at a
         // fresh oche must not skip a player.
+        // An inferred takeout means the board is stuck with stale darts in it.
+        if (event.inferred) this.resetBoard?.();
         this.broadcast({ type: 'board', event });
         return;
       }

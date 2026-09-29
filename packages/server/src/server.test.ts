@@ -160,6 +160,41 @@ describe('holding the handover for a real takeout', () => {
     expect(manager.view?.turn.throws).toHaveLength(0);
   });
 
+  it('treats a dart thrown into a stuck takeout as proof the darts are out', () => {
+    const [alice, bob] = seedPlayers();
+    let resets = 0;
+    manager = new MatchManager(store, (e) => events.push(e), () => resets++);
+    manager.start(X01, [alice, bob]);
+    boardThrow('T20');
+    boardThrow('T20');
+    boardThrow('T20');
+    expect(manager.view?.awaitingTakeout).toBe(true);
+
+    // The board never reported the takeout; the next dart arrives anyway.
+    boardThrow('20');
+
+    expect(manager.view?.activePlayerId).toBe(bob.id);
+    expect(manager.view?.turn.throws).toHaveLength(1);
+    expect(resets).toBe(1);
+  });
+
+  it('ends a two-dart turn on an inferred takeout and resets the board', () => {
+    const [alice, bob] = seedPlayers();
+    let resets = 0;
+    manager = new MatchManager(store, (e) => events.push(e), () => resets++);
+    manager.start(X01, [alice, bob]);
+    boardThrow('T20');
+    boardThrow('D16');
+
+    // What the bridge sends when a dart lands in a takeout that never finished.
+    manager.onBoardEvent({ type: 'takeout.completed', inferred: true });
+    boardThrow('20');
+
+    expect(manager.view?.activePlayerId).toBe(bob.id);
+    expect(manager.view?.turn.throws).toHaveLength(1);
+    expect(resets).toBe(1);
+  });
+
   it('ends a short turn too, when a dart missed the board and went undetected', () => {
     const [alice, bob] = seedPlayers();
     manager.start(X01, [alice, bob]);

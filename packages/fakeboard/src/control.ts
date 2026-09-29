@@ -74,6 +74,14 @@ export async function handleControl(
     return true;
   }
 
+  if (url === '/sim/takeout-start') {
+    // Begin a takeout and never finish it: the board sticking on
+    // "Takeout in progress".
+    deps.board.takeoutStart();
+    json(res, 202, board(deps));
+    return true;
+  }
+
   if (url === '/sim/takeout') {
     deps.board.takeoutStart();
     deps.board.takeoutComplete();
