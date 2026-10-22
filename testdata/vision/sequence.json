@@ -1,0 +1,127 @@
+{
+  "width": 480,
+  "height": 480,
+  "calibrations": {
+    "cam0": [
+      1,
+      0,
+      240,
+      0,
+      -1,
+      240
+    ],
+    "cam1": [
+      0.8,
+      0.3,
+      240,
+      0.2,
+      -0.9,
+      240
+    ],
+    "cam2": [
+      0.7,
+      -0.4,
+      240,
+      -0.3,
+      -0.8,
+      240
+    ]
+  },
+  "reference": {
+    "cam0": "empty-cam0.pgm",
+    "cam1": "empty-cam1.pgm",
+    "cam2": "empty-cam2.pgm"
+  },
+  "frames": [
+    {
+      "cam0": "empty-cam0.pgm",
+      "cam1": "empty-cam1.pgm",
+      "cam2": "empty-cam2.pgm"
+    },
+    {
+      "cam0": "empty-cam0.pgm",
+      "cam1": "empty-cam1.pgm",
+      "cam2": "empty-cam2.pgm"
+    },
+    {
+      "cam0": "empty-cam0.pgm",
+      "cam1": "empty-cam1.pgm",
+      "cam2": "empty-cam2.pgm"
+    },
+    {
+      "cam0": "first-cam0.pgm",
+      "cam1": "first-cam1.pgm",
+      "cam2": "first-cam2.pgm"
+    },
+    {
+      "cam0": "first-cam0.pgm",
+      "cam1": "first-cam1.pgm",
+      "cam2": "first-cam2.pgm"
+    },
+    {
+      "cam0": "first-cam0.pgm",
+      "cam1": "first-cam1.pgm",
+      "cam2": "first-cam2.pgm"
+    },
+    {
+      "cam0": "second-cam0.pgm",
+      "cam1": "second-cam1.pgm",
+      "cam2": "second-cam2.pgm"
+    },
+    {
+      "cam0": "second-cam0.pgm",
+      "cam1": "second-cam1.pgm",
+      "cam2": "second-cam2.pgm"
+    },
+    {
+      "cam0": "second-cam0.pgm",
+      "cam1": "second-cam1.pgm",
+      "cam2": "second-cam2.pgm"
+    },
+    {
+      "cam0": "third-cam0.pgm",
+      "cam1": "third-cam1.pgm",
+      "cam2": "third-cam2.pgm"
+    },
+    {
+      "cam0": "third-cam0.pgm",
+      "cam1": "third-cam1.pgm",
+      "cam2": "third-cam2.pgm"
+    },
+    {
+      "cam0": "third-cam0.pgm",
+      "cam1": "third-cam1.pgm",
+      "cam2": "third-cam2.pgm"
+    },
+    {
+      "cam0": "partial-cam0.pgm",
+      "cam1": "partial-cam1.pgm",
+      "cam2": "partial-cam2.pgm"
+    },
+    {
+      "cam0": "partial-cam0.pgm",
+      "cam1": "partial-cam1.pgm",
+      "cam2": "partial-cam2.pgm"
+    },
+    {
+      "cam0": "partial-cam0.pgm",
+      "cam1": "partial-cam1.pgm",
+      "cam2": "partial-cam2.pgm"
+    },
+    {
+      "cam0": "empty-cam0.pgm",
+      "cam1": "empty-cam1.pgm",
+      "cam2": "empty-cam2.pgm"
+    },
+    {
+      "cam0": "empty-cam0.pgm",
+      "cam1": "empty-cam1.pgm",
+      "cam2": "empty-cam2.pgm"
+    },
+    {
+      "cam0": "empty-cam0.pgm",
+      "cam1": "empty-cam1.pgm",
+      "cam2": "empty-cam2.pgm"
+    }
+  ]
+}

@@ -70,7 +70,13 @@ export type BoardStatus = z.infer<typeof BoardStatusSchema>;
  * only in packages/bridge/src/adapters/autodarts.ts.
  */
 export const BoardEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('throw.detected'), throw: DartThrowSchema }),
+  z.object({
+    type: z.literal('throw.detected'),
+    throw: DartThrowSchema,
+    /** Legacy sources can recover missed takeout on a new throw. Image sources
+     * that track occupancy opt out: an extra dart is not proof of an empty board. */
+    allowTakeoutInference: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('takeout.started') }),
   z.object({
     type: z.literal('takeout.completed'),

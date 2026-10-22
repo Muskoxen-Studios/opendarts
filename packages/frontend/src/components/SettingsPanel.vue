@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import BoardControls from './BoardControls.vue';
+import NativeDetector from './NativeDetector.vue';
 import { api, pushToast, type EffectLevel, type Settings, type SourceConfig } from '../store.ts';
 
 const settings = ref<Settings | null>(null);
@@ -10,7 +11,9 @@ const result = ref<string | null>(null);
 
 // -- bridge source ---------------------------------------------------------
 
-const kind = ref<'simulator' | 'autodarts' | 'replay'>('simulator');
+const kind = ref<SourceConfig['kind']>('simulator');
+const nativeUrl = ref('http://127.0.0.1:8091');
+const loadError = ref<string | null>(null);
 const scheme = ref<'http' | 'https'>('http');
 const host = ref('192.168.120.40');
 const port = ref(3180);
@@ -36,6 +39,7 @@ const dirty = computed(() => {
 });
 
 function buildConfig(): SourceConfig {
+  if (kind.value === 'native') return { kind: 'native', url: nativeUrl.value };
   if (kind.value === 'autodarts') {
     return { kind: 'autodarts', url: boardUrl.value, debugMotion: debugMotion.value };
   }
@@ -49,6 +53,7 @@ function buildConfig(): SourceConfig {
 function loadFromConfig(config: SourceConfig | undefined | null): void {
   if (!config) return;
   kind.value = config.kind;
+  if (config.kind === 'native') nativeUrl.value = config.url;
   if (config.kind === 'autodarts') {
     try {
       const parsed = new URL(config.url);
@@ -69,10 +74,11 @@ function loadFromConfig(config: SourceConfig | undefined | null): void {
 
 async function refresh(): Promise<void> {
   settings.value = await api.settings();
+  nativeUrl.value = settings.value.runtime.detectorUrl;
   loadFromConfig(settings.value?.bridge?.config);
 }
 
-onMounted(refresh);
+onMounted(() => { void refresh().catch(err => { loadError.value = (err as Error).message; }); });
 
 watch(kind, () => { testResult.value = null; });
 
@@ -80,9 +86,10 @@ async function testBoard(): Promise<void> {
   testing.value = true;
   testResult.value = null;
   try {
-    const r = await api.testBoard(boardUrl.value);
+    const native = kind.value === 'native';
+    const r = await api.testBoard(native ? nativeUrl.value : boardUrl.value, native ? 'native' : 'autodarts');
     testResult.value = r.ok
-      ? { ok: true, text: `Reachable — Board Manager ${r.version ?? '?'} (${r.latencyMs}ms)` }
+      ? { ok: true, text: `Reachable — ${native ? 'native detector' : `Board Manager ${r.version ?? '?'}`} (${r.latencyMs ?? '?'}ms)` }
       : { ok: false, text: r.error ?? 'unreachable' };
   } catch (err) {
     testResult.value = { ok: false, text: (err as Error).message };
@@ -150,11 +157,11 @@ async function recompute(): Promise<void> {
 
       <div class="tabs">
         <button
-          v-for="k in (['simulator', 'autodarts', 'replay'] as const)"
+          v-for="k in (['simulator', 'autodarts', 'native', 'replay'] as const)"
           :key="k"
           :class="{ on: kind === k }"
           @click="kind = k"
-        >{{ k === 'autodarts' ? 'Real board' : k === 'simulator' ? 'Simulator' : 'Replay' }}</button>
+        >{{ k === 'autodarts' ? 'Real board' : k === 'simulator' ? 'Simulator' : k === 'native' ? 'Native detector' : 'Replay' }}</button>
       </div>
 
       <p v-if="kind === 'simulator'" class="hint">
@@ -188,6 +195,16 @@ async function recompute(): Promise<void> {
         </p>
       </template>
 
+      <template v-else-if="kind === 'native'">
+        <label class="row wide">
+          <span>Detector URL</span>
+          <input v-model="nativeUrl" aria-label="Native detector URL" autocomplete="off" data-1p-ignore />
+        </label>
+        <p class="hint">Server-side address, not your browser's localhost. Synthetic image proof-of-pipeline only; not a production detector or live camera capture.</p>
+        <button class="secondary" :disabled="testing" @click="testBoard">{{ testing ? 'Testing…' : 'Test connection' }}</button>
+        <p v-if="testResult" class="result" :class="{ bad: !testResult.ok }">{{ testResult.text }}</p>
+      </template>
+
       <template v-else>
         <label class="row wide">
           <span>Capture file</span>
@@ -209,6 +226,8 @@ async function recompute(): Promise<void> {
         </button>
       </div>
     </div>
+
+    <NativeDetector v-if="settings.bridge?.config.kind === 'native'" :key="settings.bridge.config.url" />
 
     <div class="group">
       <h3>Celebrations</h3>
@@ -266,8 +285,9 @@ async function recompute(): Promise<void> {
     <div class="group">
       <h3>The board</h3>
       <p class="hint">
-        These call the Board Manager's own API directly &mdash; the same
-        controls its stock UI has, without needing the internet to load it.
+        Controls go through the server and bridge to the active detector.
+        Native Reset adopts the current image baseline; it does not remove darts.
+        Auto-calibration is unsupported by the native detector.
       </p>
       <BoardControls />
     </div>
@@ -288,6 +308,7 @@ async function recompute(): Promise<void> {
       </p>
     </div>
   </section>
+  <p v-else class="hint">{{ loadError ? `Could not load settings: ${loadError}` : 'Loading settings…' }}</p>
 </template>
 
 <style scoped>

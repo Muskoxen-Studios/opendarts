@@ -16,6 +16,7 @@ import { openDatabase } from './db.ts';
 import { MatchManager, type ServerEvent } from './matchManager.ts';
 import { resolveStatic, sendStatic } from './static.ts';
 import { Store } from './store.ts';
+import { MAX_RENDER_BODY, proxyNative } from './nativeProxy.ts';
 
 const PORT = Number(process.env.PORT ?? 8080);
 /**
@@ -91,9 +92,16 @@ function json(res: ServerResponse, code: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+const BODY_TOO_LARGE = Symbol('body too large');
+async function readBody(req: IncomingMessage, limit = Infinity): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let bytes = 0;
+  for await (const c of req) {
+    bytes += (c as Buffer).length;
+    if (bytes <= limit) chunks.push(c as Buffer);
+    else chunks.length = 0; // Drain without retaining an oversized render upload.
+  }
+  if (bytes > limit) return BODY_TOO_LARGE;
   if (chunks.length === 0) return {};
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -437,13 +445,17 @@ route('PUT', '/api/bridge/source', async (_req, res, _p, body) => {
 
 /** Check a board is reachable before switching to it. */
 route('POST', '/api/bridge/test', async (_req, res, _p, body) => {
-  const url = (body as { url?: unknown })?.url;
+  const { url, kind } = (body ?? {}) as { url?: unknown; kind?: unknown };
   if (typeof url !== 'string') return json(res, 400, { error: 'expected { url }' });
+  if (kind !== undefined && kind !== 'native' && kind !== 'autodarts') {
+    return json(res, 400, { error: 'unsupported connection-test source' });
+  }
   try {
     const upstream = await fetch(`${BRIDGE_HTTP}/test`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({ url, kind }),
     });
     json(res, upstream.status, await upstream.json());
   } catch (err) {
@@ -451,13 +463,25 @@ route('POST', '/api/bridge/test', async (_req, res, _p, body) => {
   }
 });
 
+// Diagnostic images are streamed separately from scoring events. Query strings
+// only bust the browser cache; the proxy sends allowlisted paths to the bridge.
+for (const path of ['/api/native/health', '/api/native/state', '/api/native/cameras/:id/frame']) {
+  route('GET', path, (req, res) => proxyNative(req, res, BRIDGE_HTTP));
+}
+for (const path of [
+  '/api/native/sim/throw', '/api/native/sim/takeout', '/api/native/sim/reset',
+  '/api/native/render/configure', '/api/native/render/frames', '/api/native/render/reset',
+]) {
+  route('POST', path, (req, res, _params, body) => proxyNative(req, res, BRIDGE_HTTP, body));
+}
+
 // -- board controls ---------------------------------------------------------
 
 /**
  * Start, stop, reset and calibrate the board itself.
  *
- * Proxied straight through to the bridge, which proxies straight through to the
- * Board Manager's local API. No game state is touched on the way: stopping
+ * The bridge dispatches to the active source's own control API. No game state
+ * is touched on the way: stopping
  * detection stops darts arriving, it does not end the match.
  */
 const BOARD_ACTIONS = ['start', 'stop', 'reset', 'calibrate'] as const;
@@ -519,6 +543,8 @@ route('GET', '/api/settings', async (_req, res) => {
       bridgeWs: BRIDGE_WS,
       dbFile: DB_FILE,
       boardOnline: manager.isBoardOnline,
+      detectorUrl: process.env.DETECTOR_URL ?? 'http://127.0.0.1:8091',
+      managedDetector: Boolean(process.env.MANAGED_DETECTOR_URL),
     },
   });
 });
@@ -564,7 +590,10 @@ const server = createServer(async (req, res) => {
     r.keys.forEach((k, i) => {
       params[k] = decodeURIComponent(match[i + 1] ?? '');
     });
-    const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req);
+    const renderUpload = ['/api/native/render/configure', '/api/native/render/frames'].includes(url.pathname);
+    const limit = renderUpload ? MAX_RENDER_BODY : url.pathname === '/api/native/render/reset' ? 4096 : Infinity;
+    const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req, limit);
+    if (body === BODY_TOO_LARGE) return json(res, 413, { error: 'render body too large' });
     if (body === null) return json(res, 400, { error: 'invalid JSON body' });
     try {
       await r.handler(req, res, params, body);

@@ -5,7 +5,8 @@
   "description": "Desktop shell: runs the darts server and bridge, and shows the scoreboard.",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+        "test": "node --test src/runtime.test.cjs"
   },
   "dependencies": {
     "electron-updater": "^6.3.9"

@@ -1,16 +1,14 @@
 'use strict';
 
 const { createServer } = require('node:net');
+const { spawn, spawnSync } = require('node:child_process');
 const { existsSync } = require('node:fs');
 const { networkInterfaces } = require('node:os');
 const { join } = require('node:path');
 
 /**
- * Locating the things the shell needs to start the backend, and nothing else.
- *
- * Split out from main.js so it can be reasoned about (and run) without booting
- * Electron: every function here is a plain lookup over the filesystem or the
- * network stack.
+ * Runtime discovery and child-process lifecycle, without Electron dependencies.
+ * Split out from main.js so startup and teardown can be tested without a GUI.
  */
 
 /**
@@ -77,21 +75,112 @@ function lanAddresses() {
  * before the database is open and the bridge is connected, and loading the
  * window early shows a broken scoreboard for a second.
  */
-async function waitForServer(url, { timeoutMs = 30000, intervalMs = 150 } = {}) {
+async function waitForServer(url, {
+  timeoutMs = 30000, intervalMs = 150, name = 'game server', getFailure = () => null,
+} = {}) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
 
   while (Date.now() < deadline) {
+    const failure = getFailure();
+    if (failure) throw failure;
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(Math.max(1, Math.min(2000, deadline - Date.now()))) });
+      await res.body?.cancel();
+      if (getFailure()) throw getFailure();
       if (res.ok) return true;
       lastError = new Error(`answered ${res.status}`);
     } catch (err) {
       lastError = err;
     }
-    await new Promise((r) => setTimeout(r, intervalMs));
+    if (getFailure()) throw getFailure();
+    await new Promise((r) => setTimeout(r, Math.max(0, Math.min(intervalMs, deadline - Date.now()))));
   }
-  throw new Error(`the game server did not start within ${timeoutMs / 1000}s: ${lastError}`);
+  throw new Error(`the ${name} did not start within ${timeoutMs / 1000}s: ${lastError}`);
 }
 
-module.exports = { findNodeRuntime, findFreePort, lanAddresses, waitForServer };
+function findPythonRuntime(appRoot, { env = process.env, platform = process.platform } = {}) {
+  if (env.DETECTOR_PYTHON) return { executable: env.DETECTOR_PYTHON, args: [] };
+  const local = platform === 'win32'
+    ? join(appRoot, '.venv', 'Scripts', 'python.exe')
+    : join(appRoot, '.venv', 'bin', 'python');
+  if (existsSync(local)) return { executable: local, args: [] };
+  return platform === 'win32'
+    ? { executable: 'py', args: ['-3'] }
+    : { executable: 'python3', args: [] };
+}
+
+function checkPythonRuntime(runtime) {
+  const result = spawnSync(runtime.executable, [...runtime.args, '-c',
+    'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'],
+  { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL', windowsHide: true });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Native detector requires Python 3.10+. Could not run ${runtime.executable}: ${result.error || result.stderr || 'unsupported Python version'}. Install Python or set DETECTOR_PYTHON to its executable; use DARTS_DETECTOR=off to disable automatic startup.`);
+  }
+}
+
+async function detectorConfig(appRoot, { isPackaged = false, env = process.env, platform = process.platform } = {}) {
+  if (env.DETECTOR_URL) return { url: env.DETECTOR_URL, managed: false };
+  if (isPackaged || env.DARTS_DETECTOR === 'off') return null;
+  const runtime = findPythonRuntime(appRoot, { env, platform });
+  checkPythonRuntime(runtime);
+  const entry = join(appRoot, 'services', 'detector', 'main.py');
+  if (!existsSync(entry)) throw new Error(`Native detector entry point is missing: ${entry}. Restore the source checkout or set DARTS_DETECTOR=off.`);
+  const port = await findFreePort();
+  return {
+    url: `http://127.0.0.1:${port}`, managed: true,
+    executable: runtime.executable,
+    args: [...runtime.args, '-u', entry, '--source', 'rendered', '--port', String(port)],
+  };
+}
+
+/** Shared process supervision for Node and Python, with a bounded diagnostic tail. */
+function startChild(executable, args, { cwd, env = {}, name, onFailure = () => {}, log = console.log }) {
+  const child = spawn(executable, args, {
+    cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+  });
+  const state = { child, name, failure: null, stopping: false };
+  const tail = [];
+  const remember = (buf) => {
+    const text = String(buf).trimEnd().slice(-4096);
+    if (text) log(`[${name}] ${text}`);
+    tail.push(text);
+    if (tail.length > 20) tail.shift();
+  };
+  child.stdout.on('data', remember);
+  child.stderr.on('data', remember);
+  const fail = (message) => {
+    if (state.stopping || state.failure) return;
+    state.failure = new Error(`${message}\n\n${tail.join('\n')}`);
+    onFailure(state.failure);
+  };
+  child.on('error', (err) => fail(`Could not start ${name}: ${err.message}`));
+  child.on('exit', (code, signal) => {
+    log(`[${name}] exited (code ${code}, signal ${signal})`);
+    fail(`The ${name} process stopped (code ${code}, signal ${signal}).`);
+  });
+  return state;
+}
+
+function stopChild(state, { graceMs = 2000 } = {}) {
+  state.stopping = true;
+  const { child } = state;
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    let timer;
+    const done = () => { clearTimeout(timer); resolve(); };
+    child.once('exit', done);
+    if (process.platform === 'win32') {
+      const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
+      killer.on('error', () => child.kill());
+    } else {
+      child.kill('SIGTERM');
+    }
+    timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, graceMs);
+  });
+}
+
+module.exports = {
+  findNodeRuntime, findFreePort, lanAddresses, waitForServer,
+  findPythonRuntime, checkPythonRuntime, detectorConfig, startChild, stopChild,
+};

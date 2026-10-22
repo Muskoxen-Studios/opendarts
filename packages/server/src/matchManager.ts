@@ -324,8 +324,13 @@ export class MatchManager {
         // happened but the board never said so (it sticks on "Takeout in
         // progress"). The engine would drop the dart, so treat it as proof the
         // darts are out: hand over, score it for the next player, and zero the
-        // board's counter so it does not carry the old darts forward.
+        // board's counter so it does not carry the old darts forward. Sources
+        // with image-observed occupancy opt out: an extra dart alone cannot
+        // establish that the previous darts were removed.
         if (this.view?.awaitingTakeout && event.throw.source === 'board') {
+          // Do not log ignored throws: projections and recent-player attribution
+          // assume every persisted THROW has a matching throw.recorded event.
+          if (event.allowTakeoutInference === false) return;
           this.apply({ type: 'ADVANCE_TURN' });
           this.resetBoard?.();
         }

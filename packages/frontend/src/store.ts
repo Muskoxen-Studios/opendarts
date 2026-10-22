@@ -204,6 +204,7 @@ export interface BoardStateResult {
   ok: boolean;
   /** False when the bridge has no board at all -- simulator or replay source. */
   attached?: boolean;
+  actions?: BoardAction[];
   error?: string;
   url?: string;
   boardOnline?: boolean;
@@ -226,6 +227,7 @@ export interface MatchSetupRecord {
 
 export type SourceConfig =
   | { kind: 'simulator' }
+  | { kind: 'native'; url: string }
   | { kind: 'autodarts'; url: string; debugMotion?: boolean }
   | { kind: 'replay'; file: string; speed?: number; loop?: boolean };
 
@@ -249,6 +251,8 @@ export interface Settings {
     bridgeWs: string;
     dbFile: string;
     boardOnline: boolean;
+    detectorUrl: string;
+    managedDetector: boolean;
   };
 }
 
@@ -443,7 +447,11 @@ export const api = {
    * Coordinates are optional and only the virtual board has them. Real darts
    * still arrive without, so nothing may depend on their presence.
    */
-  simulate(segment: Segment, coords?: { x: number; y: number } | null): Promise<unknown> {
+  async simulate(segment: Segment, coords?: { x: number; y: number } | null): Promise<unknown> {
+    const source = await api.bridgeSource();
+    if (source.config.kind === 'native' || source.acceptsInjection !== true) {
+      throw new Error('This source does not accept injected darts. For native synthetic images, use Settings → camera diagnostics.');
+    }
     return request('/api/simulate', {
       method: 'POST',
       body: JSON.stringify({ segment, coords: coords ?? null }),
@@ -546,8 +554,23 @@ export const api = {
       body: JSON.stringify({ config }),
     });
   },
-  testBoard(url: string): Promise<{ ok: boolean; version?: string | null; latencyMs?: number; error?: string }> {
-    return request('/api/bridge/test', { method: 'POST', body: JSON.stringify({ url }) });
+  testBoard(url: string, kind: 'autodarts' | 'native' = 'autodarts'): Promise<{ ok: boolean; version?: string | null; latencyMs?: number; error?: string }> {
+    return request('/api/bridge/test', { method: 'POST', body: JSON.stringify(kind === 'native' ? { kind, url } : { url }) });
+  },
+  nativeRenderConfigure(body: import('./nativeDetector.ts').RenderConfiguration, signal?: AbortSignal): Promise<{ ok: boolean; session: string; error?: string }> {
+    return request('/api/native/render/configure', { method: 'POST', body: JSON.stringify(body), signal });
+  },
+  nativeRenderFrames(body: import('./nativeDetector.ts').RenderFrameBatch, signal?: AbortSignal): Promise<{ ok: boolean; error?: string }> {
+    return request('/api/native/render/frames', { method: 'POST', body: JSON.stringify(body), signal });
+  },
+  nativeHealth(signal?: AbortSignal): Promise<unknown> {
+    return request('/api/native/health', { signal });
+  },
+  nativeState(signal?: AbortSignal): Promise<unknown> {
+    return request('/api/native/state', { signal });
+  },
+  nativeSim(action: 'throw' | 'takeout' | 'reset', body: { x_mm: number; y_mm: number } | { count?: number }, signal?: AbortSignal): Promise<{ ok: boolean; error?: string }> {
+    return request(`/api/native/sim/${action}`, { method: 'POST', body: JSON.stringify(body), signal });
   },
 };
 

@@ -40,6 +40,10 @@ const numThrows = computed(() => result.value?.state?.numThrows ?? null);
 
 /** No board attached at all -- the source is the simulator or a replay. */
 const noBoard = computed(() => result.value?.attached === false);
+function supported(action: BoardAction): boolean {
+  return result.value?.ok === true && !noBoard.value &&
+    (result.value.actions === undefined || (Array.isArray(result.value.actions) && result.value.actions.includes(action)));
+}
 
 async function refresh(): Promise<void> {
   try {
@@ -52,6 +56,7 @@ async function refresh(): Promise<void> {
 }
 
 async function run(action: BoardAction): Promise<void> {
+  if (busy.value !== null || !supported(action)) return;
   if (action === 'calibrate' && !confirm('Re-run auto-calibration on the board?')) return;
   busy.value = action;
   error.value = null;
@@ -110,8 +115,8 @@ onUnmounted(() => {
         v-for="action in (['start', 'stop', 'reset', 'calibrate'] as BoardAction[])"
         :key="action"
         :class="{ danger: action === 'calibrate' }"
-        :disabled="busy !== null || noBoard"
-        :title="noBoard ? 'No board attached — set one up on the Settings screen' : LABELS[action].title"
+        :disabled="busy !== null || !supported(action)"
+        :title="noBoard ? 'No board attached — set one up on the Settings screen' : !supported(action) ? 'Unsupported action or detector unavailable' : LABELS[action].title"
         @click="run(action)"
       >
         {{ busy === action ? '…' : LABELS[action].button }}
@@ -130,8 +135,8 @@ onUnmounted(() => {
       </p>
       <p v-else-if="error" class="hint bad">{{ error }}</p>
       <p v-else class="hint">
-        These call the Board Manager directly. Stopping detection stops darts
-        arriving; it does not end the match.
+        These control the active detector through the server and bridge. Stopping
+        detection does not end the match. Unsupported actions are disabled.
       </p>
     </template>
   </div>

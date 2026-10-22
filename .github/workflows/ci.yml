@@ -17,7 +17,11 @@ jobs:
           node-version: 24
           cache: npm
 
-      # The backend has no build step -- Node runs the TypeScript sources
-      # directly -- so `check` (typecheck + tests) is the whole gate.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Native vision uses only the Python standard library. The bounded smoke
+      # test starts the real detector, bridge and server with a temporary DB.
       - run: npm ci
-      - run: npm run check
+      - run: npm run check:native

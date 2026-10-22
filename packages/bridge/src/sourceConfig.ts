@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { autodartsSource } from './sources/autodarts.ts';
+import { nativeSource } from './sources/native.ts';
+import { NATIVE_DEFAULT_URL } from './nativeControl.ts';
 import { replaySource } from './sources/replay.ts';
 import { simulatorSource } from './sources/simulator.ts';
 import type { Source } from './sources/types.ts';
@@ -10,6 +12,12 @@ import type { Source } from './sources/types.ts';
  */
 export const SourceConfigSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('simulator') }),
+  z.object({
+    kind: z.literal('native'),
+    url: z.string().url()
+      .refine((url) => URL.canParse(url) && ['http:', 'https:'].includes(new URL(url).protocol), 'expected HTTP(S) URL')
+      .default(NATIVE_DEFAULT_URL),
+  }),
   z.object({
     kind: z.literal('autodarts'),
     url: z.string().url(),
@@ -27,6 +35,8 @@ export type SourceConfig = z.infer<typeof SourceConfigSchema>;
 
 export function buildSource(config: SourceConfig): Source {
   switch (config.kind) {
+    case 'native':
+      return nativeSource({ baseUrl: config.url });
     case 'autodarts':
       return autodartsSource({ baseUrl: config.url, debugMotion: config.debugMotion });
     case 'replay':
@@ -39,6 +49,9 @@ export function buildSource(config: SourceConfig): Source {
 /** The starting configuration, taken from the environment. */
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): SourceConfig {
   const kind = (env.SOURCE ?? 'simulator').toLowerCase();
+  if (kind === 'native') {
+    return SourceConfigSchema.parse({ kind: 'native', url: env.DETECTOR_URL ?? env.BOARD_URL ?? NATIVE_DEFAULT_URL });
+  }
   if (kind === 'autodarts') {
     return {
       kind: 'autodarts',
@@ -60,6 +73,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): SourceConfi
 /** Human-readable one-liner for logs and the settings screen. */
 export function describeSource(config: SourceConfig): string {
   switch (config.kind) {
+    case 'native':
+      return `native detector (${config.url})`;
     case 'autodarts':
       return `autodarts (${config.url})`;
     case 'replay':

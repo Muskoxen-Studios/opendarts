@@ -1,14 +1,16 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, clipboard, dialog, session, shell } = require('electron');
-const { spawn } = require('node:child_process');
 const { join } = require('node:path');
-const { findFreePort, findNodeRuntime, lanAddresses, waitForServer } = require('./runtime.js');
+const {
+  findFreePort, findNodeRuntime, lanAddresses, waitForServer,
+  detectorConfig, startChild, stopChild,
+} = require('./runtime.js');
 
 /**
  * The desktop shell.
  *
- * It runs the *unmodified* backend as two child processes and points a window
+ * It runs the *unmodified* backends as child processes and points a window
  * at it. Nothing about the game lives here -- this file starts processes, waits
  * for them, and shows a window. That is deliberate: the docker deployment and
  * the desktop app must stay the same program, or they drift and only one of
@@ -33,6 +35,8 @@ const children = [];
 let win = null;
 let serverUrl = null;
 let startupError = null;
+let bootComplete = false;
+let shutdownComplete = false;
 
 /**
  * Start one backend process.
@@ -41,67 +45,62 @@ let startupError = null;
  * app there is no terminal to inherit, and the last few lines of a child that
  * died are the only useful thing to show the user when startup fails.
  */
-function startBackend(nodePath, entry, env, name) {
-  const child = spawn(nodePath, [join(APP_ROOT, entry)], {
-    cwd: APP_ROOT,
-    env: { ...process.env, ...env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
+function launchChild(executable, args, env, name) {
+  const state = startChild(executable, args, {
+    cwd: APP_ROOT, env, name,
+    onFailure: (err) => {
+      if (app.isQuitting) return;
+      startupError = err;
+      if (bootComplete) {
+        dialog.showErrorBox('The darts backend stopped', err.message);
+        app.quit();
+      }
+    },
   });
-
-  const tail = [];
-  const remember = (buf) => {
-    const text = String(buf).trimEnd();
-    if (text) console.log(`[${name}] ${text}`);
-    tail.push(text);
-    if (tail.length > 20) tail.shift();
-  };
-  child.stdout.on('data', remember);
-  child.stderr.on('data', remember);
-
-  child.on('exit', (code, signal) => {
-    console.log(`[${name}] exited (code ${code}, signal ${signal})`);
-    // A backend that dies while the app is up leaves a window showing a frozen
-    // scoreboard, which looks like a hang. Say what happened instead.
-    if (!app.isQuitting && code !== 0) {
-      dialog.showErrorBox(
-        'The darts backend stopped',
-        `The ${name} process exited with code ${code}.\n\n${tail.join('\n')}`,
-      );
-      app.quit();
-    }
-  });
-
-  children.push({ child, name });
-  return child;
+  children.push(state);
+  return state;
 }
 
-/** Stop both children. Windows needs the tree killed, not just the parent. */
-function stopBackends() {
-  for (const { child } of children) {
-    if (child.exitCode !== null || child.signalCode !== null) continue;
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
-    } else {
-      child.kill('SIGTERM');
-    }
-  }
+function childFailure() {
+  return startupError || children.find((state) => state.failure)?.failure;
+}
+
+async function stopBackends() {
+  await Promise.all(children.map((state) => stopChild(state)));
   children.length = 0;
 }
 
 async function boot() {
   const nodePath = findNodeRuntime(APP_ROOT);
+  const detector = await detectorConfig(APP_ROOT, { isPackaged: app.isPackaged });
+  if (app.isQuitting) throw new Error('Desktop startup cancelled.');
+  if (detector?.managed) {
+    launchChild(detector.executable, detector.args, {}, 'detector');
+    await waitForServer(`${detector.url}/health`, { name: 'native detector', getFailure: childFailure });
+  }
+  if (app.isQuitting) throw new Error('Desktop startup cancelled.');
+  const sourceEnv = !app.isPackaged && detector && process.env.SOURCE === undefined
+    ? { SOURCE: 'native' } : {};
+  const detectorEnv = detector ? { DETECTOR_URL: detector.url } : {};
   const [serverPort, bridgePort] = [await findFreePort(), await findFreePort()];
   const dbFile = join(app.getPath('userData'), 'darts.db');
 
   console.log(`[desktop] node=${nodePath} server=${serverPort} bridge=${bridgePort} db=${dbFile}`);
 
-  startBackend(nodePath, 'packages/bridge/src/main.ts', { BRIDGE_PORT: String(bridgePort) }, 'bridge');
+  if (app.isQuitting) throw new Error('Desktop startup cancelled.');
+  launchChild(nodePath, [join(APP_ROOT, 'packages/bridge/src/main.ts')], {
+    ...sourceEnv, ...detectorEnv, BRIDGE_PORT: String(bridgePort),
+  }, 'bridge');
 
-  startBackend(
+  launchChild(
     nodePath,
-    'packages/server/src/main.ts',
+    [join(APP_ROOT, 'packages/server/src/main.ts')],
     {
+      ...sourceEnv,
+      ...detectorEnv,
+      // Only this URL is owned by this launch; external configured URLs must
+      // never trigger migration of a user's persisted remote detector choice.
+      MANAGED_DETECTOR_URL: detector?.managed ? detector.url : '',
       PORT: String(serverPort),
       // Bound to the network on purpose: a phone or tablet by the board is a
       // second scoreboard, and that is most of the point of running this at home.
@@ -115,7 +114,7 @@ async function boot() {
   );
 
   serverUrl = `http://127.0.0.1:${serverPort}`;
-  await waitForServer(`${serverUrl}/api/settings`);
+  await waitForServer(`${serverUrl}/api/settings`, { getFailure: childFailure });
   return serverUrl;
 }
 
@@ -130,6 +129,13 @@ function buildMenu() {
         submenu: [
           { label: 'Reload scoreboard', accelerator: 'F5', click: () => win?.reload() },
           { role: 'togglefullscreen' },
+          ...(app.isPackaged ? [{
+            label: 'About native detection',
+            click: () => void dialog.showMessageBox({
+              type: 'info', message: 'Native detector is not bundled in this installer.',
+              detail: 'Run the detector separately with Python 3.10+ and configure its URL in Settings → Dart source. Development launches from a source checkout start the rendered detector automatically.',
+            }),
+          }] : []),
           { type: 'separator' },
           {
             label: 'Check for updates',
@@ -198,7 +204,8 @@ function checkForUpdates(interactive = false) {
     });
     if (response === 0) {
       app.isQuitting = true;
-      stopBackends();
+      await stopBackends();
+      shutdownComplete = true;
       autoUpdater.quitAndInstall();
     }
   });
@@ -255,8 +262,12 @@ app.whenReady().then(async () => {
 
   try {
     const url = await boot();
+    if (app.isQuitting) return;
     await win.loadURL(url);
+    if (childFailure()) throw childFailure();
+    bootComplete = true;
   } catch (err) {
+    if (app.isQuitting) return;
     startupError = err;
     console.error('[desktop] startup failed:', err);
     dialog.showErrorBox('Darts could not start', String(err && err.message ? err.message : err));
@@ -268,15 +279,30 @@ app.whenReady().then(async () => {
   checkForUpdates();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (app.isQuitting) return;
   app.isQuitting = true;
+  void stopBackends().finally(() => {
+    shutdownComplete = true;
+    app.quit();
+  });
 });
 
 // The backend outlives the window otherwise, and a second launch would then
 // find its ports taken by an invisible copy of itself.
 app.on('will-quit', stopBackends);
 app.on('window-all-closed', () => app.quit());
+process.on('SIGINT', () => app.quit());
+process.on('SIGTERM', () => app.quit());
 
-process.on('exit', stopBackends);
+process.on('exit', () => {
+  // No asynchronous grace period is possible once Node is exiting.
+  for (const state of children) {
+    state.stopping = true;
+    if (state.child.pid) state.child.kill('SIGKILL');
+  }
+});
 
 module.exports = { startupError };

@@ -5,6 +5,9 @@ import { configFromEnv, describeSource, SourceConfigSchema } from './sourceConfi
 import { describeFetchError } from './fetchError.ts';
 import { boardCommand, boardState, isBoardAction } from './boardControl.ts';
 import { SourceManager } from './sourceManager.ts';
+import { NATIVE_ACTIONS, nativeBoardCommand, nativeBoardState, nativeHealth } from './nativeControl.ts';
+import { nativeProxy } from './nativeProxy.ts';
+import { MAX_RENDER_BODY } from './nativeRender.ts';
 
 const PORT = Number(process.env.BRIDGE_PORT ?? 8081);
 
@@ -32,9 +35,16 @@ function json(res: ServerResponse, code: number, body: unknown): void {
   res.end(text);
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+const BODY_TOO_LARGE = Symbol('body too large');
+async function readBody(req: IncomingMessage, limit = Infinity): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let bytes = 0;
+  for await (const c of req) {
+    bytes += (c as Buffer).length;
+    if (bytes <= limit) chunks.push(c as Buffer);
+    else chunks.length = 0; // Drain without retaining an oversized render upload.
+  }
+  if (bytes > limit) return BODY_TOO_LARGE;
   if (chunks.length === 0) return {};
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -103,6 +113,15 @@ const server = createServer(async (req, res) => {
       json(res, 400, { error: 'expected { url }' });
       return;
     }
+    if ((body as { kind?: unknown })?.kind === 'native') {
+      const parsed = SourceConfigSchema.safeParse({ kind: 'native', url });
+      if (!parsed.success || parsed.data.kind !== 'native') {
+        json(res, 400, { error: 'expected a native HTTP(S) URL' });
+        return;
+      }
+      json(res, 200, await nativeHealth(parsed.data.url));
+      return;
+    }
     try {
       const base = url.replace(/\/$/, '');
       const started = Date.now();
@@ -139,7 +158,9 @@ const server = createServer(async (req, res) => {
    * is no board to start, and saying so is more useful than a dead button.
    */
   if (req.url?.startsWith('/board')) {
-    const boardUrl = manager.config.kind === 'autodarts' ? manager.config.url : null;
+    const config = manager.config;
+    const native = config.kind === 'native';
+    const boardUrl = config.kind === 'autodarts' || config.kind === 'native' ? config.url : null;
     if (!boardUrl) {
       // Not an error status: "there is no board" is a true answer to the
       // question, and the caller needs to tell it apart from a board that is
@@ -153,8 +174,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.url === '/board/state' && req.method === 'GET') {
-      const result = await boardState(boardUrl);
-      json(res, 200, { ...result, attached: true, url: boardUrl });
+      const result = await (native ? nativeBoardState(boardUrl) : boardState(boardUrl));
+      json(res, 200, { ...result, attached: true, url: boardUrl, ...(native ? { actions: NATIVE_ACTIONS } : {}) });
       return;
     }
 
@@ -163,13 +184,24 @@ const server = createServer(async (req, res) => {
       // Reset clears the board's throw counter with the darts still in it. Warn
       // the source first, or it reads the shrinking `throws[]` as a takeout and
       // the server ends the player's turn -- see `Source.noteCounterReset`.
-      if (action === 'reset') manager.noteCounterReset();
-      const result = await boardCommand(boardUrl, action);
+      if (action === 'reset' && !native) manager.noteCounterReset();
+      const result = await (native ? nativeBoardCommand(boardUrl, action) : boardCommand(boardUrl, action));
       json(res, 200, { ...result, attached: true, action, url: boardUrl });
       return;
     }
 
     json(res, 404, { error: `unknown board control "${req.url}"` });
+    return;
+  }
+
+  if (req.url?.startsWith('/native/')) {
+    const config = manager.config;
+    const renderUpload = ['/native/render/configure', '/native/render/frames'].includes(req.url ?? '');
+    const limit = renderUpload ? MAX_RENDER_BODY : req.url === '/native/render/reset' ? 4096 : Infinity;
+    const body = req.method === 'POST' ? await readBody(req, limit) : undefined;
+    if (body === BODY_TOO_LARGE) return json(res, 413, { error: 'render body too large' });
+    if (await nativeProxy(req, res, config, body)) return;
+    json(res, 404, { error: 'unknown native detector route' });
     return;
   }
 

@@ -119,10 +119,11 @@ describe('playing a match', () => {
 });
 
 describe('holding the handover for a real takeout', () => {
-  function boardThrow(label: string): void {
+  function boardThrow(label: string, allowTakeoutInference?: boolean): void {
     const segment: Segment = seg(label);
     manager.onBoardEvent({
       type: 'throw.detected',
+      ...(allowTakeoutInference !== undefined ? { allowTakeoutInference } : {}),
       throw: {
         id: `${label}-${Math.random()}`,
         ts: new Date().toISOString(),
@@ -176,6 +177,37 @@ describe('holding the handover for a real takeout', () => {
     expect(manager.view?.activePlayerId).toBe(bob.id);
     expect(manager.view?.turn.throws).toHaveLength(1);
     expect(resets).toBe(1);
+  });
+
+  it('does not infer takeout from an extra native dart while a turn is held', () => {
+    const [alice, bob] = seedPlayers();
+    let resets = 0;
+    manager = new MatchManager(store, (e) => events.push(e), () => resets++);
+    manager.start(X01, [alice, bob]);
+    boardThrow('T20', false);
+    boardThrow('T20', false);
+    boardThrow('T20', false);
+    boardThrow('20', false);
+
+    expect(manager.view?.awaitingTakeout).toBe(true);
+    expect(manager.view?.activePlayerId).toBe(alice.id);
+    expect(manager.view?.turn.throws).toHaveLength(3);
+    expect(manager.view?.players.find((p) => p.playerId === bob.id)?.score).toBe(501);
+    expect(resets).toBe(0);
+
+    const matchId = store.listMatches()[0]!.id;
+    expect(store.commandsFor(matchId).filter((c) => c.type === 'THROW')).toHaveLength(3);
+
+    manager.onBoardEvent({ type: 'takeout.completed' });
+    expect(manager.view?.activePlayerId).toBe(bob.id);
+    expect(manager.view?.awaitingTakeout).toBe(false);
+    boardThrow('S1', false);
+    expect(manager.view?.recent.map((t) => t.playerId)).toEqual([alice.id, alice.id, alice.id, bob.id]);
+    expect(store.commandsFor(matchId).filter((c) => c.type === 'THROW')).toHaveLength(4);
+    manager.apply({ type: 'END_MATCH' });
+    expect(store.careerFor(alice.id).dartsThrown).toBe(3);
+    expect(store.careerFor(bob.id).dartsThrown).toBe(1);
+    expect(store.summaryFor(matchId)?.totalDarts).toBe(4);
   });
 
   it('ends a two-dart turn on an inferred takeout and resets the board', () => {

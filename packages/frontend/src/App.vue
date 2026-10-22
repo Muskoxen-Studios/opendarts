@@ -257,8 +257,8 @@ async function rematch(): Promise<void> {
                 {{ activePlayer?.name }}'s turn is done -- pull your darts to hand over.
               </p>
               <p v-else class="hint centered">
-                Click the board to throw. Simulated darts travel through the bridge,
-                the same path real ones will.
+                Click to throw only with an injection-capable source. Native synthetic
+                image darts are controlled in Settings → camera diagnostics.
               </p>
 
               <div class="controls">
