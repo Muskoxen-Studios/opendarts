@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Repository guidance
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides shared guidance for coding agents working in this repository.
 
 `README.md` is the long-form document: game rules, feature behaviour, and the reasoning behind
 most design decisions. Read the relevant section there before changing user-facing behaviour.
