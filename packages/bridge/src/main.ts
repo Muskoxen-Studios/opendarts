@@ -47,7 +47,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-methods': 'GET,POST,PUT,OPTIONS',
       'access-control-allow-headers': 'content-type',
     });
     res.end();
@@ -76,7 +76,7 @@ const server = createServer(async (req, res) => {
   }
 
   // Switch source while running -- no restart, no redeploy.
-  if (req.url === '/source' && req.method === 'PUT') {
+  if (req.url === '/source' && (req.method === 'PUT' || req.method === 'POST')) {
     const body = await readBody(req);
     const parsed = SourceConfigSchema.safeParse((body as { config?: unknown })?.config);
     if (!parsed.success) {
