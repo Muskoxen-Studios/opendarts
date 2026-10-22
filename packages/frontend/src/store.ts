@@ -94,6 +94,9 @@ export interface PlayerReport {
   mpr: number | null;
   golf: {
     handicap: number;
+    handicapAfter: number;
+    handicapChange: number;
+    parTarget: number;
     points: number;
     holes: GolfHoleResult[];
     holed: number;
@@ -296,6 +299,7 @@ export interface Toast {
 }
 
 interface State {
+  completedReport: MatchReport | null;
   view: MatchView | null;
   profiles: Profile[];
   boardOnline: boolean;
@@ -317,6 +321,7 @@ interface State {
 }
 
 const state = reactive<State>({
+  completedReport: null,
   view: null,
   profiles: [],
   boardOnline: false,
@@ -590,6 +595,9 @@ export function connect(): void {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data as string);
     switch (msg.type) {
+      case 'match.report':
+        state.completedReport = msg.report;
+        break;
       case 'view':
         state.view = msg.view;
         break;

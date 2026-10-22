@@ -185,8 +185,8 @@ const ARCHIVE_COLUMNS: Array<{ label: string; format: (r: ArchivedRow) => string
 
 <template>
   <section class="leaderboard">
-    <header>
-      <h2>Leaderboard</h2>
+    <header class="page-heading">
+      <div><p class="page-eyebrow">The season so far</p><h2>Leaderboard</h2></div>
       <p v-if="board" class="hint">
         {{ board.matchesCounted }} finished
         {{ board.matchesCounted === 1 ? 'match' : 'matches' }}
@@ -205,7 +205,7 @@ const ARCHIVE_COLUMNS: Array<{ label: string; format: (r: ArchivedRow) => string
       Nothing here yet. Finish a match and the table fills itself in.
     </p>
 
-    <table v-else class="table">
+    <div v-else class="table-scroll" role="region" aria-label="Season standings" tabindex="0"><table class="table">
       <thead>
         <tr>
           <th class="rank">#</th>
@@ -286,7 +286,7 @@ const ARCHIVE_COLUMNS: Array<{ label: string; format: (r: ArchivedRow) => string
           </tr>
         </template>
       </tbody>
-    </table>
+    </table></div>
 
     <div v-if="archives.length" class="archived">
       <h3>Past leaderboards</h3>
@@ -331,50 +331,60 @@ const ARCHIVE_COLUMNS: Array<{ label: string; format: (r: ArchivedRow) => string
 .leaderboard { display: flex; flex-direction: column; gap: 1rem; }
 header { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 h2 { margin: 0; font-size: 1.1rem; }
-h3 { margin: 0 0 0.4rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: #8b93a1; }
-.hint { margin: 0; font-size: 0.8rem; color: #8b93a1; line-height: 1.45; flex: 1 1 16rem; }
-.empty { color: #8b93a1; text-align: center; padding: 3rem 1rem; }
+h3 { margin: 0 0 0.4rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ui-muted); }
+.hint { margin: 0; font-size: 0.8rem; color: var(--ui-muted); line-height: 1.45; flex: 1 1 16rem; }
+.empty { color: var(--ui-muted); text-align: center; padding: 3rem 1rem; }
 .ghost {
   background: none; border: 1px solid #45262a; color: #c9645f;
   border-radius: 8px; padding: 0.45rem 0.9rem; cursor: pointer; font: inherit; font-size: 0.85rem;
 }
-.ghost:hover:not(:disabled) { border-color: #d8453f; color: #d8453f; }
+.ghost:hover:not(:disabled) { border-color: var(--ui-danger); color: var(--ui-danger); }
 .ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-.table th, .table td { padding: 0.4rem 0.5rem; text-align: right; border-bottom: 1px solid #1d2128; }
-.table th { color: #8b93a1; font-weight: 500; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; white-space: nowrap; }
-.table th:hover { color: #cdd3dc; }
-.table th.sorted, .table td.sorted { color: #4f8ef7; }
+.table th, .table td { padding: 0.4rem 0.5rem; text-align: right; border-bottom: 1px solid var(--ui-border-soft); }
+.table th { color: var(--ui-muted); font-weight: 500; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; white-space: nowrap; }
+.table th:hover { color: var(--ui-secondary); }
+.table th.sorted, .table td.sorted { color: var(--ui-accent); }
 .table .rank, .table .who { text-align: left; }
 .table .who { white-space: nowrap; }
 .table th.rank, .table th.who { cursor: default; }
 .dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
 .row { cursor: pointer; }
-.row:hover td { background: #14171c; }
+.row:hover td { background: var(--ui-surface); }
 .row.open td { background: #171b22; }
-.detail td { background: #0f1216; }
+.detail td { background: var(--ui-surface-deep); }
 .detail-grid { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); gap: 1.25rem; padding: 0.75rem 0.25rem; text-align: left; }
 @media (max-width: 760px) { .detail-grid { grid-template-columns: 1fr; } }
 .card { grid-column: 1 / -1; }
 .facts dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0; font-size: 0.82rem; }
-.facts dt { color: #8b93a1; }
+.facts dt { color: var(--ui-muted); }
 .facts dd { margin: 0; }
 .holes { border-collapse: collapse; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
-.holes th, .holes td { border: 1px solid #1d2128; padding: 0.2rem 0.4rem; text-align: center; min-width: 1.6rem; }
-.holes th { color: #8b93a1; font-weight: 500; }
+.holes th, .holes td { border: 1px solid var(--ui-border-soft); padding: 0.2rem 0.4rem; text-align: center; min-width: 1.6rem; }
+.holes th { color: var(--ui-muted); font-weight: 500; }
 .holes td.miss { color: #c9645f; }
 .holes td.zero { color: #6b7280; }
 
-.archived { border-top: 1px solid #1d2128; padding-top: 0.9rem; }
+.archived { border-top: 1px solid var(--ui-border-soft); padding-top: 0.9rem; }
 .archived ul { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .archived li { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; }
-.archived .label { background: none; border: none; color: #e8e6e1; font: inherit; font-weight: 600; cursor: pointer; padding: 0.2rem 0; text-align: left; }
-.archived .label:hover { color: #4f8ef7; }
-.archived .meta { color: #8b93a1; font-size: 0.78rem; flex: 1; }
+.archived .label { background: none; border: none; color: var(--ui-text); font: inherit; font-weight: 600; cursor: pointer; padding: 0.2rem 0; text-align: left; }
+.archived .label:hover { color: var(--ui-accent); }
+.archived .meta { color: var(--ui-muted); font-size: 0.78rem; flex: 1; }
 .archived .del { background: none; border: none; color: #6b7280; font-size: 1.1rem; cursor: pointer; padding: 0 0.2rem; }
-.archived .del:hover { color: #d8453f; }
+.archived .del:hover { color: var(--ui-danger); }
 .archive-table { margin-top: 0.8rem; }
-.archive-table caption { text-align: left; color: #8b93a1; font-size: 0.78rem; padding-bottom: 0.35rem; }
+.archive-table caption { text-align: left; color: var(--ui-muted); font-size: 0.78rem; padding-bottom: 0.35rem; }
 .archive-table th { cursor: default; }
+
+.leaderboard { gap: 1.4rem; }.page-heading { gap: 1.2rem; }.page-heading .hint { max-width: 42rem; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--ui-border); border-radius: 16px; background: var(--ui-surface-deep); box-shadow: var(--ui-shadow); }
+.table th, .table td { padding: 0.9rem 0.85rem; }.table thead { background: #153247; }.table th { color: #adbfce; font-weight: 650; }.table tbody .row:nth-child(odd) { background: #ffffff03; }
+.table .who { font-weight: 650; }.table .rank { color: #c0d5e5; font-weight: 750; }.table .row:first-child .rank { color: #ffda80; }.table .row:first-child { background: #e8bc5610; }
+.table td.sorted { font-weight: 750; }.dot { width: 0.75rem; height: 0.75rem; }
+.detail-grid { padding: 1rem; }.facts dl { gap: 0.6rem 1.4rem; }.facts dd { color: var(--ui-text); font-weight: 600; }
+.archived { background: var(--ui-surface-deep); border: 1px solid var(--ui-border); border-radius: 16px; padding: 1.1rem; }.archived li { flex-wrap: wrap; padding: 0.4rem 0; }
+.archive-table { display: block; overflow-x: auto; }.empty { border: 1px dashed var(--ui-border); border-radius: 16px; background: #10263660; }
+
 </style>

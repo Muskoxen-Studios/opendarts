@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { segmentValue, type GameConfig, type Segment } from '@darts/schema';
 import { seg } from '../../engine/src/testkit.ts';
@@ -707,6 +707,30 @@ describe('ending a game early', () => {
 });
 
 describe('the match report', () => {
+  it.each([false, true])('pushes a durable report before rebuilding career stats (ended early: %s)', (early) => {
+    const [alice, bob] = seedPlayers();
+    manager.start(X01, [alice, bob]);
+    const rebuild = store.recomputeAll.bind(store);
+    const spy = vi.spyOn(store, 'recomputeAll').mockImplementation(() => {
+      const pushed = events.find((event) => event.type === 'match.report');
+      expect(pushed?.type).toBe('match.report');
+      if (pushed?.type === 'match.report') {
+        expect(pushed.report.endedAt).not.toBeNull();
+        expect(pushed.report.conceded).toBe(early);
+        expect(pushed.report).toEqual(store.summaryFor(pushed.report.matchId));
+      }
+      return rebuild();
+    });
+    try {
+      if (early) manager.apply({ type: 'END_MATCH' });
+      else nineDartLeg();
+      expect(spy).toHaveBeenCalledOnce();
+      expect(events.filter((event) => event.type === 'match.report')).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('reports the match that was just played', () => {
     const [alice, bob] = seedPlayers();
     manager.start(X01, [alice, bob]);

@@ -20,10 +20,8 @@ const isGotcha = computed(() => props.view.gameType === 'gotcha');
 const isEvenOdd = computed(() => props.view.gameType === 'evenodd');
 
 /**
- * Everyone gets a small card in the strip up top (PlayerStrip, hoisted to the
- * full window width in App.vue); only the player actually throwing gets the big
- * one here with the full per-game detail. That keeps a large roster from
- * turning into a wall of full-size cards, while still surfacing every score.
+ * Cricket combines everyone in its marks table. Other games use the player
+ * strip and a detailed card for whoever is throwing.
  */
 const activePlayer = computed<View['players'][number] | null>(
   () => props.view.players.find((p) => p.isActive) ?? null,
@@ -37,11 +35,6 @@ const cricketTargets = computed<number[]>(() => {
 function marks(player: View['players'][number], target: number): number {
   const m = player.detail.marks as Record<number, number> | undefined;
   return m?.[target] ?? 0;
-}
-
-/** Cricket marks render as the conventional slash, cross, circled cross. */
-function markGlyph(n: number): string {
-  return ['', '/', '✕', '⊗'][Math.min(n, 3)] ?? '';
 }
 
 function fmt(n: number | null | undefined, digits = 1): string {
@@ -121,30 +114,51 @@ function scoreText(player: View['players'][number]): string {
     </header>
 
     <!--
-      Cricket is played around what everyone ELSE has closed, not just the
-      active player -- the small strip above only has room for a score, so
-      this is the one game that needs its own always-everyone overview.
+      Keep Cricket's points, player stats and marks together, so the table
+      replaces both the player strip and the active player's score card.
     -->
     <div v-if="isCricket" class="cricket-board-wrap">
       <table class="cricket-board">
+        <caption class="sr-only">Cricket player scores and target marks</caption>
+        <colgroup><col class="player-column" /><col v-for="t in cricketTargets" :key="t" /></colgroup>
         <thead>
           <tr>
-            <th class="who"></th>
-            <th v-for="t in cricketTargets" :key="t">{{ t === 25 ? 'B' : t }}</th>
+            <th class="who" scope="col">Player / points</th>
+            <th v-for="t in cricketTargets" :key="t" scope="col">{{ t === 25 ? 'Bull' : t }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in view.players" :key="p.playerId" :class="{ active: p.isActive, out: placeOf(p) !== null }"
+          <tr v-for="p in view.players" :key="p.playerId" :class="{ active: p.isActive, out: placeOf(p) !== null, winner: view.winnerId === p.playerId }"
             :style="{ '--accent': p.color }">
-            <th class="who">{{ p.name }}</th>
-            <td v-for="t in cricketTargets" :key="t" :class="{ closed: marks(p, t) >= 3 }">{{ markGlyph(marks(p, t)) }}
+            <th class="who" scope="row">
+              <div class="cricket-player">
+                <div class="cricket-identity">
+                  <span class="cricket-player-name">{{ p.name }}</span>
+                  <span class="cricket-turn-label" :class="{ visible: p.isActive }" :aria-hidden="!p.isActive">At the oche</span>
+                  <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>
+                </div>
+                <strong class="cricket-points" :aria-label="`${p.score} points`">{{ p.score }}</strong>
+                <div class="cricket-player-stats">
+                  <span>{{ fmt(p.stats.mpr, 2) }} MPR</span>
+                  <span>{{ p.stats.dartsThrown }} darts</span>
+                  <span :title="`${p.setsWon} sets won, ${p.legsWon} legs won`">Sets/legs {{ p.setsWon }}–{{ p.legsWon }}</span>
+                </div>
+              </div>
+            </th>
+            <td v-for="t in cricketTargets" :key="t" :class="{ closed: marks(p, t) >= 3 }" :aria-label="`${t === 25 ? 'Bull' : t}: ${Math.min(marks(p, t), 3)} marks`">
+              <svg class="cricket-mark" :class="{ empty: marks(p, t) === 0 }" viewBox="0 0 40 40" aria-hidden="true">
+                <circle v-if="marks(p, t) === 0" cx="20" cy="20" r="1.5" fill="currentColor" stroke="none" />
+                <path v-if="marks(p, t) >= 1" d="M12 28 28 12" />
+                <path v-if="marks(p, t) >= 2" d="M12 12 28 28" />
+                <circle v-if="marks(p, t) >= 3" cx="20" cy="20" r="17" />
+              </svg>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div class="players">
+    <div v-else class="players">
       <article v-for="p in activePlayer ? [activePlayer] : []" :key="p!.playerId" class="player"
         :class="{ active: p!.isActive, winner: view.winnerId === p!.playerId, out: isOut(p!, view.gameType) }"
         :style="{ '--accent': p!.color }">
@@ -283,16 +297,16 @@ function scoreText(player: View['players'][number]): string {
   font-size: 0.8rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8b93a1;
+  color: var(--ui-muted);
 }
 
 .game {
-  color: #e8e6e1;
+  color: var(--ui-text);
   font-weight: 700;
 }
 
 .done {
-  color: #3f9d54;
+  color: var(--ui-success);
   font-weight: 700;
 }
 
@@ -302,21 +316,21 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .player {
-  border: 1px solid #262b33;
+  border: 1px solid var(--ui-border);
   border-left: 4px solid var(--accent);
   border-radius: 10px;
   padding: 0.75rem 1rem;
-  background: #14171c;
+  background: var(--ui-surface);
   transition: background 120ms ease, border-color 120ms ease;
 }
 
 .player.active {
-  background: #1b2029;
+  background: var(--ui-surface-raised);
   border-color: var(--accent);
 }
 
 .player.winner {
-  box-shadow: 0 0 0 2px #3f9d54 inset;
+  box-shadow: 0 0 0 2px var(--ui-success) inset;
 }
 
 /* Checked out, but the leg is still running for everyone else. */
@@ -332,8 +346,8 @@ function scoreText(player: View['players'][number]): string {
   text-transform: uppercase;
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
-  background: #262b33;
-  color: #b9c0cc;
+  background: var(--ui-border);
+  color: var(--ui-secondary);
 }
 
 .place.p1 {
@@ -366,7 +380,7 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .legs {
-  color: #8b93a1;
+  color: var(--ui-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -377,71 +391,39 @@ function scoreText(player: View['players'][number]): string {
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * The Cricket chalkboard: everyone's marks against every target, always
- * visible regardless of who is throwing -- see the template comment above
- * for why this game needs it and the others don't.
- */
-.cricket-board-wrap {
-  overflow-x: auto;
-}
-
-.cricket-board {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 0.85rem;
-}
-
-.cricket-board th,
-.cricket-board td {
-  padding: 0.3rem 0.5rem;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.cricket-board thead th {
-  color: #8b93a1;
-  font-weight: 600;
-  font-size: 0.75rem;
-}
-
-.cricket-board th.who {
-  text-align: left;
-  font-weight: 600;
-  color: #cdd3dc;
-  white-space: nowrap;
-}
-
-.cricket-board tbody tr {
-  border-top: 1px solid #262b33;
-}
-
-.cricket-board tbody tr th.who {
-  border-left: 3px solid var(--accent);
-  padding-left: 0.4rem;
-}
-
-.cricket-board tbody tr.active {
-  background: #1b2029;
-}
-
-.cricket-board tbody tr.active th.who {
-  color: #e8e6e1;
-}
-
-.cricket-board tbody tr.out {
-  opacity: 0.62;
-}
-
-.cricket-board td {
-  color: #cdd3dc;
-  font-weight: 600;
-}
-
-.cricket-board td.closed {
-  background: #1d3b26;
-  color: #6fd68c;
-  border-radius: 4px;
+/* Cricket's table is the complete roster and scoreboard, including points. */
+.cricket-board-wrap { overflow: hidden; }
+.cricket-board { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.cricket-board .player-column { width: 30%; }
+.cricket-board th, .cricket-board td { padding: 0.7rem 0.35rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cricket-board thead th { font-size: clamp(0.75rem, 2cqw, 1.15rem); color: var(--ui-muted); font-weight: 650; padding-block: 0.85rem; }
+.cricket-board th.who { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.cricket-board thead th.who { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.cricket-board tbody tr { border-top: 1px solid var(--ui-border); }
+.cricket-board tbody th.who { border-left: 4px solid var(--accent); padding: 0.8rem; }
+.cricket-board tbody tr.active { background: color-mix(in srgb, var(--accent) 12%, var(--ui-surface-deep)); }
+.cricket-board tbody tr.out { opacity: 0.62; }
+.cricket-board tbody tr.winner { opacity: 1; }
+.cricket-player { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.6rem; }
+.cricket-identity { flex: 1 1 5rem; min-width: 0; }
+.cricket-player-name { display: block; color: var(--ui-text); font-weight: 650; font-size: clamp(0.85rem, 2cqw, 1.2rem); line-height: 1.25; }
+.cricket-turn-label { display: block; visibility: hidden; color: var(--accent); font-size: 0.65rem; line-height: 1.5; margin-top: 0.2rem; }
+.cricket-turn-label.visible { visibility: visible; }
+.mini-place { color: #ffda80; font-size: 0.75rem; font-weight: 750; }
+.cricket-points { color: var(--ui-accent); font-size: clamp(1.5rem, 4cqw, 2.8rem); line-height: 1.1; letter-spacing: -0.04em; }
+.cricket-player-stats { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; color: var(--ui-muted); font-size: 0.65rem; font-weight: 400; line-height: 1.5; }
+.cricket-mark { display: block; width: 100%; max-width: 3.8rem; height: auto; margin-inline: auto; color: var(--ui-secondary); fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; }
+.cricket-mark.empty { color: #48667b; }
+.cricket-board td.closed { background: #173c32; }
+.cricket-board td.closed .cricket-mark { color: #79e5b3; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@container (max-width: 500px) {
+  .cricket-board .player-column { width: 34%; }
+  .cricket-board thead th { font-size: 0.7rem; }
+  .cricket-board tbody th.who { padding: 0.5rem; }
+  .cricket-board th, .cricket-board td { padding-inline: 0.15rem; }
+  .cricket-player { gap: 0.2rem; }
+  .cricket-player-stats { font-size: 0.6rem; }
 }
 
 .golf {
@@ -455,12 +437,12 @@ function scoreText(player: View['players'][number]): string {
   display: flex;
   gap: 0.7rem;
   font-size: 0.78rem;
-  color: #8b93a1;
+  color: var(--ui-muted);
   flex-wrap: wrap;
 }
 
 .golf-line .hole {
-  color: #cdd3dc;
+  color: var(--ui-secondary);
   font-weight: 600;
 }
 
@@ -469,7 +451,7 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .done-tag {
-  color: #3f9d54;
+  color: var(--ui-success);
   font-weight: 600;
 }
 
@@ -501,7 +483,7 @@ function scoreText(player: View['players'][number]): string {
 
 .card .par {
   background: #23272f;
-  color: #cdd3dc;
+  color: var(--ui-secondary);
 }
 
 .card .over {
@@ -523,7 +505,7 @@ function scoreText(player: View['players'][number]): string {
 
 .shanghai-line {
   font-size: 0.78rem;
-  color: #cdd3dc;
+  color: var(--ui-secondary);
   font-weight: 600;
 }
 
@@ -542,11 +524,11 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .killer-line .waiting {
-  color: #8b93a1;
+  color: var(--ui-muted);
 }
 
 .killer-line .number {
-  color: #cdd3dc;
+  color: var(--ui-secondary);
   font-weight: 600;
 }
 
@@ -587,7 +569,7 @@ function scoreText(player: View['players'][number]): string {
 
 .killer-progress {
   font-size: 0.85rem;
-  color: #8b94a3;
+  color: var(--ui-muted);
 }
 
 .checkout {
@@ -597,11 +579,11 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .dart {
-  background: #262b33;
+  background: var(--ui-border);
   border-radius: 4px;
   padding: 0.1rem 0.4rem;
   font-size: 0.8rem;
-  color: #b9c0cc;
+  color: var(--ui-secondary);
 }
 
 .stats {
@@ -609,7 +591,7 @@ function scoreText(player: View['players'][number]): string {
   gap: 0.9rem;
   margin-top: 0.5rem;
   font-size: 0.78rem;
-  color: #8b93a1;
+  color: var(--ui-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -626,8 +608,8 @@ function scoreText(player: View['players'][number]): string {
   min-height: 5.5rem;
   padding: 0.4rem 0.3rem;
   border-radius: 12px;
-  border: 1px solid #262b33;
-  background: #1b2029;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-raised);
   font-size: 4rem;
   font-weight: 700;
   line-height: 1;
@@ -639,7 +621,7 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .slot.thrown {
-  color: #e8e6e1;
+  color: var(--ui-text);
 }
 
 .slot.empty {
@@ -649,7 +631,7 @@ function scoreText(player: View['players'][number]): string {
 
 /* The checkout route is deliberately low-contrast: advice, not a score. */
 .slot.hint {
-  background: #14171c;
+  background: var(--ui-surface);
   border-style: dashed;
   font-weight: 600;
   color: #5d7fa8;
@@ -680,7 +662,7 @@ function scoreText(player: View['players'][number]): string {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #8b93a1;
+  color: var(--ui-muted);
 }
 
 .turn-total .value {
@@ -689,4 +671,23 @@ function scoreText(player: View['players'][number]): string {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+.scoreboard { container-type: inline-size; padding: clamp(1rem, 2vw, 1.6rem); border-radius: 18px; border: 1px solid var(--ui-border); background: linear-gradient(145deg, #123448, #0c1d2c 65%); box-shadow: var(--ui-shadow); }
+.meta { flex-wrap: wrap; gap: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--ui-border-soft); }
+.game { padding: 0.35rem 0.65rem; background: #56cfff18; border: 1px solid #56cfff35; border-radius: 8px; color: var(--ui-accent); }
+.player { border-radius: 16px; padding: 1.2rem; position: relative; overflow: hidden; }
+.player.active { background: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 65%), var(--ui-surface-deep); border-color: color-mix(in srgb, var(--accent) 65%, var(--ui-border)); }
+.name { font-size: 1.2rem; }.row { gap: 0.5rem; flex-wrap: wrap; }
+.score { font-size: clamp(4.5rem, 9vw, 8rem); letter-spacing: -0.055em; padding: 0.35rem 0; text-shadow: 0 4px 24px #0003; }
+.golf-line, .shanghai-line, .killer-line { font-size: 0.9rem; gap: 0.6rem; line-height: 1.5; flex-wrap: wrap; }
+.golf-line .hole { color: var(--ui-accent); }.golf-line .hcp { background: #ffffff0a; padding: 0 0.5rem; border-radius: 5px; }
+.card { gap: 0.3rem; margin-top: 0.4rem; }.card .cell { min-width: 1.9rem; padding: 0.4rem 0.3rem; border-radius: 6px; font-size: 0.85rem; }
+.stats { flex-wrap: wrap; gap: 0.75rem; padding-top: 0.8rem; border-top: 1px solid var(--ui-border-soft); }
+.checkout { flex-wrap: wrap; gap: 0.4rem; }.dart { color: var(--ui-accent); border: 1px solid #56cfff40; background: #56cfff12; padding: 0.35rem 0.6rem; border-radius: 7px; font-weight: 700; }
+.slot { background: linear-gradient(145deg, #1d4057, #102a3c); border-color: #345b72; border-radius: 14px; min-height: 6.5rem; box-shadow: inset 0 1px #ffffff08; }
+.slot.thrown { border-bottom: 3px solid var(--ui-accent); }.slot.empty { color: #56748b; }.slot.hint { color: #86a6bf; background: #0d2333; }.slot.hint.next { background: #332b18; color: #ffdc80; border-color: #977b38; }
+.turn-total { border: 1px solid var(--ui-border-soft); border-radius: 12px; background: var(--ui-surface-deep); padding: 0.65rem 1rem; }.turn-total .value { color: var(--ui-accent); }
+.cricket-board-wrap { border: 1px solid var(--ui-border); border-radius: 12px; padding: 0.4rem; background: var(--ui-surface-deep); }
+@media (max-width: 580px) { .player { padding: 0.85rem; }.meta { letter-spacing: 0.03em; font-size: 0.7rem; }.slot { min-height: 5rem; font-size: 2.6rem; } }
+
 </style>

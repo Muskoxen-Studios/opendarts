@@ -185,6 +185,34 @@ describe('the golf handicap', () => {
 });
 
 describe('the match report', () => {
+  it.each([0, 18, 36])('shows the actual handicap movement from %i after clamping', (handicap) => {
+    const analysis = evenRound(handicap, 2);
+    const expected = computeGolfHandicap(ALICE, [analysis]).handicap;
+    const golf = summarizeMatch(analysis).players[0]!.golf!;
+    expect(golf.handicap).toBe(handicap);
+    expect(golf.handicapAfter).toBe(expected);
+    expect(golf.handicapChange).toBe(expected - handicap);
+    expect(golf.parTarget).toBe(4);
+  });
+
+  it('reports an increase and no change for a round on target', () => {
+    const poor = summarizeMatch(evenRound(0, 5)).players[0]!.golf!;
+    expect(poor.handicapAfter).toBeGreaterThan(0);
+    expect(poor.handicapChange).toBe(poor.handicapAfter);
+    const onTarget = summarizeMatch(evenRound(0, 4)).players[0]!.golf!;
+    expect(onTarget.handicapChange).toBe(0);
+    const capped = summarizeMatch(evenRound(36, 7)).players[0]!.golf!;
+    expect(capped.handicapAfter).toBe(36);
+    expect(capped.handicapChange).toBe(0);
+  });
+
+  it('leaves the handicap unchanged when ended before any hole is completed', () => {
+    const analysis = analyzeMatch(round(config(18), []));
+    const golf = summarizeMatch(analysis).players[0]!.golf!;
+    expect(golf.handicapAfter).toBe(18);
+    expect(golf.handicapChange).toBe(0);
+  });
+
   it('records every hole on the card', () => {
     const report = summarizeMatch(evenRound(0, 2));
     const alice = report.players[0];

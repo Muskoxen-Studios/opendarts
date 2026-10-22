@@ -377,6 +377,10 @@ leg:
 **Cricket** — standard and cut-throat. In cut-throat, points go to opponents who
 have not closed the number and the lowest score wins.
 
+The live Cricket table combines each player's points, marks, MPR, darts and
+sets/legs in one row, with the current thrower highlighted. It replaces the
+separate player strip and score card, leaving more room for larger target marks.
+
 Marks-per-round is computed over **completed rounds only**. Dividing running
 marks by a fractional round makes the figure meaningless mid-turn — a treble on
 the first dart would read as 9.00 MPR.
@@ -483,6 +487,31 @@ reports that there is no manual yet.
 Adding a new game is one file in `packages/engine/src/` plus one line in
 `registry.ts`.
 
+### The live match screen
+
+During play, the header collapses to a compact bar with board status, board
+controls and the Awake indicator always visible. **Menu** expands navigation
+over the match; closing it returns to the compact bar. Other tabs retain the
+full header.
+
+The live match fits within the available screen without page scrolling. It
+reflows for portrait phones and scales down when needed, including on window
+resize, rotation, or changes to the roster and game details. All player cards
+remain visible. Player management opens separately, as do match results, so
+those panels can scroll without shrinking the match underneath.
+
+Turn notices and the recent-dart history reserve their space, so showing
+“remove your darts”, a stuck-takeout action, or correction help does not resize
+the match.
+
+While a match is playing, the visible app requests a **screen wake lock** and
+reacquires it when you return to the tab. It releases the lock when the match
+ends or the page is hidden. The header shows **Awake** when the request succeeds;
+the menu explains when it is unavailable and offers a retry if it was released
+or declined. Browsers require HTTPS or localhost for this API. A phone opening
+a plain HTTP LAN address must use its own screen-timeout setting, or access the
+app through HTTPS. Battery-saving settings can also decline or release a lock.
+
 ### Takeout ends the turn
 
 A finished turn is not handed over the instant the third dart lands: the darts
@@ -544,6 +573,17 @@ A match overview opens the moment a game ends — and from the **Last game**
 button, which reads the most recently finished match. It shows the standings,
 three-dart and first-nine averages, best turn, 180s, checkouts, busts, and the
 full golf card hole by hole.
+
+The results dashboard highlights the winner and each player's performance, with
+game-specific cards for X01 averages and checkouts, Cricket marks, and Golf
+Stableford points, birdies and the round target. Golf also shows each player's
+handicap **before → after**, alongside the actual change after the 0–36 limits
+are applied. This is the change earned by that match, even when viewing an old
+round. A round with no completed holes leaves the handicap unchanged.
+
+Live results are delivered directly when the match finishes, before career
+statistics are rebuilt. Achievement celebrations become compact notifications
+while the overview is open, so a queue of unlocks cannot hide the results.
 
 It also **replays the winning turn** dart by dart, and draws a **heatmap** of
 where the darts landed, for everyone or for one player. The same heatmap for a

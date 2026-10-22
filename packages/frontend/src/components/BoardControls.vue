@@ -147,33 +147,38 @@ onUnmounted(() => {
 .indicator { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.9rem; }
 .light {
   width: 0.6rem; height: 0.6rem; border-radius: 50%; flex: none;
-  background: #d8453f; box-shadow: 0 0 0.4rem #d8453f88;
+  background: var(--ui-danger); box-shadow: 0 0 0.4rem #f08b8b88;
 }
-.light.on { background: #3f9d54; box-shadow: 0 0 0.4rem #3f9d5488; }
+.light.on { background: var(--ui-success); box-shadow: 0 0 0.4rem #69d9ad88; }
 .chip {
   font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
-  border: 1px solid #262b33; background: #14171c; color: #8b93a1;
+  border: 1px solid var(--ui-border); background: var(--ui-surface); color: var(--ui-muted);
   border-radius: 999px; padding: 0.15rem 0.55rem;
 }
-.chip.live { border-color: #1f3a2a; background: #16241c; color: #3f9d54; }
+.chip.live { border-color: #1f3a2a; background: #16241c; color: var(--ui-success); }
 .link { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 1rem; padding: 0 0.2rem; }
-.link:hover { color: #cdd3dc; }
+.link:hover { color: var(--ui-secondary); }
 .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .actions button {
-  background: #14171c; border: 1px solid #262b33; color: #cdd3dc;
+  background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-secondary);
   border-radius: 6px; padding: 0.4rem 0.85rem; cursor: pointer; font: inherit; font-size: 0.9rem;
 }
-.actions button:hover:not(:disabled) { border-color: #4f8ef7; }
+.actions button:hover:not(:disabled) { border-color: var(--ui-accent); }
 .actions button.danger { border-color: #45262a; color: #c9645f; }
-.actions button.danger:hover:not(:disabled) { border-color: #d8453f; color: #d8453f; }
+.actions button.danger:hover:not(:disabled) { border-color: var(--ui-danger); color: var(--ui-danger); }
 .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
-.hint { margin: 0; font-size: 0.78rem; color: #8b93a1; line-height: 1.45; }
-.hint.bad { color: #d8453f; }
+.hint { margin: 0; font-size: 0.78rem; color: var(--ui-muted); line-height: 1.45; }
+.hint.bad { color: var(--ui-danger); }
 
 /* In the header the buttons are the whole component. */
 .board.compact { flex-direction: row; align-items: center; gap: 0; }
 .board.compact .actions { gap: 0.3rem; flex-wrap: nowrap; }
 .board.compact .actions button { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 .board.compact .hint.bad { font-size: 0.72rem; }
+
+
+.actions button { border-radius: 8px; background: var(--ui-surface-deep); }.board.compact .actions button { border-radius: 7px; }
+.light.on { box-shadow: 0 0 0.5rem #69d9ad70; }
+@media (max-width: 400px) { .board.compact .actions { flex-wrap: wrap; } }
 
 </style>

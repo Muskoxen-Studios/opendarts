@@ -148,17 +148,20 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.group { border: 1px solid #262b33; border-radius: 10px; padding: 0.9rem 1rem; background: #14171c; }
-h3 { margin: 0 0 0.5rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: #8b93a1; }
+.group { border: 1px solid var(--ui-border); border-radius: 10px; padding: 0.9rem 1rem; background: var(--ui-surface); }
+h3 { margin: 0 0 0.5rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ui-muted); }
 p, figcaption { font-size: 0.82rem; }
-.hint { color: #8b93a1; line-height: 1.45; }
-.bad { color: #d8453f; }
+.hint { color: var(--ui-muted); line-height: 1.45; }
+.bad { color: var(--ui-danger); }
 .cameras { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
 figure { margin: 0; min-width: 0; }
-img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #0f1216; }
+img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--ui-surface-deep); }
 .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.7rem; }
 label { font-size: 0.82rem; }
-input { width: 5rem; background: #0f1216; border: 1px solid #262b33; color: #e8e6e1; border-radius: 6px; padding: 0.35rem; }
-button { background: #232936; border: 1px solid #333b49; color: #e8e6e1; border-radius: 8px; padding: 0.5rem; cursor: pointer; }
+input { width: 5rem; background: var(--ui-surface-deep); border: 1px solid var(--ui-border); color: var(--ui-text); border-radius: 6px; padding: 0.35rem; }
+button { background: #232936; border: 1px solid var(--ui-border); color: var(--ui-text); border-radius: 8px; padding: 0.5rem; cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.group { grid-column: 1 / -1; border-radius: 16px; background: var(--ui-surface-deep); border-color: var(--ui-border); box-shadow: var(--ui-shadow); }
+
 </style>

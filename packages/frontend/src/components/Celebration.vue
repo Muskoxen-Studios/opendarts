@@ -12,7 +12,7 @@ export interface Celebration {
   tier: string | null;
 }
 
-const props = defineProps<{ celebration: Celebration | null; queued: number }>();
+const props = defineProps<{ celebration: Celebration | null; queued: number; compact?: boolean }>();
 const emit = defineEmits<{ (e: 'dismiss'): void }>();
 
 const tierLabel = computed(() => props.celebration?.tier ?? 'unlocked');
@@ -42,12 +42,13 @@ const confetti = computed(() => {
     <div
       v-if="celebration"
       class="overlay"
-      role="alertdialog"
+      :class="{ compact }"
+      :role="compact ? 'status' : 'alertdialog'"
       aria-live="assertive"
       :aria-label="`Achievement unlocked: ${celebration.name}`"
       @click="emit('dismiss')"
     >
-      <div class="confetti" aria-hidden="true">
+      <div v-if="!compact" class="confetti" aria-hidden="true">
         <i
           v-for="c in confetti"
           :key="c.i"
@@ -164,6 +165,18 @@ h2 { margin: 0.6rem 0 0.35rem; font-size: 2rem; letter-spacing: -0.01em; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 220ms ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.overlay.compact {
+  inset: auto 1rem 1rem auto; z-index: 50; max-width: min(340px, calc(100vw - 2rem));
+  background: none; backdrop-filter: none; overflow: visible;
+}
+.compact .card { padding: 0.8rem 1.1rem; text-align: left; animation: none; border-width: 1px; }
+.compact .icon { float: left; font-size: 2rem; margin-right: 0.6rem; animation: none; }
+.compact h2 { font-size: 1rem; }
+.compact .eyebrow { font-size: 0.6rem; }
+.compact .desc { font-size: 0.75rem; }
+.compact .who { margin-top: 0.4rem; font-size: 0.85rem; }
+.compact .dismiss { margin-top: 0.5rem; padding: 0.3rem 1rem; font-size: 0.8rem; }
 
 /* A full-screen burst is exactly the kind of motion that causes trouble, so
    honour the user's preference and keep only the static card. */

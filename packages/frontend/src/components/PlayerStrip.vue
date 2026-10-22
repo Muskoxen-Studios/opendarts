@@ -10,7 +10,7 @@ import {
   type View,
 } from '../gameDetail.ts';
 
-const props = defineProps<{ view: View }>();
+const props = defineProps<{ view: View; fit?: boolean }>();
 
 const isKiller = computed(() => props.view.gameType === 'killer');
 const isGotcha = computed(() => props.view.gameType === 'gotcha');
@@ -35,7 +35,7 @@ watch(
   async (playerId) => {
     // Nothing to scroll when the strip wraps -- and scrollIntoView would jog
     // the page instead of the strip.
-    if (!playerId || everyoneMatters.value) return;
+    if (!playerId || everyoneMatters.value || props.fit) return;
     await nextTick();
     miniEls.get(playerId)?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   },
@@ -44,7 +44,7 @@ watch(
 </script>
 
 <template>
-  <div class="strip" :class="{ wrap: everyoneMatters, slim: everyoneMatters }">
+  <div class="strip" :class="{ wrap: everyoneMatters || fit, slim: everyoneMatters || fit, fit }">
     <article v-for="p in view.players" :key="p.playerId" :ref="(el) => setMiniEl(p.playerId, el as Element | null)"
       class="mini" :class="{ active: p.isActive, winner: view.winnerId === p.playerId, out: isOut(p, view.gameType) }"
       :style="{ '--accent': p.color }">
@@ -134,11 +134,11 @@ watch(
   align-items: center;
   gap: 0.1rem;
   min-width: 9.5rem;
-  border: 1px solid #262b33;
+  border: 1px solid var(--ui-border);
   border-top: 3px solid var(--accent);
   border-radius: 8px;
   padding: 0.75rem 1.1rem;
-  background: #14171c;
+  background: var(--ui-surface);
   transition: background 120ms ease, border-color 120ms ease;
 }
 
@@ -161,12 +161,12 @@ watch(
 }
 
 .mini.active {
-  background: #1b2029;
+  background: var(--ui-surface-raised);
   box-shadow: 0 0 0 2px var(--accent);
 }
 
 .mini.winner {
-  box-shadow: 0 0 0 2px #3f9d54 inset;
+  box-shadow: 0 0 0 2px var(--ui-success) inset;
 }
 
 .mini.out {
@@ -181,7 +181,7 @@ watch(
 
 .mini-name {
   font-size: 1.4rem;
-  color: #8b93a1;
+  color: var(--ui-muted);
   white-space: nowrap;
 }
 
@@ -195,7 +195,7 @@ watch(
 .mini-togo {
   font-size: 1.15rem;
   font-weight: 700;
-  color: #8b94a3;
+  color: var(--ui-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -229,5 +229,30 @@ watch(
   background: linear-gradient(90deg, #d8453f var(--fill, 100%), #333a45 var(--fill, 100%));
   -webkit-mask: var(--heart) center / contain no-repeat;
   mask: var(--heart) center / contain no-repeat;
+}
+
+.strip { gap: 0.8rem; padding: 0.2rem 0.2rem 0.5rem; }
+.mini { border-radius: 14px; background: linear-gradient(155deg, #153347, #0d2232); padding: 0.9rem 1.25rem; box-shadow: 0 6px 20px #0002; }
+.mini.active { background: radial-gradient(ellipse at top, color-mix(in srgb, var(--accent) 24%, transparent), transparent 85%), var(--ui-surface); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 6px 24px #0003; }
+.mini.active .mini-name { color: var(--ui-text); }.mini-score { letter-spacing: -0.04em; line-height: 1.1; }.mini-name { margin-top: 0.25rem; }
+@media (prefers-reduced-motion: reduce) { .strip { scroll-behavior: auto; } }
+
+.strip.fit { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); overflow: visible; }
+.strip.fit .mini { min-width: 0; padding: 0.55rem 0.7rem; }
+.strip.fit .mini-score { font-size: 2.7rem; }
+.strip.fit .mini-name { max-width: 100%; font-size: 1.05rem; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.strip.fit .mini-togo, .strip.fit .mini-place { font-size: 0.9rem; }
+@media (max-width: 640px) {
+  .strip.fit { grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); gap: 0.4rem; }
+  .strip.fit .mini { padding: 0.35rem; }.strip.fit .mini-score { font-size: 2rem; }
+  .strip.fit .mini-name { font-size: 0.8rem; }.strip.fit .mini-togo { font-size: 0.7rem; }
+}
+
+
+@media (max-height: 600px) and (orientation: landscape) {
+  .strip.fit { padding-bottom: 0.2rem; }
+  .strip.fit .mini { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 0.5rem; padding: 0.3rem 0.6rem; }
+  .strip.fit .mini-score { font-size: 2rem; }
+  .strip.fit .mini-name { margin: 0; font-size: 0.85rem; }
 }
 </style>

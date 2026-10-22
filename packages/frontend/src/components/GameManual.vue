@@ -48,7 +48,7 @@ const html = computed(() => (source.value ? renderMarkdown(source.value) : ''));
 }
 .sheet {
   width: min(760px, 100%);
-  background: #0f1216; border: 1px solid #262b33; border-radius: 14px;
+  background: var(--ui-surface-deep); border: 1px solid var(--ui-border); border-radius: 14px;
   padding: 1.1rem 1.25rem 1rem;
   display: flex; flex-direction: column; gap: 0.75rem;
   box-shadow: 0 24px 60px rgb(0 0 0 / 55%);
@@ -56,46 +56,50 @@ const html = computed(() => (source.value ? renderMarkdown(source.value) : ''));
 header { display: flex; align-items: center; gap: 1rem; }
 h2 { margin: 0; font-size: 1.25rem; }
 .close { margin-left: auto; background: none; border: none; color: #6b7280; font-size: 1.6rem; line-height: 1; cursor: pointer; }
-.close:hover { color: #e8e6e1; }
-.empty { margin: 0; font-size: 0.9rem; color: #8b93a1; }
+.close:hover { color: var(--ui-text); }
+.empty { margin: 0; font-size: 0.9rem; color: var(--ui-muted); }
 footer { display: flex; justify-content: flex-end; }
 .ghost {
-  background: none; border: 1px solid #333b49; color: #cdd3dc;
+  background: none; border: 1px solid var(--ui-border); color: var(--ui-secondary);
   border-radius: 999px; padding: 0.35rem 1rem; cursor: pointer; font: inherit; font-size: 0.85rem;
 }
-.ghost:hover { border-color: #4f8ef7; color: #fff; }
+.ghost:hover { border-color: var(--ui-accent); color: #fff; }
 
 /* The rendered document. Deep, because the HTML arrives through v-html. */
 .doc { max-height: 68vh; overflow-y: auto; padding-right: 0.35rem; font-size: 0.92rem; line-height: 1.6; }
 .doc :deep(h1) { font-size: 1.05rem; margin: 0 0 0.6rem; }
 .doc :deep(h2) {
   font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #8b93a1; margin: 1.3rem 0 0.4rem;
+  color: var(--ui-muted); margin: 1.3rem 0 0.4rem;
 }
 .doc :deep(h3) { font-size: 0.9rem; margin: 1rem 0 0.3rem; }
-.doc :deep(p) { margin: 0.5rem 0; color: #cdd3dc; }
-.doc :deep(ul), .doc :deep(ol) { margin: 0.5rem 0; padding-left: 1.2rem; color: #cdd3dc; }
+.doc :deep(p) { margin: 0.5rem 0; color: var(--ui-secondary); }
+.doc :deep(ul), .doc :deep(ol) { margin: 0.5rem 0; padding-left: 1.2rem; color: var(--ui-secondary); }
 .doc :deep(li) { margin: 0.2rem 0; }
 .doc :deep(strong) { color: #fff; }
 .doc :deep(code) {
-  background: #14171c; border: 1px solid #262b33; border-radius: 4px;
+  background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 4px;
   padding: 0 0.25rem; font-size: 0.85em;
 }
 .doc :deep(pre) {
-  background: #14171c; border: 1px solid #262b33; border-radius: 8px;
+  background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 8px;
   padding: 0.6rem 0.75rem; overflow-x: auto;
 }
 .doc :deep(pre code) { background: none; border: none; padding: 0; }
-.doc :deep(hr) { border: none; border-top: 1px solid #262b33; margin: 1rem 0; }
+.doc :deep(hr) { border: none; border-top: 1px solid var(--ui-border); margin: 1rem 0; }
 .doc :deep(blockquote) {
   margin: 0.6rem 0; padding: 0.1rem 0 0.1rem 0.75rem;
-  border-left: 2px solid #333b49; color: #8b93a1;
+  border-left: 2px solid var(--ui-border); color: var(--ui-muted);
 }
 .doc :deep(table) { width: 100%; border-collapse: collapse; margin: 0.6rem 0; font-size: 0.88rem; }
 .doc :deep(th), .doc :deep(td) { text-align: left; padding: 0.35rem 0.5rem; }
 .doc :deep(thead th) {
-  font-size: 0.68rem; color: #8b93a1; text-transform: uppercase;
+  font-size: 0.68rem; color: var(--ui-muted); text-transform: uppercase;
   letter-spacing: 0.05em; font-weight: 600;
 }
-.doc :deep(tbody tr) { border-top: 1px solid #1d222a; }
+.doc :deep(tbody tr) { border-top: 1px solid var(--ui-border-soft); }
+
+.sheet { border-radius: 20px; border-color: var(--ui-border); background: linear-gradient(145deg, #143449, #0b1c2a 60%); padding: 1.5rem; }
+header { padding-bottom: 0.9rem; border-bottom: 1px solid var(--ui-border); }h2 { color: var(--ui-accent); font-size: 1.6rem; }.doc { line-height: 1.75; }.doc :deep(h2) { color: var(--ui-accent); }
+
 </style>

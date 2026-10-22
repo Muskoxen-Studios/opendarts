@@ -5,6 +5,7 @@ import {
   computeCareer,
   type MatchAnalysis,
   type MatchRecord,
+  type MatchReport,
 } from '@darts/stats';
 import type {
   BoardEvent,
@@ -17,6 +18,7 @@ import type {
 import type { Store } from './store.ts';
 
 export type ServerEvent =
+  | { type: 'match.report'; report: MatchReport }
   | { type: 'view'; view: MatchView | null }
   | { type: 'domain'; events: DomainEvent[] }
   | { type: 'board'; event: BoardEvent }
@@ -180,9 +182,8 @@ export class MatchManager {
 
     // Check achievements after every command so an unlock is celebrated the
     // moment it happens, rather than being held back until the match ends.
-    this.checkLiveAchievements();
-
     if (!wasFinished && this.match.finished) this.finalize();
+    else this.checkLiveAchievements();
     return this.match.view;
   }
 
@@ -395,6 +396,10 @@ export class MatchManager {
     }
 
     this.store.finishMatch(this.matchId, view.winnerId);
+    // Deliver results before rebuilding career projections. The client can
+    // render them without an HTTP request queued behind the history replay.
+    const report = this.store.summaryFor(this.matchId);
+    if (report) this.broadcast({ type: 'match.report', report });
     this.store.recomputeAll();
     this.refreshHistory();
 

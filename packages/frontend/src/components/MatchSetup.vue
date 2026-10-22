@@ -392,7 +392,7 @@ async function start(): Promise<void> {
 <template>
   <section class="setup">
     <div class="head">
-      <h2>New match</h2>
+      <div class="page-heading"><p class="page-eyebrow">Set the stage</p><h2>New match</h2><p class="page-description">Your players. Your rules. A fresh challenge.</p></div>
       <button class="ghost" @click="useLastSettings">Use last game's settings</button>
     </div>
     <p v-if="lastError" class="hint">Could not load the last match: {{ lastError }}</p>
@@ -409,6 +409,7 @@ async function start(): Promise<void> {
           v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd'] as GameType[])"
           :key="g"
           :class="{ on: gameType === g }"
+          :aria-pressed="gameType === g"
           @click="gameType = g"
         >{{ GAME_LABELS[g] }}</button>
       </div>
@@ -776,40 +777,40 @@ async function start(): Promise<void> {
 h2 { margin: 0; font-size: 1.1rem; }
 .head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .head .ghost {
-  margin-left: auto; background: none; border: 1px solid #333b49; color: #cdd3dc;
+  margin-left: auto; background: none; border: 1px solid var(--ui-border); color: var(--ui-secondary);
   border-radius: 999px; padding: 0.3rem 0.85rem; cursor: pointer; font: inherit; font-size: 0.8rem;
 }
-.head .ghost:hover { border-color: #4f8ef7; color: #fff; }
+.head .ghost:hover { border-color: var(--ui-accent); color: #fff; }
 .field-head { display: flex; align-items: center; gap: 0.75rem; }
 .manual-btn {
-  margin-left: auto; background: none; border: 1px solid #333b49; color: #cdd3dc;
+  margin-left: auto; background: none; border: 1px solid var(--ui-border); color: var(--ui-secondary);
   border-radius: 999px; padding: 0.25rem 0.75rem; cursor: pointer; font: inherit; font-size: 0.78rem;
 }
-.manual-btn:hover { border-color: #4f8ef7; color: #fff; }
+.manual-btn:hover { border-color: var(--ui-accent); color: #fff; }
 .golf-row { grid-template-columns: 7rem 5rem 1fr; }
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: #8b93a1; }
+label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ui-muted); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; }
-.hint { margin: 0; font-size: 0.8rem; color: #8b93a1; }
+.hint { margin: 0; font-size: 0.8rem; color: var(--ui-muted); }
 .tabs, .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .player-search { width: 100%; box-sizing: border-box; }
-.selected-chips { padding-bottom: 0.5rem; border-bottom: 1px solid #262b33; }
+.selected-chips { padding-bottom: 0.5rem; border-bottom: 1px solid var(--ui-border); }
 .chips.scroll {
   max-height: 14rem; overflow-y: auto; align-content: flex-start;
   padding-top: 0.15rem;
 }
 .chips.scroll .hint { flex-basis: 100%; }
 .tabs button, .chip {
-  background: #14171c; border: 1px solid #262b33; color: #cdd3dc;
+  background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-secondary);
   border-radius: 999px; padding: 0.4rem 0.9rem; cursor: pointer;
 }
-.tabs button.on { background: #2b3240; border-color: #4f8ef7; color: #fff; }
-.chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, #14171c); color: #fff; }
+.tabs button.on { background: #2b3240; border-color: var(--ui-accent); color: #fff; }
+.chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--ui-surface)); color: #fff; }
 select, input {
-  background: #14171c; border: 1px solid #262b33; color: #e8e6e1;
+  background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-text);
   border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit;
 }
-.handicaps { border: 1px solid #262b33; border-radius: 8px; padding: 0.75rem; }
+.handicaps { border: 1px solid var(--ui-border); border-radius: 8px; padding: 0.75rem; }
 summary { cursor: pointer; font-size: 0.9rem; }
 .use-handicaps {
   display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem;
@@ -821,9 +822,24 @@ summary { cursor: pointer; font-size: 0.9rem; }
 }
 .who { font-weight: 600; }
 .primary {
-  background: #4f8ef7; border: none; color: #fff; font-weight: 600;
+  background: var(--ui-accent); border: none; color: #fff; font-weight: 600;
   border-radius: 8px; padding: 0.7rem 1rem; cursor: pointer; font-size: 1rem;
 }
 .primary:disabled { opacity: 0.45; cursor: not-allowed; }
-.error { color: #d8453f; margin: 0; font-size: 0.85rem; }
+.error { color: var(--ui-danger); margin: 0; font-size: 0.85rem; }
+
+.setup { max-width: 1100px; margin-inline: auto; gap: 1.25rem; }
+.head { align-items: center; }.head .page-heading { flex: 1; border: 0; }.head .ghost { margin-left: 0; }
+.setup > .field, .setup > .grid, .setup > .handicaps { padding: 1.1rem; background: linear-gradient(135deg, #12304490, #0b1e2d); border: 1px solid var(--ui-border); border-radius: 16px; box-shadow: var(--ui-shadow); }
+.field { gap: 0.65rem; }label { color: var(--ui-secondary); font-size: 0.72rem; font-weight: 650; }.field-head { flex-wrap: wrap; }
+.tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.55rem; }
+.tabs button { border-radius: 12px; padding: 1.1rem 0.75rem; background: var(--ui-surface-deep); font-size: 1rem; font-weight: 650; }
+.tabs button:hover { border-color: #4c748b; background: var(--ui-surface-raised); }.tabs button.on { background: linear-gradient(135deg, #176b8c, #123c55); color: #e2f8ff; border-color: var(--ui-accent); box-shadow: inset 0 -3px var(--ui-accent); }
+select, input { border-radius: 9px; background: var(--ui-surface-deep); padding: 0.65rem 0.75rem; min-width: 0; }input[type=checkbox] { flex: none; }
+.chip { border-radius: 9px; padding: 0.6rem 0.85rem; }.chip:hover { border-color: var(--accent); }.selected-chips { border-bottom: 0; padding: 0.5rem 0 0; }
+.primary { background: linear-gradient(110deg, #71dcff, #40b9ef); color: #062337; border-radius: 12px; padding: 1rem; font-weight: 750; box-shadow: 0 6px 24px #129dcc20; }
+.primary:hover:not(:disabled) { box-shadow: 0 6px 28px #129dcc40; }
+.handicap-row { grid-template-columns: minmax(6rem, 1fr) repeat(3, minmax(0, 1fr)); }.handicap-row.golf-row { grid-template-columns: minmax(6rem, 1fr) 5rem minmax(0, 2fr); }
+@media (max-width: 580px) { .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }.tabs button { font-size: 0.8rem; padding: 0.85rem 0.2rem; }.head .page-heading { flex-basis: 100%; }.handicap-row, .handicap-row.golf-row { grid-template-columns: 1fr 1fr; }.head .ghost { margin-bottom: 0.4rem; }.manual-btn { margin-left: 0; } }
+
 </style>

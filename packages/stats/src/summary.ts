@@ -1,6 +1,7 @@
 import type { Coords, GameType } from '@darts/schema';
 import type { GolfHoleResult } from '@darts/engine';
 import type { CheckoutRecord, MatchAnalysis, ThrowRecord } from './analysis.ts';
+import { golfRounds } from './golf.ts';
 
 /**
  * Where darts land, aggregated.
@@ -97,6 +98,9 @@ export interface PlayerSummary {
   mpr: number | null;
   golf: {
     handicap: number;
+    handicapAfter: number;
+    handicapChange: number;
+    parTarget: number;
     points: number;
     holes: GolfHoleResult[];
     holed: number;
@@ -162,6 +166,8 @@ export function summarizeMatch(a: MatchAnalysis): MatchReport {
     const first9 = [...byLeg.values()].flatMap((list) => list.slice(0, 3));
 
     const holes = a.golf?.holes[p.id] ?? [];
+    const round = golfRounds(p.id, [a])[0];
+    const handicap = a.golf?.handicaps[p.id] ?? 36;
 
     return {
       playerId: p.id,
@@ -185,7 +191,10 @@ export function summarizeMatch(a: MatchAnalysis): MatchReport {
           : null,
       golf: a.golf
         ? {
-            handicap: a.golf.handicaps[p.id] ?? 0,
+            handicap,
+            handicapAfter: round?.handicapAfter ?? handicap,
+            handicapChange: (round?.handicapAfter ?? handicap) - handicap,
+            parTarget: round?.parTarget ?? 2 * a.golf.holeCount,
             points: a.golf.points[p.id] ?? 0,
             holes,
             holed: holes.filter((h) => h.holed).length,
