@@ -3,6 +3,7 @@ import { cricketEngine } from './cricket.ts';
 import { evenOddEngine } from './evenOdd.ts';
 import { golfEngine } from './golf.ts';
 import { gotchaEngine } from './gotcha.ts';
+import { minefieldEngine } from './minefield.ts';
 import { killerEngine } from './killer.ts';
 import { shanghaiEngine } from './shanghai.ts';
 import type { GameEngine } from './types.ts';
@@ -24,6 +25,7 @@ export const engines: Record<GameType, AnyEngine> = {
   shanghai: shanghaiEngine as unknown as AnyEngine,
   killer: killerEngine as unknown as AnyEngine,
   evenodd: evenOddEngine as unknown as AnyEngine,
+  minefield: minefieldEngine as unknown as AnyEngine,
 };
 
 export function engineFor(gameType: GameType): AnyEngine {

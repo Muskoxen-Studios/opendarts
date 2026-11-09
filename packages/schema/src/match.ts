@@ -165,6 +165,21 @@ export const EvenOddConfigSchema = z.object({
 });
 export type EvenOddConfig = z.infer<typeof EvenOddConfigSchema>;
 
+/** Escalation is per mine; the third explosion restores its HP. */
+export const MINEFIELD_MULTIPLIERS = [2, 3, 5] as const;
+export const MINEFIELD_TARGETS = [...Array.from({ length: 20 }, (_, i) => i + 1), 25];
+
+export const MinefieldConfigSchema = z.object({
+  gameType: z.literal('minefield'),
+  /** One dart removes one HP, regardless of ring. */
+  hitPoints: z.number().int().min(1).max(9).default(3),
+  targetScore: z.number().int().positive().default(301),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type MinefieldConfig = z.infer<typeof MinefieldConfigSchema>;
+
 export const GameConfigSchema = z.discriminatedUnion('gameType', [
   X01ConfigSchema,
   CricketConfigSchema,
@@ -173,6 +188,7 @@ export const GameConfigSchema = z.discriminatedUnion('gameType', [
   ShanghaiConfigSchema,
   KillerConfigSchema,
   EvenOddConfigSchema,
+  MinefieldConfigSchema,
 ]);
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 export type GameType = GameConfig['gameType'];

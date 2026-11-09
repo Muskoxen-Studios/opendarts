@@ -68,3 +68,16 @@ const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
 export function ordinal(place: number): string {
   return ORDINALS[place - 1] ?? `${place}th`;
 }
+
+export function minefield(player: Player) {
+  const d = player.detail;
+  return {
+    targetScore: (d.targetScore as number | undefined) ?? 301,
+    field: (d.field as readonly {
+      number: number;
+      hp: number;
+      explosions: number;
+      nextMultiplier: number | null;
+    }[] | undefined) ?? [],
+  };
+}

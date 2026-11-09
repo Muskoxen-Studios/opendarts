@@ -473,6 +473,20 @@ can itself be negative for a harder start. `targetScore` (default 100) is the
 finish line: the higher it is, the longer the game runs and the more a run of
 odd numbers can be clawed back before someone reaches it.
 
+**Minefield** — everyone shares HP and mines for numbers 1–20 and bull (25).
+Safe hits score normally and remove one HP per dart regardless of ring. At zero
+HP the number becomes a mine; the arming dart still scores. Hits on that mine
+subtract its base number times **2×, 3×, then 5×**, without a further ring
+multiplier. After its third explosion, only that number resets to full HP and
+its escalation starts over. Both bull rings share the 25 mine: safe hits score
+25/50, mined hits cost 50/75/125. Misses do nothing and scores can go negative.
+
+`hitPoints` defaults to 3 (configurable 1–9), `targetScore` to 301. First to reach
+or cross the target wins the leg; all scores and mines reset for a new or
+restarted leg. The optional round limit awards the leg to the highest score,
+with ties going to seat order. The scoreboard shows the shared field's HP and
+next penalties. Full examples are in the Minefield setup manual.
+
 ### Manuals
 
 Each game has a manual — its full rules — behind the **manual** button on the
