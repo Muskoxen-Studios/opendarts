@@ -707,28 +707,58 @@ describe('ending a game early', () => {
 });
 
 describe('the match report', () => {
-  it.each([false, true])('pushes a durable report before rebuilding career stats (ended early: %s)', (early) => {
+  it.each([false, true])('finishes without replaying history and can start another match (ended early: %s)', (early) => {
     const [alice, bob] = seedPlayers();
     manager.start(X01, [alice, bob]);
-    const rebuild = store.recomputeAll.bind(store);
-    const spy = vi.spyOn(store, 'recomputeAll').mockImplementation(() => {
-      const pushed = events.find((event) => event.type === 'match.report');
-      expect(pushed?.type).toBe('match.report');
-      if (pushed?.type === 'match.report') {
-        expect(pushed.report.endedAt).not.toBeNull();
-        expect(pushed.report.conceded).toBe(early);
-        expect(pushed.report).toEqual(store.summaryFor(pushed.report.matchId));
-      }
-      return rebuild();
-    });
+    nineDartLeg();
+    manager.start(X01, [alice, bob]);
+    const rebuild = vi.spyOn(store, 'recomputeAll');
+    const history = vi.spyOn(store, 'loadFinishedMatches');
+    const throws = vi.spyOn(store, 'writeThrows');
+    events = [];
     try {
       if (early) manager.apply({ type: 'END_MATCH' });
       else nineDartLeg();
-      expect(spy).toHaveBeenCalledOnce();
-      expect(events.filter((event) => event.type === 'match.report')).toHaveLength(1);
+      const reports = events.filter((event) => event.type === 'match.report');
+      expect(reports).toHaveLength(1);
+      const report = reports[0]!;
+      if (report.type === 'match.report') {
+        expect(report.report.endedAt).not.toBeNull();
+        expect(report.report.conceded).toBe(early);
+        expect(report.report).toEqual(store.summaryFor(report.report.matchId));
+      }
+      expect(throws).toHaveBeenCalledOnce();
+      expect(manager.start(X01, [alice, bob]).status).toBe('playing');
+      expect(rebuild).not.toHaveBeenCalled();
+      expect(history).not.toHaveBeenCalled();
+      const count = db.prepare("SELECT value FROM stats_cache WHERE profile_id = ? AND metric = 'matchesPlayed'").get(alice.id);
+      expect(count?.value).toBe(2);
     } finally {
-      spy.mockRestore();
+      rebuild.mockRestore();
+      history.mockRestore();
+      throws.mockRestore();
     }
+  });
+
+  it('produces the same finished projections as a full historical rebuild', () => {
+    const [alice, bob] = seedPlayers();
+    for (let i = 0; i < 3; i++) {
+      manager.start(X01, [alice, bob]);
+      if (i === 1) {
+        throwAt('MISS');
+        manager.apply({ type: 'END_MATCH' });
+      } else nineDartLeg();
+    }
+    const projections = () => ({
+      careers: db.prepare('SELECT profile_id, metric, value FROM stats_cache ORDER BY profile_id, metric').all(),
+      throws: db.prepare('SELECT * FROM throws ORDER BY id').all(),
+      achievements: [alice, bob].map((p) => store.readAchievements(p.id).map((a) => ({
+        ...a, unlockedAt: a.unlockedAt !== null,
+      })).sort((a, b) => a.achievementId.localeCompare(b.achievementId))),
+    });
+    const incremental = projections();
+    store.recomputeAll();
+    expect(projections()).toEqual(incremental);
   });
 
   it('reports the match that was just played', () => {

@@ -3,6 +3,8 @@ import {
   analyzeMatch,
   CATALOGUE,
   computeCareer,
+  evaluateMatch,
+  summarizeMatch,
   type MatchAnalysis,
   type MatchRecord,
   type MatchReport,
@@ -183,7 +185,7 @@ export class MatchManager {
     // Check achievements after every command so an unlock is celebrated the
     // moment it happens, rather than being held back until the match ends.
     if (!wasFinished && this.match.finished) this.finalize();
-    else this.checkLiveAchievements();
+    else if (!this.match.finished) this.checkLiveAchievements();
     return this.match.view;
   }
 
@@ -217,7 +219,7 @@ export class MatchManager {
     if (!record || !this.match) return;
 
     const analysis = analyzeMatch(record);
-    const history = [...this.finishedAnalyses, analysis];
+    const history = [...this.finishedAnalyses.filter((a) => a.matchId !== record.matchId), analysis];
 
     for (const player of this.match.view.players) {
       const id = player.playerId;
@@ -396,12 +398,34 @@ export class MatchManager {
     }
 
     this.store.finishMatch(this.matchId, view.winnerId);
-    // Deliver results before rebuilding career projections. The client can
-    // render them without an HTTP request queued behind the history replay.
-    const report = this.store.summaryFor(this.matchId);
-    if (report) this.broadcast({ type: 'match.report', report });
-    this.store.recomputeAll();
-    this.refreshHistory();
+    const record = this.store.loadMatchRecord(this.matchId);
+    if (!record) return;
+    const analysis = analyzeMatch(record);
+    this.broadcast({ type: 'match.report', report: summarizeMatch(analysis) });
+
+    // Replaying and backfilling the entire history here blocks the server even
+    // after the results have reached the client. Only this match needs replay;
+    // reuse cached analyses for career totals and evaluate the catalogue once
+    // per participant. Full historical backfills remain an explicit rebuild.
+    this.finishedAnalyses = [
+      ...this.finishedAnalyses.filter((a) => a.matchId !== this.matchId),
+      analysis,
+    ];
+    this.store.writeThrows(this.matchId, analysis);
+    for (const p of analysis.players) {
+      const career = computeCareer(p.id, this.finishedAnalyses);
+      this.store.writeCareer(p.id, career);
+      const previous = new Map(this.store.readAchievements(p.id).map((a) => [a.achievementId, a]));
+      const entries = [...evaluateMatch(p.id, analysis, career).values()].map((entry) => {
+        const prior = previous.get(entry.achievementId);
+        return {
+          ...entry,
+          unlockedAt: prior?.unlockedAt ?? entry.unlockedAt,
+          progress: Math.max(prior?.progress ?? 0, entry.progress),
+        };
+      });
+      this.store.writeAchievements(p.id, entries);
+    }
 
     for (const p of roster) {
       const now = this.store

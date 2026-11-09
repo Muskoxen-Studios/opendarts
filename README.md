@@ -688,6 +688,11 @@ npm run achievements:backfill        # after adding an achievement
 Achievements live in `packages/stats/src/achievements/catalogue.ts`, one entry
 each. The same rebuild is available from the Settings page.
 
+Finishing a match updates its throws, the participants' career totals and their
+achievements using cached history. It does not replay and backfill every past
+match, so the results screen is not followed by a full rebuild that blocks
+starting the next game.
+
 Two of them read `coords`: **Tight Grouping** (three darts of one turn inside a
 20 mm circle, measured as the smallest circle enclosing all three) and **Robin
 Hood** (two darts of one turn landing within 5 mm of each other, a shaft's
