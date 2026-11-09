@@ -37,7 +37,6 @@ const props = defineProps<{
   minefield?: readonly {
     readonly number: number;
     readonly hp: number;
-    readonly explosions: number;
     readonly multiplier: number;
   }[];
 }>();
@@ -56,7 +55,7 @@ const mineMarkers = computed(() => (props.minefield ?? []).map((cell) => ({
   ...segmentCentre({ number: cell.number, ring: cell.number === 25 ? 'BULL' : 'SINGLE_OUTER' }),
   description: cell.hp > 0
     ? `${cell.number === 25 ? 'Bull' : cell.number}: ${cell.hp} HP, next mine ${cell.multiplier}×`
-    : `${cell.number === 25 ? 'Bull' : cell.number}: mine ${cell.multiplier}×, penalty ${cell.number * cell.multiplier}, ${cell.explosions} of 3 explosions`,
+    : `${cell.number === 25 ? 'Bull' : cell.number}: mine ${cell.multiplier}×, penalty ${Math.round(cell.number * cell.multiplier)}, resets on hit`,
 })));
 function isMine(number: number): boolean {
   return mineNumbers.value.get(number)?.hp === 0;

@@ -314,7 +314,7 @@ async function rematch(): Promise<void> {
                   <BoardEffect :effect="store.boardEffect" :level="store.effects" />
                 </div>
                 <p v-if="view.gameType === 'minefield'" class="minefield-legend">
-                  HP = safe hits left · blinking red = mine · multiplier rises 0.5× after each three-blast reset.
+                  HP = safe hits left · blinking red = mine · one blast resets HP · next mine +0.5× · whole-point penalties.
                 </p>
                 <TurnNotice :stuck="store.takeoutStuck" :awaiting-takeout="!!view.awaitingTakeout" :correcting="correcting" @force-takeout="forceTakeout" />
 

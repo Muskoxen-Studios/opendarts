@@ -2,7 +2,7 @@ import {
   MinefieldConfigSchema,
   MINEFIELD_INITIAL_MULTIPLIER,
   MINEFIELD_MULTIPLIER_STEP,
-  MINEFIELD_EXPLOSIONS_TO_RESET,
+  minefieldHitPoints,
   MINEFIELD_TARGETS,
   segmentLabel,
   type DomainEvent,
@@ -26,17 +26,17 @@ import {
 } from './base.ts';
 import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './types.ts';
 
-/** Shared numbers wear down, then penalise the next three darts that hit them. */
+/** Shared numbers wear down, explode on the next hit, then immediately recover. */
 export interface MinefieldNumber {
   number: number;
   hp: number;
-  explosions: number;
   multiplier: number;
 }
 
 export interface MinefieldState {
   base: BaseState;
   field: Record<number, MinefieldNumber>;
+  hitPoints: number;
   turnValues: number[];
   scores: Record<string, number>;
   turnStartScore: Record<string, number>;
@@ -48,9 +48,10 @@ function seatPlayer(state: MinefieldState, playerId: string): void {
 }
 
 function resetLeg(state: MinefieldState, cfg: MinefieldConfig): void {
+  state.hitPoints = cfg.hitPoints ?? minefieldHitPoints(state.base.players.length);
   for (const p of state.base.players) seatPlayer(state, p.id);
   state.field = Object.fromEntries(MINEFIELD_TARGETS.map((number) => [
-    number, { number, hp: cfg.hitPoints, explosions: 0, multiplier: MINEFIELD_INITIAL_MULTIPLIER },
+    number, { number, hp: state.hitPoints, multiplier: MINEFIELD_INITIAL_MULTIPLIER },
   ]));
 }
 
@@ -84,6 +85,7 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
     const state: MinefieldState = {
       base: createBaseState(players),
       field: {},
+      hitPoints: 0,
       turnValues: [],
       scores: {},
       turnStartScore: {},
@@ -186,14 +188,10 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
             // The arming dart still scores normally, including doubles/triples.
             number.hp -= 1;
           } else {
-            // Every explosion in this cycle uses the same base-number penalty.
-            delta = -number.number * number.multiplier;
-            number.explosions += 1;
-            if (number.explosions === MINEFIELD_EXPLOSIONS_TO_RESET) {
-              number.hp = cfg.hitPoints;
-              number.explosions = 0;
-              number.multiplier += MINEFIELD_MULTIPLIER_STEP;
-            }
+            // Round the positive penalty first so .5 always rounds up, even when subtracted.
+            delta = -Math.round(number.number * number.multiplier);
+            number.hp = state.hitPoints;
+            number.multiplier += MINEFIELD_MULTIPLIER_STEP;
           }
         }
         state.turnValues.push(delta);
@@ -257,7 +255,7 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
         checkout: null,
         detail: {
           targetScore: cfg.targetScore,
-          hitPoints: cfg.hitPoints,
+          hitPoints: state.hitPoints,
           field: MINEFIELD_TARGETS.map((number) => {
             const cell = state.field[number]!;
             return {

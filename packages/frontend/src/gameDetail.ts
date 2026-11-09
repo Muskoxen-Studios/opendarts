@@ -76,7 +76,6 @@ export function minefield(player: Player) {
     field: (d.field as readonly {
       number: number;
       hp: number;
-      explosions: number;
       multiplier: number;
       nextMultiplier: number | null;
     }[] | undefined) ?? [],
