@@ -37,7 +37,6 @@ const props = defineProps<{
   minefield?: readonly {
     readonly number: number;
     readonly hp: number;
-    readonly explosions: number;
     readonly multiplier: number;
   }[];
 }>();
@@ -56,7 +55,7 @@ const mineMarkers = computed(() => (props.minefield ?? []).map((cell) => ({
   ...segmentCentre({ number: cell.number, ring: cell.number === 25 ? 'BULL' : 'SINGLE_OUTER' }),
   description: cell.hp > 0
     ? `${cell.number === 25 ? 'Bull' : cell.number}: ${cell.hp} HP, next mine ${cell.multiplier}×`
-    : `${cell.number === 25 ? 'Bull' : cell.number}: mine ${cell.multiplier}×, penalty ${cell.number * cell.multiplier}, ${cell.explosions} of 3 explosions`,
+    : `${cell.number === 25 ? 'Bull' : cell.number}: mine ${cell.multiplier}×, penalty ${Math.round(cell.number * cell.multiplier)}, double/triple defuses, single explodes`,
 })));
 function isMine(number: number): boolean {
   return mineNumbers.value.get(number)?.hp === 0;
@@ -208,7 +207,7 @@ const dartMarks = computed(() =>
           fill="none" stroke="#ffe4e6" stroke-width="4" stroke-linecap="round" />
         <text y="33" class="mine-multiplier">{{ cell.multiplier }}×</text>
       </template>
-      <text v-else y="7" class="mine-hp">{{ cell.hp }} HP</text>
+      <text v-else y="10" class="mine-hp">{{ cell.hp }}</text>
     </g>
 
     <g v-for="(m, i) in dartMarks" :key="`mark-${i}`" class="dart-mark">
@@ -251,6 +250,8 @@ const dartMarks = computed(() =>
 .mine-marker.armed rect { fill: #591428; stroke: #ff8199; }
 .mine-marker text { fill: #f0faff; text-anchor: middle; font: 700 25px system-ui, sans-serif; }
 .mine-marker.armed text { fill: #ffe4e6; }
+.mine-marker .mine-hp { font-size: 36px; }
+.mine-marker .mine-multiplier { font-size: 30px; }
 
 .dart-mark { pointer-events: none; }
 .dart-mark .halo { opacity: 0.22; }

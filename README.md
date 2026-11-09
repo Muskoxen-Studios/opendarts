@@ -475,23 +475,31 @@ odd numbers can be clawed back before someone reaches it.
 
 **Minefield** — everyone shares HP and mines for numbers 1–20 and bull (25).
 Safe hits score normally and remove one HP per dart regardless of ring. At zero
-HP the number becomes a mine; the arming dart still scores. Hits on that mine
-subtract its base number times **1×** during its entire first mine cycle,
-without a further ring multiplier. All three explosions use the same multiplier:
-three hits on a newly armed 20 cost 60 points total. Its third explosion restores
-only that number's full HP and raises its next mine cycle by **0.5×** (1×, 1.5×,
-2×, 2.5×, ...). The multiplier never changes on an ordinary hit or turn change.
-Both bull rings share the 25 mine: safe hits score 25/50 and blasts in the first
-cycle cost 25 each. Half points are retained, including a 37.5-point blast on a
-second-cycle bull. Misses do nothing and scores can go negative.
+HP the number becomes a mine; the arming dart still scores. A single or outer-bull hit
+**explodes once and immediately resets that number to full HP**. A double,
+triple or inner bull instead **defuses** the mine, earns its normal scored value
+and restores full HP without raising the multiplier. It costs the
+base number times the current multiplier, rounded to the nearest whole point
+(halves round up), with no extra ring multiplier. A following dart can score on
+that number again. Every explosion raises only that number's next mine cycle by
+**0.5×** (1×, 1.5×, 2×, 2.5×, ...). It must lose all its HP again before the
+next explosion. Both bull rings share the 25 mine: safe hits score 25/50, the
+first explosion costs 25, and the second costs **38**, never 37.5. Misses do
+nothing and scores can go negative; scores and scoring deltas are whole points.
 
-`hitPoints` defaults to 3 (configurable 1–9), `targetScore` to 301. First to reach
-or cross the target wins the leg; all scores, HP and multipliers reset for a new
-or restarted leg. The optional round limit awards the leg to the highest score,
-with ties going to seat order. The dartboard shows HP badges on safe numbers
-and blinking red wedges with mine icons and multipliers on armed numbers. Both
-bull rings blink together; reduced-motion users see steady red. Full examples
-are in the Minefield setup manual.
+Automatic HP is **3 per player, with a minimum of 6 per number**: 6 for one or
+two players, 9 for three, 12 for four. `hitPoints: null` (the default) enables
+this; a manual override uses an integer of at least 6. Legacy explicit HP
+values below 6 normalize to 6 so saved matches still load. HP is resolved at the
+start of each leg and stays fixed for that leg, including mine resets, so a
+mid-leg roster change cannot unexpectedly resize numbers. The next new or
+restarted leg uses the current roster size. `targetScore` defaults to 301.
+First to reach or cross it wins the leg; all scores, HP and multipliers reset
+for a new or restarted leg. The optional round limit awards the leg to the
+highest score, with ties going to seat order. The dartboard shows HP badges on
+safe numbers and blinking red wedges with mine icons and multipliers on armed
+numbers. Both bull rings blink together; reduced-motion users see steady red.
+Full examples are in the Minefield setup manual.
 
 ### Manuals
 
@@ -510,15 +518,24 @@ Adding a new game is one file in `packages/engine/src/` plus one line in
 ### The live match screen
 
 During play, the header collapses to a compact bar with board status, board
-controls and the Awake indicator always visible. **Menu** expands navigation
-over the match; closing it returns to the compact bar. Other tabs retain the
-full header.
+controls and the Awake indicator visible. The free space in this bar contains
+Undo, End turn, Correct last dart, Players, End game and Last game. **Menu**
+expands navigation over the match and hides these match actions while open;
+closing it brings them back. Other tabs retain the full header.
 
-The live match fits within the available screen without page scrolling. It
-reflows for portrait phones and scales down when needed, including on window
-resize, rotation, or changes to the roster and game details. All player cards
-remain visible. Player management opens separately, as do match results, so
-those panels can scroll without shrinking the match underneath.
+On desktop screens, the live match uses the full available width at natural
+text size. Match actions use the header, turn notices and recent darts share the
+row above the roster, and the main area has just scores on the left and the
+dartboard on the right. The board fits the remaining height instead of making
+the entire match shrink as its column grows taller.
+Unusually long scorecards scroll within their own panel, leaving the roster,
+controls and board readable. The comparison at 1366×768 and 1920×1080 includes
+two, four and eight players, long names and multiple game modes.
+
+The screen reflows for portrait phones and retains scaling as a fallback for
+small windows, rotation and unusual content. All roster cards remain visible.
+Player management opens separately, as do match results, so those panels can
+scroll without shrinking the match underneath.
 
 Turn notices and the recent-dart history reserve their space, so showing
 “remove your darts”, a stuck-takeout action, or correction help does not resize

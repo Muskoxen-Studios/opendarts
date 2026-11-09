@@ -165,16 +165,21 @@ export const EvenOddConfigSchema = z.object({
 });
 export type EvenOddConfig = z.infer<typeof EvenOddConfigSchema>;
 
-/** A mine keeps its multiplier for three explosions, then its next cycle gains 0.5x. */
+/** One explosion resets the number; its next mine cycle gains 0.5x. */
 export const MINEFIELD_INITIAL_MULTIPLIER = 1;
 export const MINEFIELD_MULTIPLIER_STEP = 0.5;
-export const MINEFIELD_EXPLOSIONS_TO_RESET = 3;
+export const MINEFIELD_MIN_HP = 6;
+export const MINEFIELD_HP_PER_PLAYER = 3;
+/** Resolve automatic HP once per leg so roster changes do not resize a live mine. */
+export function minefieldHitPoints(playerCount: number): number {
+  return Math.max(MINEFIELD_MIN_HP, playerCount * MINEFIELD_HP_PER_PLAYER);
+}
 export const MINEFIELD_TARGETS = [...Array.from({ length: 20 }, (_, i) => i + 1), 25];
 
 export const MinefieldConfigSchema = z.object({
   gameType: z.literal('minefield'),
-  /** One dart removes one HP, regardless of ring. */
-  hitPoints: z.number().int().min(1).max(9).default(3),
+  /** Null scales with players. Older explicit values below six are raised so saved matches still load. */
+  hitPoints: z.number().int().positive().transform((hp) => Math.max(MINEFIELD_MIN_HP, hp)).nullable().default(null),
   targetScore: z.number().int().positive().default(301),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),

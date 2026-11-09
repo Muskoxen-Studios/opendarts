@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { minefieldHitPoints } from '@darts/schema';
 import { api, store, type GolfHandicap, type ModeHandicap } from '../store.ts';
 import GameManual from './GameManual.vue';
 
@@ -84,7 +85,9 @@ const endRound = ref(7);
 const instantWin = ref(true);
 
 // Minefield
-const minefieldHP = ref(3);
+const minefieldAutoHP = ref(true);
+const minefieldHP = ref(6);
+const minefieldSuggestedHP = computed(() => minefieldHitPoints(selected.value.length));
 const minefieldTarget = ref(301);
 
 // Even/Odd
@@ -237,7 +240,8 @@ async function useLastSettings(): Promise<void> {
       instantWin.value = cfg.instantWin !== false;
     }
     if (setup.gameType === 'minefield') {
-      minefieldHP.value = Number(cfg.hitPoints ?? 3);
+      minefieldAutoHP.value = cfg.hitPoints == null;
+      minefieldHP.value = Math.max(6, Number(cfg.hitPoints ?? minefieldSuggestedHP.value));
       minefieldTarget.value = Number(cfg.targetScore ?? 301);
     }
     if (setup.gameType === 'evenodd') {
@@ -335,7 +339,7 @@ function buildConfig(): unknown {
   if (gameType.value === 'minefield') {
     return {
       gameType: 'minefield',
-      hitPoints: minefieldHP.value,
+      hitPoints: minefieldAutoHP.value ? null : minefieldHP.value,
       targetScore: minefieldTarget.value,
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
@@ -697,7 +701,12 @@ async function start(): Promise<void> {
       <div class="grid">
         <div class="field">
           <label for="minefield-hp">HP per number</label>
-          <input id="minefield-hp" v-model.number="minefieldHP" type="number" min="1" max="9" />
+          <label class="use-handicaps">
+            <input v-model="minefieldAutoHP" type="checkbox" />
+            Scale HP with players ({{ minefieldSuggestedHP }} HP)
+          </label>
+          <input v-if="!minefieldAutoHP" id="minefield-hp" v-model.number="minefieldHP" type="number" min="6" step="1" />
+          <output v-else id="minefield-hp">{{ minefieldSuggestedHP }} HP per number</output>
         </div>
         <div class="field">
           <label for="minefield-target">Target score</label>
@@ -706,8 +715,10 @@ async function start(): Promise<void> {
       </div>
       <p class="hint">
         Everyone shares the field. Each dart removes one HP; the last safe hit still scores.
-        Mines start at 1× the number and keep that multiplier for three explosions.
-        Each reset restores HP and raises that number’s next mine by 0.5×.
+        Each mine explodes once, then immediately resets to full HP.
+        Mines start at 1×; every explosion raises that number’s next mine by 0.5×.
+        Doubles and triples defuse mines and score normally without raising the multiplier.
+        Penalties round to whole points. Automatic HP is 3 per player, with a minimum of 6.
         Both bulls share 25. First to reach or pass the target wins; scores can go negative.
       </p>
     </template>
