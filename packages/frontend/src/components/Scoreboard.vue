@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import {
   gotcha,
+  minefield,
   heartFill,
   isOut,
   killer,
@@ -202,6 +203,11 @@ function scoreText(player: View['players'][number]): string {
           </div>
         </div>
 
+        <div v-if="view.gameType === 'minefield'" class="minefield-summary">
+          <span>{{ p!.score }} / {{ minefield(p!).targetScore }}</span>
+          <span>Shared mines and HP are shown on the dartboard.</span>
+        </div>
+
         <div v-if="isEvenOdd" class="shanghai">
           <div class="shanghai-line">
             <span class="round">{{ p!.score }} / {{ evenOdd(p!).targetScore }}</span>
@@ -281,6 +287,9 @@ function scoreText(player: View['players'][number]): string {
 </template>
 
 <style scoped>
+.minefield-summary { display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem; align-items: baseline; }
+.minefield-summary > span:last-child { font-size: 0.8rem; color: var(--ui-muted); }
+
 .scoreboard {
   /* The heart silhouette the life pips are masked with. */
   --heart:

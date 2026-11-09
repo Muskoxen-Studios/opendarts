@@ -5,7 +5,7 @@ import GameManual from './GameManual.vue';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
-type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd';
+type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd' | 'minefield';
 
 const GAME_LABELS: Record<GameType, string> = {
   x01: 'X01',
@@ -15,6 +15,7 @@ const GAME_LABELS: Record<GameType, string> = {
   shanghai: 'Shanghai',
   killer: 'Killer',
   evenodd: 'Even/Odd',
+  minefield: 'Minefield',
 };
 
 const gameType = ref<GameType>('x01');
@@ -81,6 +82,10 @@ const gotchaHistory = ref<Record<string, ModeHandicap>>({});
 const startRound = ref(1);
 const endRound = ref(7);
 const instantWin = ref(true);
+
+// Minefield
+const minefieldHP = ref(3);
+const minefieldTarget = ref(301);
 
 // Even/Odd
 const startingScore = ref(0);
@@ -231,6 +236,10 @@ async function useLastSettings(): Promise<void> {
       endRound.value = Number(cfg.endRound ?? 7);
       instantWin.value = cfg.instantWin !== false;
     }
+    if (setup.gameType === 'minefield') {
+      minefieldHP.value = Number(cfg.hitPoints ?? 3);
+      minefieldTarget.value = Number(cfg.targetScore ?? 301);
+    }
     if (setup.gameType === 'evenodd') {
       startingScore.value = Number(cfg.startingScore ?? 0);
       targetScore.value = Number(cfg.targetScore ?? 100);
@@ -323,6 +332,16 @@ function buildConfig(): unknown {
       roundLimit: roundLimitValue.value,
     };
   }
+  if (gameType.value === 'minefield') {
+    return {
+      gameType: 'minefield',
+      hitPoints: minefieldHP.value,
+      targetScore: minefieldTarget.value,
+      legsToWin: legsToWin.value,
+      setsToWin: setsToWin.value,
+      roundLimit: roundLimitValue.value,
+    };
+  }
   if (gameType.value === 'evenodd') {
     return {
       gameType: 'evenodd',
@@ -406,7 +425,7 @@ async function start(): Promise<void> {
       </div>
       <div class="tabs">
         <button
-          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd'] as GameType[])"
+          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd', 'minefield'] as GameType[])"
           :key="g"
           :class="{ on: gameType === g }"
           :aria-pressed="gameType === g"
@@ -671,6 +690,26 @@ async function start(): Promise<void> {
           </div>
         </template>
       </details>
+    </template>
+
+    <!-- Minefield -->
+    <template v-else-if="gameType === 'minefield'">
+      <div class="grid">
+        <div class="field">
+          <label for="minefield-hp">HP per number</label>
+          <input id="minefield-hp" v-model.number="minefieldHP" type="number" min="1" max="9" />
+        </div>
+        <div class="field">
+          <label for="minefield-target">Target score</label>
+          <input id="minefield-target" v-model.number="minefieldTarget" type="number" min="1" />
+        </div>
+      </div>
+      <p class="hint">
+        Everyone shares the field. Each dart removes one HP; the last safe hit still scores.
+        Mines start at 1× the number and keep that multiplier for three explosions.
+        Each reset restores HP and raises that number’s next mine by 0.5×.
+        Both bulls share 25. First to reach or pass the target wins; scores can go negative.
+      </p>
     </template>
 
     <!-- Even/Odd -->

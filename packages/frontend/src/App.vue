@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseSegmentLabel, type Segment } from '@darts/schema';
+import { minefield } from './gameDetail.ts';
 import BoardControls from './components/BoardControls.vue';
 import BoardEffect from './components/BoardEffect.vue';
 import Celebration from './components/Celebration.vue';
@@ -294,7 +295,7 @@ async function rematch(): Promise<void> {
             </div>
             <PlayerStrip v-if="view.gameType !== 'cricket'" :view="view" fit />
 
-            <div class="play">
+            <div class="play" :class="{ 'minefield-board': view.gameType === 'minefield' }">
               <section class="left">
                 <Scoreboard :view="view" />
               </section>
@@ -305,12 +306,16 @@ async function rematch(): Promise<void> {
                   <Dartboard
                     :highlight="hintSegments"
                     :highlight-numbers="hintNumbers"
+                    :minefield="view.gameType === 'minefield' && view.players[0] ? minefield(view.players[0]).field : undefined"
                     :marks="view.turn.throws"
                     :mark-color="activePlayer?.color"
                     @throw="correcting ? correctLast($event.segment) : onThrow($event)"
                   />
                   <BoardEffect :effect="store.boardEffect" :level="store.effects" />
                 </div>
+                <p v-if="view.gameType === 'minefield'" class="minefield-legend">
+                  HP = safe hits left · blinking red = mine · multiplier rises 0.5× after each three-blast reset.
+                </p>
                 <TurnNotice :stuck="store.takeoutStuck" :awaiting-takeout="!!view.awaitingTakeout" :correcting="correcting" @force-takeout="forceTakeout" />
 
                 <div class="controls">
@@ -416,6 +421,7 @@ async function rematch(): Promise<void> {
 </template>
 
 <style scoped>
+.minefield-legend { margin: 0.6rem 0; color: var(--ui-secondary); font-size: 0.8rem; line-height: 1.5; }
 .app { width: 100%; margin: 0; padding: 1rem 1.25rem; }
 .top { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
 h1 { margin: 0; font-size: 1.3rem; letter-spacing: 0.02em; }
@@ -567,6 +573,9 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
 .match-screen .play-view { gap: 0.65rem; padding: 0.15rem; }
 .match-screen .match-heading { padding: 0; }
 .match-screen .play { grid-template-columns: minmax(0, 1fr) minmax(0, min(34%, 420px)); gap: 0.75rem; }
+@media (min-width: 901px) {
+  .match-screen .play.minefield-board { grid-template-columns: minmax(0, 1fr) minmax(0, 45%); }
+}
 .roster-overlay { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; padding: 1rem; background: #050e19b8; }
 .roster-overlay .roster { width: min(600px, 100%); max-height: 85dvh; overflow: auto; padding: 1.25rem; border-radius: 16px; box-shadow: var(--ui-shadow); }
 .roster-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
@@ -621,4 +630,11 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
 .recent { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .recent li { min-width: 0; justify-content: space-between; white-space: nowrap; line-height: 1.25rem; }
 .recent li.placeholder { visibility: hidden; }
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .match-screen .minefield-board .right { display: flex; }
+  .match-screen .minefield-board .board-stage { max-width: 100%; }
+  .match-screen .minefield-board :deep(.scoreboard .score) { font-size: 3rem; }
+  .match-screen .minefield-board .minefield-legend { font-size: 0.7rem; }
+}
 </style>
