@@ -20,8 +20,8 @@ inner bulls score 50. Misses score zero and do not affect the field.
 
 ## Explosions
 
-Hitting an armed number **explodes it once and immediately restores its full
-HP**. That dart subtracts the **base number** times the current multiplier,
+A single or outer-bull hit on an armed number **explodes it once and immediately
+restores its full HP**. That dart subtracts the **base number** times the current multiplier,
 rounded to the nearest whole point, with halves rounded up. It does not also
 earn points, and the ring does not multiply the penalty again. Later darts can
 score on the restored number normally.
@@ -48,6 +48,14 @@ The dartboard shows HP badges on safe numbers. Armed wedges and both bull rings
 **blink red**, with a mine icon and the current multiplier. The mine's tooltip
 also shows its whole-point penalty and that it resets on hit. With reduced motion enabled, mines
 stay solid red. The overlays do not block dartboard clicks.
+
+## Defusing
+
+A **double or triple** on an armed number safely defuses it. You earn the dart's
+normal score, the number returns to full HP, and its multiplier stays unchanged.
+An **inner bull (50)** counts as a double and defuses the shared bull mine;
+an outer bull (25) triggers an explosion. Defusing also works on mines whose
+multiplier has already risen. Only actual explosions raise the multiplier.
 
 ## Turns and matches
 

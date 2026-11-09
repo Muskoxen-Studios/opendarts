@@ -300,22 +300,7 @@ async function rematch(): Promise<void> {
                 <Scoreboard :view="view" />
               </section>
 
-              <section class="right">
-                <div class="board-heading"><span>On the board</span><span class="board-heading-note">{{ correcting ? 'Correcting last dart' : 'Aim. Throw. Repeat.' }}</span></div>
-                <div class="board-stage" :class="shakeClass">
-                  <Dartboard
-                    :highlight="hintSegments"
-                    :highlight-numbers="hintNumbers"
-                    :minefield="view.gameType === 'minefield' && view.players[0] ? minefield(view.players[0]).field : undefined"
-                    :marks="view.turn.throws"
-                    :mark-color="activePlayer?.color"
-                    @throw="correcting ? correctLast($event.segment) : onThrow($event)"
-                  />
-                  <BoardEffect :effect="store.boardEffect" :level="store.effects" />
-                </div>
-                <p v-if="view.gameType === 'minefield'" class="minefield-legend">
-                  HP = safe hits left · blinking red = mine · one blast resets HP · next mine +0.5× · whole-point penalties.
-                </p>
+              <section class="match-tools" aria-label="Match controls">
                 <TurnNotice :stuck="store.takeoutStuck" :awaiting-takeout="!!view.awaitingTakeout" :correcting="correcting" @force-takeout="forceTakeout" />
 
                 <div class="controls">
@@ -333,6 +318,30 @@ async function rematch(): Promise<void> {
                   <button @click="showLastGame">Last game</button>
                 </div>
 
+                <ul class="recent" aria-label="Recent darts">
+                  <li v-for="(t, i) in recentThrows" :key="i" :class="{ placeholder: !t }" :aria-hidden="!t">
+                    <span class="label">{{ t?.label ?? '—' }}</span>
+                    <span class="value">{{ t?.value ?? '—' }}</span>
+                  </li>
+                </ul>
+              </section>
+
+              <section class="right">
+                <div class="board-heading"><span>On the board</span><span class="board-heading-note">{{ correcting ? 'Correcting last dart' : 'Aim. Throw. Repeat.' }}</span></div>
+                <div class="board-stage" :class="shakeClass">
+                  <Dartboard
+                    :highlight="hintSegments"
+                    :highlight-numbers="hintNumbers"
+                    :minefield="view.gameType === 'minefield' && view.players[0] ? minefield(view.players[0]).field : undefined"
+                    :marks="view.turn.throws"
+                    :mark-color="activePlayer?.color"
+                    @throw="correcting ? correctLast($event.segment) : onThrow($event)"
+                  />
+                  <BoardEffect :effect="store.boardEffect" :level="store.effects" />
+                </div>
+                <p v-if="view.gameType === 'minefield'" class="minefield-legend">
+                  Badges = HP · red = mine · double/triple defuses · single explodes.
+                </p>
                 <Teleport to="body">
                   <div v-if="managingRoster" class="roster-overlay" role="dialog" aria-modal="true" aria-label="Match players" @click.self="managingRoster = false" @keydown.esc="managingRoster = false">
                     <section class="roster">
@@ -366,13 +375,6 @@ async function rematch(): Promise<void> {
                     </section>
                   </div>
                 </Teleport>
-
-                <ul class="recent" aria-label="Recent darts">
-                  <li v-for="(t, i) in recentThrows" :key="i" :class="{ placeholder: !t }" :aria-hidden="!t">
-                    <span class="label">{{ t?.label ?? '—' }}</span>
-                    <span class="value">{{ t?.value ?? '—' }}</span>
-                  </li>
-                </ul>
               </section>
             </div>
           </div>
@@ -636,5 +638,52 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
   .match-screen .minefield-board .board-stage { max-width: 100%; }
   .match-screen .minefield-board :deep(.scoreboard .score) { font-size: 3rem; }
   .match-screen .minefield-board .minefield-legend { font-size: 0.7rem; }
+}
+/* Keep desktop matches at their natural text size. Only the board consumes
+   flexible height; unusually long scorecards scroll within their own panel. */
+@media (min-width: 901px) and (min-height: 601px) {
+  .match-screen .play-view { height: var(--fit-height); min-height: 0; }
+  .match-screen .play-view > .match-heading,
+  .match-screen .play-view > :deep(.strip) { flex: none; }
+  .match-screen .play,
+  .match-screen .play.minefield-board {
+    flex: 1; min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 176px minmax(0, 42%);
+    align-items: stretch;
+  }
+  .match-screen .left { min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
+  .match-screen .right { min-width: 0; min-height: 0; padding: 0.75rem; gap: 0.65rem; }
+  .match-screen .board-stage { flex: 1; min-height: 0; display: grid; place-items: center; }
+  .match-screen .board-stage :deep(svg.board) { width: 100%; height: 100%; min-height: 0; }
+  .match-screen .minefield-legend { flex: none; margin: 0; font-size: 0.875rem; }
+  .match-screen :deep(.scoreboard) { padding: clamp(0.8rem, 1.5vh, 1.3rem); gap: 0.65rem; }
+  .match-screen :deep(.scoreboard .meta) { padding-bottom: 0.5rem; }
+  .match-screen :deep(.strip.fit .mini-name) { font-size: 1.125rem; }
+  .match-screen .match-tools { min-height: 0; overflow: auto; scrollbar-width: thin; }
+  .match-screen .match-tools .controls { display: grid; grid-template-columns: 1fr; }
+  .match-screen .match-tools .controls button { font-size: 1rem; padding: 0.65rem 0.4rem; }
+  .match-screen .match-tools :deep(.turn-notice) { flex: none; font-size: 0.875rem; }
+  .match-screen .match-tools .controls { flex: none; }
+  .match-screen .match-tools .recent { flex: 1; min-height: 0; overflow: auto; align-content: start; grid-template-columns: repeat(2, minmax(0, 1fr)); font-size: 0.875rem; }
+}
+@media (min-width: 901px) and (min-height: 601px) and (max-height: 850px) {
+  .match-screen :deep(.scoreboard) { gap: 0.5rem; }
+  .match-screen :deep(.scoreboard .player) { padding: 0.8rem; }
+  .match-screen :deep(.scoreboard .slot) { min-height: 5rem; }
+  .match-screen :deep(.cricket-player-stats),
+  .match-screen :deep(.cricket-turn-label) { display: none; }
+  .match-screen :deep(.cricket-player-name) { font-size: 1rem; }
+  .match-screen :deep(.cricket-board tbody th.who) { padding: 0.45rem; }
+  .match-screen :deep(.cricket-board td) { padding-block: 0.45rem; }
+}
+.match-tools {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 0.75rem; border: 1px solid var(--ui-border); border-radius: 14px;
+  background: var(--ui-surface-deep); min-width: 0;
+}
+@media (max-width: 900px), (max-height: 600px) {
+  .match-screen .match-tools { order: 1; }
+  .match-screen .right { display: flex; }
+  .match-screen .match-tools .controls { display: flex; flex-wrap: wrap; }
 }
 </style>

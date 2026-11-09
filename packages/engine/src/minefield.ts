@@ -188,10 +188,14 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
             // The arming dart still scores normally, including doubles/triples.
             number.hp -= 1;
           } else {
-            // Round the positive penalty first so .5 always rounds up, even when subtracted.
-            delta = -Math.round(number.number * number.multiplier);
+            // Precision hits defuse the mine, earn their normal score and do not escalate it.
+            const defused = dart.segment.ring === 'DOUBLE' || dart.segment.ring === 'TRIPLE' || dart.segment.ring === 'BULL';
+            if (!defused) {
+              // Round the positive penalty first so .5 always rounds up, even when subtracted.
+              delta = -Math.round(number.number * number.multiplier);
+              number.multiplier += MINEFIELD_MULTIPLIER_STEP;
+            }
             number.hp = state.hitPoints;
-            number.multiplier += MINEFIELD_MULTIPLIER_STEP;
           }
         }
         state.turnValues.push(delta);

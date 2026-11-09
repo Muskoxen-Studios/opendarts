@@ -475,8 +475,10 @@ odd numbers can be clawed back before someone reaches it.
 
 **Minefield** — everyone shares HP and mines for numbers 1–20 and bull (25).
 Safe hits score normally and remove one HP per dart regardless of ring. At zero
-HP the number becomes a mine; the arming dart still scores. The next hit
-**explodes once and immediately resets that number to full HP**. It costs the
+HP the number becomes a mine; the arming dart still scores. A single or outer-bull hit
+**explodes once and immediately resets that number to full HP**. A double,
+triple or inner bull instead **defuses** the mine, earns its normal scored value
+and restores full HP without raising the multiplier. It costs the
 base number times the current multiplier, rounded to the nearest whole point
 (halves round up), with no extra ring multiplier. A following dart can score on
 that number again. Every explosion raises only that number's next mine cycle by
@@ -520,11 +522,18 @@ controls and the Awake indicator always visible. **Menu** expands navigation
 over the match; closing it returns to the compact bar. Other tabs retain the
 full header.
 
-The live match fits within the available screen without page scrolling. It
-reflows for portrait phones and scales down when needed, including on window
-resize, rotation, or changes to the roster and game details. All player cards
-remain visible. Player management opens separately, as do match results, so
-those panels can scroll without shrinking the match underneath.
+On desktop screens, the live match uses the full available width at natural
+text size. Scores sit on the left, turn notices and match controls in a separate
+column beside them, and the dartboard on the right. The board fits the remaining
+height instead of making the entire match shrink as its column grows taller.
+Unusually long scorecards scroll within their own panel, leaving the roster,
+controls and board readable. The comparison at 1366×768 and 1920×1080 includes
+two, four and eight players, long names and multiple game modes.
+
+The screen reflows for portrait phones and retains scaling as a fallback for
+small windows, rotation and unusual content. All roster cards remain visible.
+Player management opens separately, as do match results, so those panels can
+scroll without shrinking the match underneath.
 
 Turn notices and the recent-dart history reserve their space, so showing
 “remove your darts”, a stuck-takeout action, or correction help does not resize

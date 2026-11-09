@@ -71,7 +71,7 @@ describe('Minefield', () => {
   it('explodes on the very next hit, resets immediately, and lets later darts score', () => {
     const m = newMatch();
     arm(m, 20);
-    const events = m.apply(throwCmd('T20'));
+    const events = m.apply(throwCmd('20'));
     expect(events).toContainEqual({ type: 'throw.recorded', playerId: 'alice', dartIndex: 0, value: -20 });
     expect(m.view.turn.throws[0]!.value).toBe(-20);
     expect(field(m, 20)).toEqual({ number: 20, hp: 6, multiplier: 1.5, nextMultiplier: null });
@@ -84,12 +84,41 @@ describe('Minefield', () => {
     expect(m.view.awaitingTakeout).toBe(true);
   });
 
+  it.each([
+    { number: 20, label: 'D20', value: 40 },
+    { number: 20, label: 'T20', value: 60 },
+    { number: 25, label: 'BULL', value: 50 },
+  ])('defuses an armed $number with $label, scoring $value without escalating', ({ number, label, value }) => {
+    const m = newMatch();
+    arm(m, number);
+    play(m, String(number)); // explode once, so defusing must also preserve a raised multiplier
+    arm(m, number);
+    expect(field(m, number).nextMultiplier).toBe(1.5);
+    const events = m.apply(throwCmd(label));
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'throw.recorded', value })]));
+    expect(field(m, number)).toMatchObject({ hp: 6, multiplier: 1.5, nextMultiplier: null });
+    m.apply({ type: 'UNDO' });
+    expect(field(m, number)).toMatchObject({ hp: 0, multiplier: 1.5 });
+  });
+
+  it('refolds a corrected defuse as an explosion', () => {
+    const m = newMatch();
+    arm(m, 20);
+    const command = throwCmd('D20');
+    m.apply(command);
+    if (command.type !== 'THROW') throw new Error('expected throw');
+    expect(field(m, 20)).toMatchObject({ hp: 6, multiplier: 1 });
+    m.apply({ type: 'CORRECT_THROW', throwId: command.throw.id, segment: seg('20') });
+    expect(field(m, 20)).toMatchObject({ hp: 6, multiplier: 1.5 });
+    expect(m.view.turn.throws.at(-1)!.value).toBe(-20);
+  });
+
   it('requires full HP depletion between explosions and raises each new cycle by 0.5x', () => {
     const m = newMatch();
     for (const multiplier of [1, 1.5, 2, 2.5]) {
       arm(m, 20);
       expect(field(m, 20).nextMultiplier).toBe(multiplier);
-      const events = m.apply(throwCmd('D20'));
+      const events = m.apply(throwCmd('20'));
       expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'throw.recorded', value: -20 * multiplier })]));
       expect(field(m, 20)).toMatchObject({ hp: 6, multiplier: multiplier + 0.5, nextMultiplier: null });
       if (m.view.awaitingTakeout) m.apply({ type: 'ADVANCE_TURN' });
@@ -102,7 +131,7 @@ describe('Minefield', () => {
       arm(m, number);
       play(m, String(number)); // 1x blast, reset to 1.5x
       arm(m, number);
-      const events = m.apply(throwCmd(number === 25 ? 'BULL' : 'T19'));
+      const events = m.apply(throwCmd(number === 25 ? '25' : '19'));
       const expected = number === 25 ? -38 : -29;
       expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'throw.recorded', value: expected })]));
       expect(m.view.turn.throws.at(-1)!.value).toBe(expected);
@@ -119,7 +148,7 @@ describe('Minefield', () => {
     expect(field(m, 25).hp).toBe(0);
     m.apply(throwCmd('MISS'));
     expect(field(m, 25)).toMatchObject({ hp: 0, multiplier: 1 });
-    m.apply(throwCmd('BULL'));
+    m.apply(throwCmd('25'));
     expect(m.view.turn.throws.at(-1)!.value).toBe(-25);
     expect(field(m, 25)).toMatchObject({ hp: 6, multiplier: 1.5 });
   });

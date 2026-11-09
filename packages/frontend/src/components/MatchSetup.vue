@@ -717,6 +717,7 @@ async function start(): Promise<void> {
         Everyone shares the field. Each dart removes one HP; the last safe hit still scores.
         Each mine explodes once, then immediately resets to full HP.
         Mines start at 1×; every explosion raises that number’s next mine by 0.5×.
+        Doubles and triples defuse mines and score normally without raising the multiplier.
         Penalties round to whole points. Automatic HP is 3 per player, with a minimum of 6.
         Both bulls share 25. First to reach or pass the target wins; scores can go negative.
       </p>
