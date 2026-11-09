@@ -77,6 +77,7 @@ export function minefield(player: Player) {
       number: number;
       hp: number;
       explosions: number;
+      multiplier: number;
       nextMultiplier: number | null;
     }[] | undefined) ?? [],
   };

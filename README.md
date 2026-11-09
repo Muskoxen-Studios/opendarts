@@ -476,16 +476,22 @@ odd numbers can be clawed back before someone reaches it.
 **Minefield** — everyone shares HP and mines for numbers 1–20 and bull (25).
 Safe hits score normally and remove one HP per dart regardless of ring. At zero
 HP the number becomes a mine; the arming dart still scores. Hits on that mine
-subtract its base number times **2×, 3×, then 5×**, without a further ring
-multiplier. After its third explosion, only that number resets to full HP and
-its escalation starts over. Both bull rings share the 25 mine: safe hits score
-25/50, mined hits cost 50/75/125. Misses do nothing and scores can go negative.
+subtract its base number times **1×** during its entire first mine cycle,
+without a further ring multiplier. All three explosions use the same multiplier:
+three hits on a newly armed 20 cost 60 points total. Its third explosion restores
+only that number's full HP and raises its next mine cycle by **0.5×** (1×, 1.5×,
+2×, 2.5×, ...). The multiplier never changes on an ordinary hit or turn change.
+Both bull rings share the 25 mine: safe hits score 25/50 and blasts in the first
+cycle cost 25 each. Half points are retained, including a 37.5-point blast on a
+second-cycle bull. Misses do nothing and scores can go negative.
 
 `hitPoints` defaults to 3 (configurable 1–9), `targetScore` to 301. First to reach
-or cross the target wins the leg; all scores and mines reset for a new or
-restarted leg. The optional round limit awards the leg to the highest score,
-with ties going to seat order. The scoreboard shows the shared field's HP and
-next penalties. Full examples are in the Minefield setup manual.
+or cross the target wins the leg; all scores, HP and multipliers reset for a new
+or restarted leg. The optional round limit awards the leg to the highest score,
+with ties going to seat order. The dartboard shows HP badges on safe numbers
+and blinking red wedges with mine icons and multipliers on armed numbers. Both
+bull rings blink together; reduced-motion users see steady red. Full examples
+are in the Minefield setup manual.
 
 ### Manuals
 

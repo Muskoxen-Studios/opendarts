@@ -706,7 +706,8 @@ async function start(): Promise<void> {
       </div>
       <p class="hint">
         Everyone shares the field. Each dart removes one HP; the last safe hit still scores.
-        Mines cost 2×, then 3×, then 5× the number and reset after their third explosion.
+        Mines start at 1× the number and keep that multiplier for three explosions.
+        Each reset restores HP and raises that number’s next mine by 0.5×.
         Both bulls share 25. First to reach or pass the target wins; scores can go negative.
       </p>
     </template>

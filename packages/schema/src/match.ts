@@ -165,8 +165,10 @@ export const EvenOddConfigSchema = z.object({
 });
 export type EvenOddConfig = z.infer<typeof EvenOddConfigSchema>;
 
-/** Escalation is per mine; the third explosion restores its HP. */
-export const MINEFIELD_MULTIPLIERS = [2, 3, 5] as const;
+/** A mine keeps its multiplier for three explosions, then its next cycle gains 0.5x. */
+export const MINEFIELD_INITIAL_MULTIPLIER = 1;
+export const MINEFIELD_MULTIPLIER_STEP = 0.5;
+export const MINEFIELD_EXPLOSIONS_TO_RESET = 3;
 export const MINEFIELD_TARGETS = [...Array.from({ length: 20 }, (_, i) => i + 1), 25];
 
 export const MinefieldConfigSchema = z.object({

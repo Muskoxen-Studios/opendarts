@@ -1,6 +1,8 @@
 import {
   MinefieldConfigSchema,
-  MINEFIELD_MULTIPLIERS,
+  MINEFIELD_INITIAL_MULTIPLIER,
+  MINEFIELD_MULTIPLIER_STEP,
+  MINEFIELD_EXPLOSIONS_TO_RESET,
   MINEFIELD_TARGETS,
   segmentLabel,
   type DomainEvent,
@@ -29,6 +31,7 @@ export interface MinefieldNumber {
   number: number;
   hp: number;
   explosions: number;
+  multiplier: number;
 }
 
 export interface MinefieldState {
@@ -47,7 +50,7 @@ function seatPlayer(state: MinefieldState, playerId: string): void {
 function resetLeg(state: MinefieldState, cfg: MinefieldConfig): void {
   for (const p of state.base.players) seatPlayer(state, p.id);
   state.field = Object.fromEntries(MINEFIELD_TARGETS.map((number) => [
-    number, { number, hp: cfg.hitPoints, explosions: 0 },
+    number, { number, hp: cfg.hitPoints, explosions: 0, multiplier: MINEFIELD_INITIAL_MULTIPLIER },
   ]));
 }
 
@@ -183,12 +186,13 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
             // The arming dart still scores normally, including doubles/triples.
             number.hp -= 1;
           } else {
-            // Penalties use the base number, so triples cannot multiply a 5x blast again.
-            delta = -number.number * MINEFIELD_MULTIPLIERS[number.explosions]!;
+            // Every explosion in this cycle uses the same base-number penalty.
+            delta = -number.number * number.multiplier;
             number.explosions += 1;
-            if (number.explosions === MINEFIELD_MULTIPLIERS.length) {
+            if (number.explosions === MINEFIELD_EXPLOSIONS_TO_RESET) {
               number.hp = cfg.hitPoints;
               number.explosions = 0;
+              number.multiplier += MINEFIELD_MULTIPLIER_STEP;
             }
           }
         }
@@ -258,7 +262,7 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
             const cell = state.field[number]!;
             return {
               ...cell,
-              nextMultiplier: cell.hp === 0 ? MINEFIELD_MULTIPLIERS[cell.explosions]! : null,
+              nextMultiplier: cell.hp === 0 ? cell.multiplier : null,
             };
           }),
         },

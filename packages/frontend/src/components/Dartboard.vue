@@ -33,6 +33,13 @@ const props = defineProps<{
    */
   marks?: readonly { readonly label: string; readonly coords: { readonly x: number; readonly y: number } | null }[];
   markColor?: string;
+  /** Shared Minefield state, keyed by the base number (both bulls share 25). */
+  minefield?: readonly {
+    readonly number: number;
+    readonly hp: number;
+    readonly explosions: number;
+    readonly multiplier: number;
+  }[];
 }>();
 
 const emit = defineEmits<{ (e: 'throw', payload: { segment: Segment; coords: Coords }): void }>();
@@ -43,6 +50,20 @@ const RED = '#d8453f';
 const GREEN = '#3f9d54';
 
 const cells = boardCells();
+const mineNumbers = computed(() => new Map((props.minefield ?? []).map((cell) => [cell.number, cell])));
+const mineMarkers = computed(() => (props.minefield ?? []).map((cell) => ({
+  ...cell,
+  ...segmentCentre({ number: cell.number, ring: cell.number === 25 ? 'BULL' : 'SINGLE_OUTER' }),
+  description: cell.hp > 0
+    ? `${cell.number === 25 ? 'Bull' : cell.number}: ${cell.hp} HP, next mine ${cell.multiplier}×`
+    : `${cell.number === 25 ? 'Bull' : cell.number}: mine ${cell.multiplier}×, penalty ${cell.number * cell.multiplier}, ${cell.explosions} of 3 explosions`,
+})));
+function isMine(number: number): boolean {
+  return mineNumbers.value.get(number)?.hp === 0;
+}
+function mineDescription(number: number): string {
+  return mineMarkers.value.find((cell) => cell.number === number)?.description ?? '';
+}
 const svg = ref<SVGSVGElement | null>(null);
 
 function fillOf(cell: (typeof cells)[number]): string {
@@ -126,25 +147,31 @@ const dartMarks = computed(() =>
       :d="w.d"
       :fill="fillOf(w)"
       class="wedge"
-      :class="{ target: rankOf(w.segment) === 0, 'target-later': rankOf(w.segment) > 0 }"
+      :class="{ target: rankOf(w.segment) === 0, 'target-later': rankOf(w.segment) > 0, mine: isMine(w.segment.number), fragile: mineNumbers.get(w.segment.number)?.hp === 1 }"
       :aria-label="w.label"
       @click="fire(w.segment, $event)"
-    />
+    >
+      <title v-if="mineNumbers.has(w.segment.number)">{{ mineDescription(w.segment.number) }}</title>
+    </path>
 
     <circle
       :cx="C" :cy="C" :r="BULL_OUTER_R"
       :fill="GREEN" class="wedge"
-      :class="{ target: rankOf({ number: 25, ring: 'OUTER_BULL' }) === 0, 'target-later': rankOf({ number: 25, ring: 'OUTER_BULL' }) > 0 }"
+      :class="{ mine: isMine(25), target: rankOf({ number: 25, ring: 'OUTER_BULL' }) === 0, 'target-later': rankOf({ number: 25, ring: 'OUTER_BULL' }) > 0 }"
       aria-label="Outer bull"
       @click="fire({ number: 25, ring: 'OUTER_BULL' }, $event)"
-    />
+    >
+      <title v-if="mineNumbers.has(25)">{{ mineDescription(25) }}</title>
+    </circle>
     <circle
       :cx="C" :cy="C" :r="BULL_INNER_R"
       :fill="RED" class="wedge"
-      :class="{ target: rankOf({ number: 25, ring: 'BULL' }) === 0, 'target-later': rankOf({ number: 25, ring: 'BULL' }) > 0 }"
+      :class="{ mine: isMine(25), target: rankOf({ number: 25, ring: 'BULL' }) === 0, 'target-later': rankOf({ number: 25, ring: 'BULL' }) > 0 }"
       aria-label="Bull"
       @click="fire({ number: 25, ring: 'BULL' }, $event)"
-    />
+    >
+      <title v-if="mineNumbers.has(25)">{{ mineDescription(25) }}</title>
+    </circle>
 
     <!--
       Outlines are drawn after every fill so a highlight is never painted over
@@ -168,6 +195,21 @@ const dartMarks = computed(() =>
       text-anchor="middle"
       dominant-baseline="central"
     >{{ n.number }}</text>
+
+    <!-- Pointer-transparent badges preserve the existing board input and dart coordinates. -->
+    <g v-for="cell in mineMarkers" :key="`mine-${cell.number}`"
+      class="mine-marker" :class="{ armed: cell.hp === 0 }"
+      :transform="`translate(${cell.x} ${cell.y})`" role="img" :aria-label="cell.description">
+      <title>{{ cell.description }}</title>
+      <rect x="-38" y="-29" width="76" :height="cell.hp === 0 ? 75 : 56" rx="15" />
+      <template v-if="cell.hp === 0">
+        <circle cy="-4" r="15" fill="#ffe4e6" />
+        <path d="M 7 -17 L 13 -25 L 23 -22 M 22 -27 L 27 -32 M 27 -20 L 34 -20"
+          fill="none" stroke="#ffe4e6" stroke-width="4" stroke-linecap="round" />
+        <text y="33" class="mine-multiplier">{{ cell.multiplier }}×</text>
+      </template>
+      <text v-else y="7" class="mine-hp">{{ cell.hp }} HP</text>
+    </g>
 
     <g v-for="(m, i) in dartMarks" :key="`mark-${i}`" class="dart-mark">
       <circle :cx="m.x" :cy="m.y" :r="24" class="halo" :fill="props.markColor ?? '#ffd166'" />
@@ -198,6 +240,18 @@ const dartMarks = computed(() =>
 .wedge.target { filter: brightness(1.5) saturate(1.2); }
 .wedge.target-later { filter: brightness(1.2); }
 
+.wedge.mine { fill: #b52240; animation: mine-blink 1.6s ease-in-out infinite; }
+.wedge.fragile { stroke: #efb950; stroke-width: 3; }
+@keyframes mine-blink {
+  0%, 100% { fill: #7f1830; }
+  50% { fill: #ff3658; }
+}
+.mine-marker { pointer-events: none; }
+.mine-marker rect { fill: #102a38; stroke: #8ab8ca; stroke-width: 2; }
+.mine-marker.armed rect { fill: #591428; stroke: #ff8199; }
+.mine-marker text { fill: #f0faff; text-anchor: middle; font: 700 25px system-ui, sans-serif; }
+.mine-marker.armed text { fill: #ffe4e6; }
+
 .dart-mark { pointer-events: none; }
 .dart-mark .halo { opacity: 0.22; }
 
@@ -214,5 +268,6 @@ const dartMarks = computed(() =>
 
 @media (prefers-reduced-motion: reduce) {
   .wedge { transition: none; }
+  .wedge.mine { animation: none; fill: #dd2c4c; }
 }
 </style>

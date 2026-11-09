@@ -203,21 +203,10 @@ function scoreText(player: View['players'][number]): string {
           </div>
         </div>
 
-        <section v-if="view.gameType === 'minefield'" class="minefield" aria-label="Shared minefield">
-          <div class="minefield-summary">
-            <span class="round">{{ p!.score }} / {{ minefield(p!).targetScore }}</span>
-            <span>Shared field · HP or next explosion penalty</span>
-          </div>
-          <div class="minefield-grid">
-            <div v-for="cell in minefield(p!).field" :key="cell.number" class="minefield-cell"
-              :class="{ armed: cell.hp === 0, fragile: cell.hp === 1 }">
-              <strong>{{ cell.number === 25 ? 'Bull' : cell.number }}</strong>
-              <span v-if="cell.hp > 0">{{ cell.hp }} HP</span>
-              <span v-else>Mine · −{{ cell.number * (cell.nextMultiplier ?? 0) }}</span>
-              <small v-if="cell.hp === 0">{{ cell.nextMultiplier }}× · {{ cell.explosions }}/3 blasts</small>
-            </div>
-          </div>
-        </section>
+        <div v-if="view.gameType === 'minefield'" class="minefield-summary">
+          <span>{{ p!.score }} / {{ minefield(p!).targetScore }}</span>
+          <span>Shared mines and HP are shown on the dartboard.</span>
+        </div>
 
         <div v-if="isEvenOdd" class="shanghai">
           <div class="shanghai-line">
@@ -298,15 +287,8 @@ function scoreText(player: View['players'][number]): string {
 </template>
 
 <style scoped>
-.minefield { display: grid; gap: 0.75rem; }
 .minefield-summary { display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem; align-items: baseline; }
 .minefield-summary > span:last-child { font-size: 0.8rem; color: var(--ui-muted); }
-.minefield-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 0.4rem; }
-.minefield-cell { display: grid; gap: 0.2rem; padding: 0.5rem; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface); text-align: center; }
-.minefield-cell strong { font-size: 1.1rem; }
-.minefield-cell span, .minefield-cell small { font-size: 0.75rem; }
-.minefield-cell.fragile { border-color: #e9ba55; color: #ffe09b; }
-.minefield-cell.armed { border-color: #f87171; background: #471e2a; color: #fecaca; }
 
 .scoreboard {
   /* The heart silhouette the life pips are masked with. */
