@@ -518,14 +518,16 @@ Adding a new game is one file in `packages/engine/src/` plus one line in
 ### The live match screen
 
 During play, the header collapses to a compact bar with board status, board
-controls and the Awake indicator always visible. **Menu** expands navigation
-over the match; closing it returns to the compact bar. Other tabs retain the
-full header.
+controls and the Awake indicator visible. The free space in this bar contains
+Undo, End turn, Correct last dart, Players, End game and Last game. **Menu**
+expands navigation over the match and hides these match actions while open;
+closing it brings them back. Other tabs retain the full header.
 
 On desktop screens, the live match uses the full available width at natural
-text size. Scores sit on the left, turn notices and match controls in a separate
-column beside them, and the dartboard on the right. The board fits the remaining
-height instead of making the entire match shrink as its column grows taller.
+text size. Match actions use the header, turn notices and recent darts share the
+row above the roster, and the main area has just scores on the left and the
+dartboard on the right. The board fits the remaining height instead of making
+the entire match shrink as its column grows taller.
 Unusually long scorecards scroll within their own panel, leaving the roster,
 controls and board readable. The comparison at 1366×768 and 1920×1080 includes
 two, four and eight players, long names and multiple game modes.

@@ -239,6 +239,20 @@ async function rematch(): Promise<void> {
           <span class="status-light" :class="{ online: store.connected && store.boardOnline }" />
           {{ !store.connected ? 'Server offline' : store.boardOnline ? (store.boardStatus ?? 'Board connected') : 'Board offline' }}
         </span>
+        <div v-show="!headerExpanded" class="controls match-actions" role="group" aria-label="Match actions">
+          <button @click="undo">Undo dart</button>
+          <button @click="nextPlayer">End turn</button>
+          <button :class="{ on: correcting }" :aria-pressed="correcting" @click="correcting = !correcting">
+            Correct last dart
+          </button>
+          <button ref="rosterToggle" :class="{ on: managingRoster }" @click="managingRoster = !managingRoster">
+            Players
+          </button>
+          <button class="danger" :disabled="view?.status !== 'playing'" @click="endGame">
+            End game
+          </button>
+          <button @click="showLastGame">Last game</button>
+        </div>
         <div class="quick-controls">
           <BoardControls compact class="toolbar-board-controls" />
           <button class="awake-indicator" :class="{ awake: screenAwake === 'active' }" :title="screenAwakeDescription" :aria-label="screenAwakeDescription" @click="screenAwake === 'unsupported' ? (headerExpanded = true) : retryScreenAwake()">{{ screenAwake === 'active' ? '☀ Awake' : '◐ Screen' }}</button>
@@ -290,7 +304,17 @@ async function rematch(): Promise<void> {
               two-column grid below would otherwise cost it half its width.
             -->
             <div class="match-heading">
-              <p class="page-eyebrow">{{ view.status === 'finished' ? 'Final scores' : 'Live at the oche' }}</p>
+              <p v-if="view.status === 'finished'" class="page-eyebrow">Final scores</p>
+              <TurnNotice v-if="view.status !== 'finished'" :stuck="store.takeoutStuck" :awaiting-takeout="!!view.awaitingTakeout" :correcting="correcting" @force-takeout="forceTakeout" />
+              <div class="board-history">
+                <span class="history-label">Recent</span>
+                <ul class="recent" aria-label="Recent darts">
+                  <li v-for="(t, i) in recentThrows" :key="i" :class="{ placeholder: !t }" :aria-hidden="!t">
+                    <span class="label">{{ t?.label ?? '—' }}</span>
+                    <span class="value">{{ t?.value ?? '—' }}</span>
+                  </li>
+                </ul>
+              </div>
               <span>{{ view.players.length }} {{ view.players.length === 1 ? 'player' : 'players' }} · {{ view.gameType === 'evenodd' ? 'Even / Odd' : view.gameType.toUpperCase() }}</span>
             </div>
             <PlayerStrip v-if="view.gameType !== 'cricket'" :view="view" fit />
@@ -300,34 +324,7 @@ async function rematch(): Promise<void> {
                 <Scoreboard :view="view" />
               </section>
 
-              <section class="match-tools" aria-label="Match controls">
-                <TurnNotice :stuck="store.takeoutStuck" :awaiting-takeout="!!view.awaitingTakeout" :correcting="correcting" @force-takeout="forceTakeout" />
-
-                <div class="controls">
-                  <button @click="undo">Undo dart</button>
-                  <button @click="nextPlayer">End turn</button>
-                  <button :class="{ on: correcting }" :aria-pressed="correcting" @click="correcting = !correcting">
-                    Correct last dart
-                  </button>
-                  <button ref="rosterToggle" :class="{ on: managingRoster }" @click="managingRoster = !managingRoster">
-                    Players
-                  </button>
-                  <button class="danger" :disabled="view.status !== 'playing'" @click="endGame">
-                    End game
-                  </button>
-                  <button @click="showLastGame">Last game</button>
-                </div>
-
-                <ul class="recent" aria-label="Recent darts">
-                  <li v-for="(t, i) in recentThrows" :key="i" :class="{ placeholder: !t }" :aria-hidden="!t">
-                    <span class="label">{{ t?.label ?? '—' }}</span>
-                    <span class="value">{{ t?.value ?? '—' }}</span>
-                  </li>
-                </ul>
-              </section>
-
               <section class="right">
-                <div class="board-heading"><span>On the board</span><span class="board-heading-note">{{ correcting ? 'Correcting last dart' : 'Aim. Throw. Repeat.' }}</span></div>
                 <div class="board-stage" :class="shakeClass">
                   <Dartboard
                     :highlight="hintSegments"
@@ -648,7 +645,7 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
   .match-screen .play,
   .match-screen .play.minefield-board {
     flex: 1; min-height: 0;
-    grid-template-columns: minmax(0, 1fr) 176px minmax(0, 42%);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 45%);
     align-items: stretch;
   }
   .match-screen .left { min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
@@ -659,16 +656,12 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
   .match-screen :deep(.scoreboard) { padding: clamp(0.8rem, 1.5vh, 1.3rem); gap: 0.65rem; }
   .match-screen :deep(.scoreboard .meta) { padding-bottom: 0.5rem; }
   .match-screen :deep(.strip.fit .mini-name) { font-size: 1.125rem; }
-  .match-screen .match-tools { min-height: 0; overflow: auto; scrollbar-width: thin; }
-  .match-screen .match-tools .controls { display: grid; grid-template-columns: 1fr; }
-  .match-screen .match-tools .controls button { font-size: 1rem; padding: 0.65rem 0.4rem; }
-  .match-screen .match-tools :deep(.turn-notice) { flex: none; font-size: 0.875rem; }
-  .match-screen .match-tools .controls { flex: none; }
-  .match-screen .match-tools .recent { flex: 1; min-height: 0; overflow: auto; align-content: start; grid-template-columns: repeat(2, minmax(0, 1fr)); font-size: 0.875rem; }
 }
 @media (min-width: 901px) and (min-height: 601px) and (max-height: 850px) {
   .match-screen :deep(.scoreboard) { gap: 0.5rem; }
   .match-screen :deep(.scoreboard .player) { padding: 0.8rem; }
+  .match-screen :deep(.scoreboard .score) { padding-block: 0; line-height: 1; }
+  .match-screen :deep(.scoreboard .stats) { margin-top: 0.3rem; padding-top: 0.5rem; }
   .match-screen :deep(.scoreboard .slot) { min-height: 5rem; }
   .match-screen :deep(.cricket-player-stats),
   .match-screen :deep(.cricket-turn-label) { display: none; }
@@ -676,14 +669,35 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
   .match-screen :deep(.cricket-board tbody th.who) { padding: 0.45rem; }
   .match-screen :deep(.cricket-board td) { padding-block: 0.45rem; }
 }
-.match-tools {
-  display: flex; flex-direction: column; gap: 0.75rem;
-  padding: 0.75rem; border: 1px solid var(--ui-border); border-radius: 14px;
-  background: var(--ui-surface-deep); min-width: 0;
-}
+
 @media (max-width: 900px), (max-height: 600px) {
-  .match-screen .match-tools { order: 1; }
   .match-screen .right { display: flex; }
-  .match-screen .match-tools .controls { display: flex; flex-wrap: wrap; }
+}
+.match-screen .compact-toolbar { min-height: 2.5rem; gap: 0.65rem; }
+.match-actions { flex: none; margin-inline: auto; flex-wrap: nowrap; gap: 0.4rem; }
+.match-actions button { font-size: 1rem; padding: 0.45rem 0.65rem; white-space: nowrap; }
+.match-heading :deep(.turn-notice) { flex: 1; min-width: 0; font-size: 0.875rem; }
+.board-history { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.match-heading .board-history { flex: 0 1 620px; }
+.match-heading > span { flex: none; }
+.match-heading :deep(.turn-notice button) { margin-top: 0; padding-block: 0.15rem; }
+.history-label { flex: none; color: var(--ui-muted); font-size: 0.875rem; }
+.board-history .recent { flex: 1; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; font-size: 0.875rem; }
+.board-history .recent li { padding: 0.3rem; gap: 0.2rem; }
+@media (max-width: 1100px) and (min-width: 901px) {
+  .match-actions button { padding-inline: 0.4rem; font-size: 0.875rem; }
+  .match-screen .compact-toolbar { gap: 0.4rem; }
+}
+@media (max-width: 900px) {
+  .match-screen .compact-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .compact-board-status { grid-column: 1; grid-row: 1; }
+  .match-screen .compact-toolbar > .menu-toggle { grid-column: 2; grid-row: 1; }
+  .match-actions { grid-column: 1 / -1; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .match-actions button { font-size: 0.875rem; padding: 0.4rem; }
+  .quick-controls { grid-column: 1 / -1; justify-content: space-between; }
+  .match-heading { flex-wrap: wrap; }
+  .match-heading :deep(.turn-notice) { flex-basis: 100%; order: 1; }
+  .match-heading .board-history { flex: 1 1 100%; flex-wrap: wrap; }
+  .board-history .recent { flex-basis: 100%; }
 }
 </style>
