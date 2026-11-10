@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DartThrowSchema, SegmentSchema } from './events.ts';
+import { DartThrowSchema, SegmentSchema, type Segment, type Coords } from './events.ts';
 
 export const PlayerSchema = z.object({
   id: z.string(),
@@ -168,18 +168,26 @@ export type EvenOddConfig = z.infer<typeof EvenOddConfigSchema>;
 /** One explosion resets the number; its next mine cycle gains 0.5x. */
 export const MINEFIELD_INITIAL_MULTIPLIER = 1;
 export const MINEFIELD_MULTIPLIER_STEP = 0.5;
-export const MINEFIELD_MIN_HP = 6;
-export const MINEFIELD_HP_PER_PLAYER = 3;
-/** Resolve automatic HP once per leg so roster changes do not resize a live mine. */
-export function minefieldHitPoints(playerCount: number): number {
-  return Math.max(MINEFIELD_MIN_HP, playerCount * MINEFIELD_HP_PER_PLAYER);
+export const MINEFIELD_HP_PER_PLAYER = 2;
+/** HP is configured per player or as a total; zero starts every field armed. */
+export function minefieldHitPoints(playerCount: number, perPlayer = MINEFIELD_HP_PER_PLAYER): number {
+  return playerCount * perPlayer;
 }
 export const MINEFIELD_TARGETS = [...Array.from({ length: 20 }, (_, i) => i + 1), 25];
 
 export const MinefieldConfigSchema = z.object({
   gameType: z.literal('minefield'),
-  /** Null scales with players. Older explicit values below six are raised so saved matches still load. */
-  hitPoints: z.number().int().positive().transform((hp) => Math.max(MINEFIELD_MIN_HP, hp)).nullable().default(null),
+  mode: z.enum(['normal', 'gotcha']).default('normal'),
+  /** A number is a fixed total. Null uses hitPointsPerPlayer with no floor or cap. */
+  hitPoints: z.number().int().nonnegative().nullable().default(null),
+  hitPointsPerPlayer: z.number().int().nonnegative().default(MINEFIELD_HP_PER_PLAYER),
+  mineLifetime: z.number().int().positive().default(1),
+  defusal: z.boolean().default(true),
+  blastRadius: z.boolean().default(false),
+  resetNegative: z.boolean().default(false),
+  /** Gotcha rules; ignored by normal count-up mode. */
+  exactFinish: z.boolean().default(true),
+  knockback: z.enum(['zero', 'previousTurn']).default('zero'),
   targetScore: z.number().int().positive().default(301),
   legsToWin: z.number().int().positive().default(1),
   setsToWin: z.number().int().positive().default(1),
@@ -261,6 +269,8 @@ export type DomainEvent =
   | { type: 'throw.recorded'; playerId: string; dartIndex: number; value: number }
   | { type: 'turn.completed'; playerId: string; total: number; darts: number; busted: boolean }
   | { type: 'player.busted'; playerId: string; reason: string }
+  | { type: 'minefield.exploded'; playerId: string; number: number; hazard: 'mine' | 'blast'; value: number; resetsScore: boolean; segment: Segment; coords: Coords | null }
+  | { type: 'minefield.defused'; playerId: string; number: number; segment: Segment; coords: Coords | null; rearmed?: boolean }
   | { type: 'leg.won'; playerId: string; darts: number }
   | { type: 'set.won'; playerId: string }
   | { type: 'match.won'; playerId: string }

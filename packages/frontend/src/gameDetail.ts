@@ -73,11 +73,20 @@ export function minefield(player: Player) {
   const d = player.detail;
   return {
     targetScore: (d.targetScore as number | undefined) ?? 301,
+    mode: (d.mode as 'normal' | 'gotcha' | undefined) ?? 'normal',
+    defusal: d.defusal !== false,
+    blastRadius: d.blastRadius === true,
+    resetNegative: d.resetNegative === true,
+    mineLifetime: (d.mineLifetime as number | undefined) ?? 1,
     field: (d.field as readonly {
       number: number;
       hp: number;
       multiplier: number;
       nextMultiplier: number | null;
+      hazard: 'mine' | 'blast' | null;
+      hitsRemaining: number;
+      resetsScore: boolean;
+      penalty: number | null;
     }[] | undefined) ?? [],
   };
 }

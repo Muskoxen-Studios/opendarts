@@ -38,7 +38,13 @@ const props = defineProps<{
     readonly number: number;
     readonly hp: number;
     readonly multiplier: number;
+    readonly hazard: 'mine' | 'blast' | null;
+    readonly hitsRemaining: number;
+    readonly resetsScore: boolean;
+    readonly penalty: number | null;
   }[];
+  minefieldDefusal?: boolean;
+  minefieldResetNegative?: boolean;
 }>();
 
 const emit = defineEmits<{ (e: 'throw', payload: { segment: Segment; coords: Coords }): void }>();
@@ -49,16 +55,21 @@ const RED = '#d8453f';
 const GREEN = '#3f9d54';
 
 const cells = boardCells();
+const compactHP = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+function hpLabel(value: number): string { return value < 1000 ? String(value) : compactHP.format(value); }
 const mineNumbers = computed(() => new Map((props.minefield ?? []).map((cell) => [cell.number, cell])));
 const mineMarkers = computed(() => (props.minefield ?? []).map((cell) => ({
   ...cell,
   ...segmentCentre({ number: cell.number, ring: cell.number === 25 ? 'BULL' : 'SINGLE_OUTER' }),
-  description: cell.hp > 0
+  description: !cell.hazard
     ? `${cell.number === 25 ? 'Bull' : cell.number}: ${cell.hp} HP, next mine ${cell.multiplier}×`
-    : `${cell.number === 25 ? 'Bull' : cell.number}: mine ${cell.multiplier}×, penalty ${Math.round(cell.number * cell.multiplier)}, double/triple defuses, single explodes`,
+    : `${cell.number === 25 ? 'Bull' : cell.number}: ${cell.hazard === 'blast' ? 'blast zone' : 'mine'}, ${cell.resetsScore ? (props.minefieldResetNegative ? 'resets score to 0' : 'resets positive score to 0; negative scores protected') : `penalty ${cell.penalty}`}, ${cell.hitsRemaining} explosion${cell.hitsRemaining === 1 ? '' : 's'} left, ${props.minefieldDefusal !== false ? 'double/triple defuses' : 'defusal disabled'}`,
 })));
 function isMine(number: number): boolean {
-  return mineNumbers.value.get(number)?.hp === 0;
+  return mineNumbers.value.get(number)?.hazard === 'mine';
+}
+function isBlast(number: number): boolean {
+  return mineNumbers.value.get(number)?.hazard === 'blast';
 }
 function mineDescription(number: number): string {
   return mineMarkers.value.find((cell) => cell.number === number)?.description ?? '';
@@ -146,7 +157,7 @@ const dartMarks = computed(() =>
       :d="w.d"
       :fill="fillOf(w)"
       class="wedge"
-      :class="{ target: rankOf(w.segment) === 0, 'target-later': rankOf(w.segment) > 0, mine: isMine(w.segment.number), fragile: mineNumbers.get(w.segment.number)?.hp === 1 }"
+      :class="{ target: rankOf(w.segment) === 0, 'target-later': rankOf(w.segment) > 0, mine: isMine(w.segment.number), blast: isBlast(w.segment.number), fragile: mineNumbers.get(w.segment.number)?.hp === 1 }"
       :aria-label="w.label"
       @click="fire(w.segment, $event)"
     >
@@ -197,17 +208,18 @@ const dartMarks = computed(() =>
 
     <!-- Pointer-transparent badges preserve the existing board input and dart coordinates. -->
     <g v-for="cell in mineMarkers" :key="`mine-${cell.number}`"
-      class="mine-marker" :class="{ armed: cell.hp === 0 }"
+      class="mine-marker" :class="{ armed: cell.hazard === 'mine', 'blast-marker': cell.hazard === 'blast' }"
       :transform="`translate(${cell.x} ${cell.y})`" role="img" :aria-label="cell.description">
       <title>{{ cell.description }}</title>
-      <rect x="-38" y="-29" width="76" :height="cell.hp === 0 ? 75 : 56" rx="15" />
-      <template v-if="cell.hp === 0">
+      <rect x="-38" y="-29" width="76" :height="cell.hazard === 'mine' ? 75 : 56" rx="15" />
+      <template v-if="cell.hazard === 'mine'">
         <circle cy="-4" r="15" fill="#ffe4e6" />
         <path d="M 7 -17 L 13 -25 L 23 -22 M 22 -27 L 27 -32 M 27 -20 L 34 -20"
           fill="none" stroke="#ffe4e6" stroke-width="4" stroke-linecap="round" />
-        <text y="33" class="mine-multiplier">{{ cell.multiplier }}×</text>
+        <text y="33" class="mine-multiplier">{{ cell.resetsScore ? '→0' : `${cell.multiplier}×` }}</text>
       </template>
-      <text v-else y="10" class="mine-hp">{{ cell.hp }}</text>
+      <text v-else-if="cell.hazard === 'blast'" y="10" class="zone-penalty">−{{ cell.penalty }}</text>
+      <text v-else y="10" class="mine-hp">{{ hpLabel(cell.hp) }}</text>
     </g>
 
     <g v-for="(m, i) in dartMarks" :key="`mark-${i}`" class="dart-mark">
@@ -240,6 +252,8 @@ const dartMarks = computed(() =>
 .wedge.target-later { filter: brightness(1.2); }
 
 .wedge.mine { fill: #b52240; animation: mine-blink 1.6s ease-in-out infinite; }
+.wedge.blast { fill: #b36b18; animation: blast-pulse 1.6s ease-in-out infinite; }
+@keyframes blast-pulse { 0%, 100% { fill: #8d5418; } 50% { fill: #ec9c24; } }
 .wedge.fragile { stroke: #efb950; stroke-width: 3; }
 @keyframes mine-blink {
   0%, 100% { fill: #7f1830; }
@@ -247,6 +261,8 @@ const dartMarks = computed(() =>
 }
 .mine-marker { pointer-events: none; }
 .mine-marker rect { fill: #102a38; stroke: #8ab8ca; stroke-width: 2; }
+.mine-marker.blast-marker rect { fill: #543314; stroke: #ffd183; }
+.mine-marker .zone-penalty { fill: #ffe4a8; font-size: 30px; }
 .mine-marker.armed rect { fill: #591428; stroke: #ff8199; }
 .mine-marker text { fill: #f0faff; text-anchor: middle; font: 700 25px system-ui, sans-serif; }
 .mine-marker.armed text { fill: #ffe4e6; }
@@ -270,5 +286,6 @@ const dartMarks = computed(() =>
 @media (prefers-reduced-motion: reduce) {
   .wedge { transition: none; }
   .wedge.mine { animation: none; fill: #dd2c4c; }
+  .wedge.blast { animation: none; fill: #b36b18; }
 }
 </style>

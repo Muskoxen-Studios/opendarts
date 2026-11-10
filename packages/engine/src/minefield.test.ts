@@ -5,7 +5,7 @@ import { play, players, resetDartIds, scoreOf, seg, throwCmd } from './testkit.t
 
 function newMatch(overrides: Record<string, unknown> = {}, names = ['Alice', 'Bob']): Match {
   const m = new Match('minefield-test', players(...names), {
-    gameType: 'minefield', targetScore: 10000, ...overrides,
+    gameType: 'minefield', targetScore: 10000, hitPoints: 6, ...overrides,
   });
   m.apply({ type: 'START' });
   return m;
@@ -14,6 +14,7 @@ function newMatch(overrides: Record<string, unknown> = {}, names = ['Alice', 'Bo
 function field(m: Match, number: number) {
   const cells = m.view.players[0]!.detail.field as {
     number: number; hp: number; multiplier: number; nextMultiplier: number | null;
+    hazard: 'mine' | 'blast' | null; hitsRemaining: number; resetsScore: boolean; penalty: number | null;
   }[];
   return cells.find((cell) => cell.number === number)!;
 }
@@ -25,26 +26,27 @@ function arm(m: Match, number: number): void {
 beforeEach(resetDartIds);
 
 describe('Minefield', () => {
-  it('defaults to automatic HP, normalizes legacy HP and rejects invalid values', () => {
+  it('defaults to configurable per-player HP and rejects non-count values', () => {
     expect(MinefieldConfigSchema.parse({ gameType: 'minefield' })).toMatchObject({
-      hitPoints: null, targetScore: 301, legsToWin: 1, setsToWin: 1, roundLimit: null,
+      hitPoints: null, hitPointsPerPlayer: 2, mode: 'normal', mineLifetime: 1, defusal: true,
+      blastRadius: false, targetScore: 301, legsToWin: 1, setsToWin: 1, roundLimit: null,
     });
-    for (const hitPoints of [0, -1, 1.5, 6.5]) {
+    for (const hitPoints of [-1, 1.5, 6.5]) {
       expect(() => newMatch({ hitPoints })).toThrow();
     }
     expect(() => newMatch({ targetScore: 0 })).toThrow();
     for (const hitPoints of [1, 3, 5]) {
-      expect(newMatch({ hitPoints }).config).toMatchObject({ hitPoints: 6 });
-      expect(field(newMatch({ hitPoints }), 20).hp).toBe(6);
+      expect(newMatch({ hitPoints }).config).toMatchObject({ hitPoints });
+      expect(field(newMatch({ hitPoints }), 20).hp).toBe(hitPoints);
     }
   });
 
-  it('scales automatic HP with player count, with a six-HP floor', () => {
+  it('scales HP with a configurable per-player value without a floor or cap', () => {
     for (const [names, expected] of [
-      [['Alice'], 6], [['Alice', 'Bob'], 6], [['Alice', 'Bob', 'Cara'], 9],
-      [['Alice', 'Bob', 'Cara', 'Dan'], 12],
+      [['Alice'], 2], [['Alice', 'Bob'], 4], [['Alice', 'Bob', 'Cara'], 6],
+      [['Alice', 'Bob', 'Cara', 'Dan'], 8],
     ] as const) {
-      const m = newMatch({}, [...names]);
+      const m = newMatch({ hitPoints: null }, [...names]);
       expect(m.view.players[0]!.detail.hitPoints).toBe(expected);
       expect(field(m, 20).hp).toBe(expected);
       expect(field(m, 25).hp).toBe(expected);
@@ -61,7 +63,7 @@ describe('Minefield', () => {
     m.apply(throwCmd('D20'));
     m.apply(throwCmd('20'));
     expect(scoreOf(m, 'bob')).toBe(120);
-    expect(field(m, 20)).toEqual({ number: 20, hp: 0, multiplier: 1, nextMultiplier: 1 });
+    expect(field(m, 20)).toMatchObject({ number: 20, hp: 0, multiplier: 1, nextMultiplier: 1 });
     expect(m.view.awaitingTakeout).toBe(true);
     expect(m.view.activePlayerId).toBe('bob');
     expect(m.apply(throwCmd('1'))).toEqual([]);
@@ -74,7 +76,7 @@ describe('Minefield', () => {
     const events = m.apply(throwCmd('20'));
     expect(events).toContainEqual({ type: 'throw.recorded', playerId: 'alice', dartIndex: 0, value: -20 });
     expect(m.view.turn.throws[0]!.value).toBe(-20);
-    expect(field(m, 20)).toEqual({ number: 20, hp: 6, multiplier: 1.5, nextMultiplier: null });
+    expect(field(m, 20)).toMatchObject({ number: 20, hp: 6, multiplier: 1.5, nextMultiplier: null });
     expect(field(m, 19)).toMatchObject({ hp: 6, multiplier: 1 });
     m.apply(throwCmd('20'));
     m.apply(throwCmd('20'));
@@ -230,7 +232,7 @@ describe('Minefield', () => {
   });
 
   it('keeps HP stable through roster changes until the next leg', () => {
-    const m = newMatch();
+    const m = newMatch({ hitPoints: null, hitPointsPerPlayer: 3 });
     arm(m, 20);
     m.apply({ type: 'ADD_PLAYER', player: players('Cara')[0]! });
     expect(scoreOf(m, 'cara')).toBe(0);
@@ -252,5 +254,194 @@ describe('Minefield', () => {
     play(m, '20', 'MISS', 'MISS', '19', 'MISS', 'MISS');
     m.apply({ type: 'END_MATCH' });
     expect(m.view.winnerId).toBe('alice');
+  });
+});
+
+describe('Minefield options', () => {
+  it('allows zero HP, small per-player values and large totals with no arbitrary bounds', () => {
+    const zero = newMatch({ hitPoints: 0 });
+    expect(field(zero, 20)).toMatchObject({ hp: 0, hazard: 'mine', hitsRemaining: 1 });
+    play(zero, '20');
+    expect(scoreOf(zero, 'alice')).toBe(-20);
+    expect(field(zero, 20)).toMatchObject({ hp: 0, multiplier: 1.5 });
+    const defused = zero.apply(throwCmd('D20'));
+    expect(defused).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'minefield.defused', rearmed: true })]));
+    expect(field(zero, 20)).toMatchObject({ hp: 0, multiplier: 1.5 });
+    expect(field(newMatch({ hitPoints: null, hitPointsPerPlayer: 1 }, ['Alice']), 20).hp).toBe(1);
+    expect(field(newMatch({ hitPoints: null, hitPointsPerPlayer: 1234 }), 20).hp).toBe(2468);
+    expect(field(newMatch({ hitPoints: 999999 }), 20).hp).toBe(999999);
+  });
+
+  it('uses the configured lifetime before resetting and escalating once', () => {
+    const m = newMatch({ hitPoints: 1, mineLifetime: 3, defusal: false });
+    arm(m, 20);
+    play(m, '20');
+    expect(field(m, 20)).toMatchObject({ hp: 0, hitsRemaining: 2, multiplier: 1 });
+    play(m, 'D20');
+    expect(field(m, 20)).toMatchObject({ hp: 0, hitsRemaining: 1, multiplier: 1 });
+    play(m, 'T20');
+    expect(field(m, 20)).toMatchObject({ hp: 1, hazard: null, multiplier: 1.5 });
+    expect(m.allEvents.filter((e) => e.type === 'throw.recorded').map((e) => e.value)).toEqual([20, -20, -20, -20]);
+  });
+
+  it('defuses the entire remaining lifetime when enabled', () => {
+    const m = newMatch({ hitPoints: 1, mineLifetime: 10 });
+    arm(m, 20);
+    play(m, 'D20');
+    expect(field(m, 20)).toMatchObject({ hp: 1, hazard: null, multiplier: 1 });
+    expect(scoreOf(m, 'alice')).toBe(60);
+  });
+
+  it('validates mine lifetime as a positive whole count without an upper cap', () => {
+    for (const mineLifetime of [0, -1, 1.5]) expect(() => newMatch({ mineLifetime })).toThrow();
+    expect(newMatch({ mineLifetime: 999999 }).config).toMatchObject({ mineLifetime: 999999 });
+  });
+});
+
+describe('Minefield blast radius', () => {
+  it('arms 1 and 5 around 20, penalises them normally and resets direct hits to zero', () => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true, defusal: false });
+    arm(m, 20);
+    expect(field(m, 20)).toMatchObject({ hazard: 'mine', resetsScore: true });
+    expect(field(m, 1)).toMatchObject({ hazard: 'blast', penalty: 1 });
+    expect(field(m, 5)).toMatchObject({ hazard: 'blast', penalty: 5 });
+    expect(field(m, 25).hazard).toBeNull();
+    play(m, '1', '5');
+    expect(scoreOf(m, 'alice')).toBe(14);
+    expect(field(m, 1)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
+    expect(field(m, 5).hazard).toBeNull();
+    // Blast-zone explosions do not spread the radius recursively.
+    expect(field(m, 18).hazard).toBeNull();
+    m.apply({ type: 'NEXT_PLAYER' }); // back to Alice after the completed turn
+    play(m, '20');
+    expect(scoreOf(m, 'alice')).toBe(0);
+    expect(field(m, 20)).toMatchObject({ hp: 1, hazard: null, multiplier: 1.5 });
+  });
+
+  it.each([false, true])('applies the negative-score reset option: %s', (resetNegative) => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true, defusal: false, resetNegative });
+    arm(m, 20);
+    m.apply({ type: 'NEXT_PLAYER' });
+    m.apply(throwCmd('5'));
+    expect(scoreOf(m, 'bob')).toBe(-5);
+    m.apply(throwCmd('20'));
+    expect(scoreOf(m, 'bob')).toBe(resetNegative ? 0 : -5);
+    expect(field(m, 20)).toMatchObject({ hp: 1, multiplier: 1.5 });
+  });
+
+  it('gives zones independent lifetimes and does not regenerate a cleared zone', () => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true, mineLifetime: 2, defusal: false });
+    arm(m, 20);
+    play(m, '1');
+    expect(field(m, 1)).toMatchObject({ hazard: 'blast', hitsRemaining: 1 });
+    play(m, '1');
+    expect(field(m, 1)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
+    expect(field(m, 20)).toMatchObject({ hazard: 'mine', hitsRemaining: 2 });
+    play(m, 'MISS');
+    expect(field(m, 1).hazard).toBeNull();
+  });
+
+  it('keeps overlapping zones until their last source clears', () => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true });
+    play(m, '20', '18'); // both cover 1
+    expect(field(m, 1).hazard).toBe('blast');
+    play(m, 'D20');
+    expect(field(m, 5).hazard).toBeNull();
+    expect(field(m, 1).hazard).toBe('blast');
+    play(m, 'D18');
+    expect(field(m, 1).hazard).toBeNull();
+    expect(field(m, 4).hazard).toBeNull();
+  });
+
+  it('clears an overlapping zone independently even when both source mines remain', () => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true });
+    play(m, '20', '18', '1');
+    expect(field(m, 1).hazard).toBeNull();
+    expect(field(m, 20).hazard).toBe('mine');
+    expect(field(m, 18).hazard).toBe('mine');
+  });
+
+  it('treats blast-zone doubles as defusals only when the option is enabled', () => {
+    for (const defusal of [false, true]) {
+      const m = newMatch({ hitPoints: 1, blastRadius: true, defusal });
+      arm(m, 20);
+      m.apply(throwCmd('D1'));
+      expect(m.view.turn.throws.at(-1)!.value).toBe(defusal ? 2 : -1);
+      expect(field(m, 1)).toMatchObject({ hazard: null, multiplier: defusal ? 1 : 1.5 });
+      expect(field(m, 20).hazard).toBe('mine');
+    }
+  });
+
+  it('never gives bull neighbours and prioritises direct mines over zones', () => {
+    const bull = newMatch({ hitPoints: 1, blastRadius: true, defusal: false });
+    arm(bull, 25);
+    expect(bull.view.players[0]!.detail.field).toEqual(expect.arrayContaining([expect.objectContaining({ number: 25, hazard: 'mine' })]));
+    for (let n = 1; n <= 20; n++) expect(field(bull, n).hazard).toBeNull();
+    play(bull, '25');
+    expect(scoreOf(bull, 'alice')).toBe(0);
+    const allMines = newMatch({ hitPoints: 0, blastRadius: true, defusal: false });
+    expect(field(allMines, 1)).toMatchObject({ hazard: 'mine', resetsScore: true, hitsRemaining: 1 });
+  });
+
+  it('replays corrections, undo and restart across zone lifetimes', () => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true, mineLifetime: 2, mode: 'gotcha' });
+    arm(m, 20);
+    m.apply(throwCmd('1'));
+    const id = m.view.recent.at(-1)!.id;
+    expect(field(m, 1).hitsRemaining).toBe(1);
+    m.apply({ type: 'CORRECT_THROW', throwId: id, segment: seg('5') });
+    expect(field(m, 1).hitsRemaining).toBe(2);
+    expect(field(m, 5).hitsRemaining).toBe(1);
+    m.apply({ type: 'UNDO' });
+    expect(field(m, 5).hitsRemaining).toBe(2);
+    expect(Match.fromLog(m.matchId, m.players, m.config, [...m.log]).view).toEqual(m.view);
+    m.apply({ type: 'RESTART_LEG' });
+    expect(field(m, 20)).toMatchObject({ hp: 1, hazard: null, multiplier: 1 });
+    expect(field(m, 1).hazard).toBeNull();
+  });
+});
+
+describe('Minefield Gotcha', () => {
+  it('knocks opponents back on matching their positive total only in Gotcha mode', () => {
+    for (const mode of ['normal', 'gotcha']) {
+      const m = newMatch({ mode, hitPoints: 100 });
+      play(m, '20');
+      m.apply({ type: 'NEXT_PLAYER' });
+      const events = m.apply(throwCmd('D10'));
+      expect(scoreOf(m, 'alice')).toBe(mode === 'gotcha' ? 0 : 20);
+      if (mode === 'gotcha') expect(events).toContainEqual({ type: 'gotcha.knockback', byPlayerId: 'bob', victimPlayerId: 'alice', from: 20, to: 0 });
+    }
+  });
+
+  it('supports previous-turn knockback', () => {
+    const m = newMatch({ mode: 'gotcha', hitPoints: 100, knockback: 'previousTurn' });
+    play(m, '10'); m.apply({ type: 'NEXT_PLAYER' });
+    play(m, '7'); m.apply({ type: 'NEXT_PLAYER' });
+    play(m, '5'); m.apply({ type: 'NEXT_PLAYER' });
+    play(m, '8');
+    expect(scoreOf(m, 'alice')).toBe(10);
+    expect(scoreOf(m, 'bob')).toBe(15);
+  });
+
+  it('busts an exact-finish overshoot but retains physical HP damage', () => {
+    const m = newMatch({ mode: 'gotcha', targetScore: 30, hitPoints: 100 });
+    play(m, '20');
+    const events = m.apply(throwCmd('D6'));
+    expect(scoreOf(m, 'alice')).toBe(0);
+    expect(m.view.turn.total).toBe(0);
+    expect(m.view.awaitingTakeout).toBe(true);
+    expect(field(m, 6).hp).toBe(99);
+    expect(events).toContainEqual({ type: 'player.busted', playerId: 'alice', reason: 'overshot 30' });
+  });
+
+  it('wins exactly in Gotcha and allows crossing the target when exact finish is off', () => {
+    const exact = newMatch({ mode: 'gotcha', targetScore: 30 });
+    play(exact, '20', '10');
+    expect(exact.view.winnerId).toBe('alice');
+    for (const config of [{ mode: 'normal' }, { mode: 'gotcha', exactFinish: false }]) {
+      const m = newMatch({ ...config, targetScore: 30 });
+      play(m, '20', 'D6');
+      expect(m.view.winnerId).toBe('alice');
+    }
   });
 });

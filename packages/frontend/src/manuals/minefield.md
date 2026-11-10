@@ -1,66 +1,103 @@
 # Minefield
 
-Score points while turning the shared board into a minefield. First to reach or
-pass the target (default **301**) wins the leg. Everyone starts at zero; scores
-can go negative.
+Everyone shares a changing board of mines. Start at zero and race to the target
+(default **301**). Scores may go negative, but there are **no half points**.
 
-## Safe numbers
+## Scoring mode
 
-Every number 1–20 and bull starts with **3 HP per player, with a minimum of 6**:
-6 HP for one or two players, 9 for three, 12 for four. Setup scales this
-automatically, or you can choose a manual HP value of at least 6. HP is fixed
-for the leg; players joining or leaving affect automatic HP when the next leg
-starts or the current leg is restarted.
-Every dart that hits a safe number scores normally, including doubles and
-triples, and removes **one HP** regardless of ring. The dart that removes the
-last HP still scores, then arms that number as a mine for everyone.
+- **Normal:** reach or pass the target to win.
+- **Gotcha:** landing on an opponent's positive total knocks them back, either
+  to zero or their previous-turn score. Exact finishing is on by default;
+  overshooting restores your turn-start score and ends your turn. Turn off
+  exact finishing to allow reaching or passing the target instead.
 
-Both bull rings share one HP pool, numbered 25. Safe outer bulls score 25 and
-inner bulls score 50. Misses score zero and do not affect the field.
+A bust restores your score, not the physical board: hits still wear down HP,
+use up hazard lifetime, and can clear or arm fields. Earlier knockbacks stand,
+as in the ordinary Gotcha mode. Mine and blast-zone penalties can also land on
+an opponent's positive total and trigger a knockback.
 
-## Explosions
+## Hit points
 
-A single or outer-bull hit on an armed number **explodes it once and immediately
-restores its full HP**. That dart subtracts the **base number** times the current multiplier,
-rounded to the nearest whole point, with halves rounded up. It does not also
-earn points, and the ring does not multiply the penalty again. Later darts can
-score on the restored number normally.
+Choose **X per player** or **X total per number**. The default is **2 per player**,
+with no extra floor or cap. Values are whole HP counts; **zero** starts every
+field armed. The total is fixed for the leg, including all hazard resets.
+Players joining or leaving affect per-player HP on the next new or restarted
+leg, so the live board does not unexpectedly resize.
 
-| Mine cycle for that number | Multiplier | Penalty per hit on 20 |
-|---|---|---|
-| First | 1× | −20 |
-| Second | 1.5× | −30 |
-| Third | 2× | −40 |
-| Each later cycle | +0.5× | 10 more points per hit |
+Numbers 1–20 and bull each have their own HP. A safe hit scores normally and
+removes **one HP per dart**, regardless of ring. The hit that removes the final
+HP still scores, then arms that number as a mine for everyone.
 
-Each explosion raises that number's next mine multiplier by **0.5×**, but it
-must lose all its restored HP before becoming a mine again. If you hit an armed
-20 three times in one turn, the first hit costs 20 and immediately resets it;
-the following two single hits score 20 each, for a net **+20** that turn.
+Both bull rings share the 25 field. Safe outer bulls score 25; inner bulls
+score 50. Misses score zero and leave the board alone.
 
-There are **no half points**: a second-cycle bull explosion costs **38 points**
-(25 × 1.5 = 37.5, rounded up); a 19 at 1.5× costs **29**. Round each dart's
-penalty before subtracting it. Other numbers are unchanged.
+## Mine lifetime and penalties
 
-The escalation belongs to each number and is shared across players. You can
-leave an armed number for an opponent or clear it to reopen a scoring target.
-The dartboard shows HP badges on safe numbers. Armed wedges and both bull rings
-**blink red**, with a mine icon and the current multiplier. The mine's tooltip
-also shows its whole-point penalty and that it resets on hit. With reduced motion enabled, mines
-stay solid red. The overlays do not block dartboard clicks.
+**Mine lifetime** is the number of explosions before that hazard clears. The
+default is **1**. Every explosion during one lifetime uses the same multiplier.
+When the last explosion clears the hazard, the field regains full HP and its
+next multiplier rises by **0.5×**: 1×, 1.5×, 2×, and so on. It must lose its HP
+again before the next mine cycle. At zero HP a cleared field immediately rearms.
 
-## Defusing
+Without blast radius, a mine costs its base number times its multiplier,
+without an extra double/triple ring multiplier. Round each penalty to the
+nearest whole point **before subtraction**, with halves rounded up. A 1.5×
+bull costs **38** and a 1.5× 19 costs **29**. With lifetime 1, hitting an armed
+20 and then two single 20s gives −20, +20, +20: a net **+20** turn.
 
-A **double or triple** on an armed number safely defuses it. You earn the dart's
-normal score, the number returns to full HP, and its multiplier stays unchanged.
-An **inner bull (50)** counts as a double and defuses the shared bull mine;
-an outer bull (25) triggers an explosion. Defusing also works on mines whose
-multiplier has already risen. Only actual explosions raise the multiplier.
+## Blast radius
+
+Turn this on for two effects:
+
+- A **direct hit on a mine resets the thrower's score to zero** instead of
+  subtracting a normal penalty. By default, a negative score is left unchanged;
+  enable **Direct mines also reset negative scores** to raise it to zero too.
+  The explosion still uses a lifetime hit either way.
+- The mine's immediately adjacent wedges become **blast zones**, using physical
+  board order. A mine on **20** covers **1 and 5**. A blast-zone hit subtracts
+  that number times its own multiplier: initially **−1 or −5**.
+
+Bull has no neighbours and never becomes a blast zone; a bull mine still has
+the direct score-reset effect. Blast zones do not spread recursively.
+
+Zones clear independently using the same lifetime setting as mines. Once a
+zone clears, it regains full HP and stays clear even if its source mine is
+still armed. Its multiplier rises 0.5× if explosions cleared it. A later newly
+armed neighbouring mine can create a fresh zone there.
+
+Clearing a source mine removes its remaining radius. A zone covered by another
+still-armed source remains dangerous until it clears itself or loses its last
+source. Overlap does not stack penalties or refill lifetime. A field that is
+also a direct mine takes precedence over a blast zone and resets the score.
+
+## Defusal
+
+**Allow double/triple defusal** is on by default and can be switched off.
+When enabled, a double or triple on a mine **or blast zone** safely clears its
+entire remaining lifetime, scores normally, restores HP and leaves the
+multiplier unchanged. Inner bull counts as a double; outer bull explodes.
+Defusing a direct mine also clears its remaining radius.
+
+When defusal is off, doubles, triples and inner bulls trigger the same hazard
+as a single; the ring does not multiply a penalty again.
+
+## On the board
+
+Safe badges show HP. **Red mines** show their multiplier, or **→0** when blast
+radius is on. **Amber blast zones** show the whole-point penalty. Tooltips and
+accessible labels describe the hazard, remaining explosions and defusal rules.
+Mines blink red; blast zones pulse amber. Reduced motion keeps their fills steady.
+
+An explosion produces a fireball, smoke, shockwaves and sparks at the hit field,
+with a score-change banner. Defusal has a separate green effect and does not
+shake the board. Effects settings and reduced-motion preferences are respected;
+the result label remains visible even when decorative effects are off.
 
 ## Turns and matches
 
-Three darts per turn, with the usual takeout before handover. Each new or
-restarted leg resets all scores and the whole field. Legs and sets work as in
-other modes. An optional round limit awards the leg to the highest score after
-everyone has had the same number of turns; ties use seat order. Ending a match
-early ranks sets, then legs, then current score.
+Three darts per turn, with the usual takeout before handover. New or restarted
+legs reset scores, HP, multipliers and zones. Legs and sets work as in other
+modes. A round limit awards the leg to the highest score after everyone has had
+the same number of turns; ties use seat order. Ending a match early ranks sets,
+then legs, then current score. Undo and corrections rebuild the shared field,
+lifetimes, knockbacks and scores from the command log.

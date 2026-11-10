@@ -165,7 +165,7 @@ const hintNumbers = computed<number[]>(() => {
  */
 const shakeClass = computed(() => {
   const effect = store.boardEffect;
-  if (!effect || store.effects === 'off') return null;
+  if (!effect || store.effects === 'off' || effect.kind === 'defuse') return null;
   return effect.key % 2 === 0 ? 'shake-a' : 'shake-b';
 });
 
@@ -330,6 +330,8 @@ async function rematch(): Promise<void> {
                     :highlight="hintSegments"
                     :highlight-numbers="hintNumbers"
                     :minefield="view.gameType === 'minefield' && view.players[0] ? minefield(view.players[0]).field : undefined"
+                    :minefield-defusal="view.players[0] ? minefield(view.players[0]).defusal : true"
+                    :minefield-reset-negative="view.players[0] ? minefield(view.players[0]).resetNegative : false"
                     :marks="view.turn.throws"
                     :mark-color="activePlayer?.color"
                     @throw="correcting ? correctLast($event.segment) : onThrow($event)"
@@ -337,7 +339,8 @@ async function rematch(): Promise<void> {
                   <BoardEffect :effect="store.boardEffect" :level="store.effects" />
                 </div>
                 <p v-if="view.gameType === 'minefield'" class="minefield-legend">
-                  Badges = HP · red = mine · double/triple defuses · single explodes.
+                  Badges = HP · red = mine<span v-if="view.players[0] && minefield(view.players[0]).blastRadius"> (resets score) · amber = blast zone</span>
+                  · {{ view.players[0] && minefield(view.players[0]).defusal ? 'double/triple defuses' : 'defusal off' }}
                 </p>
                 <Teleport to="body">
                   <div v-if="managingRoster" class="roster-overlay" role="dialog" aria-modal="true" aria-label="Match players" @click.self="managingRoster = false" @keydown.esc="managingRoster = false">

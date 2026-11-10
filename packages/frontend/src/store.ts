@@ -1,6 +1,6 @@
 import { reactive, readonly } from 'vue';
-import type { MatchView, Segment } from '@darts/schema';
-import { C, mmToSvg } from './boardGeometry.ts';
+import type { MatchView, Segment, DomainEvent } from '@darts/schema';
+import { C, mmToSvg, segmentCentre } from './boardGeometry.ts';
 
 export interface Profile {
   id: string;
@@ -284,7 +284,7 @@ export interface Celebration {
  */
 export interface BoardEffect {
   key: number;
-  kind: 'bust' | 'gotcha';
+  kind: 'bust' | 'gotcha' | 'mine' | 'blast' | 'defuse';
   color: string;
   origin: { x: number; y: number } | null;
   title: string;
@@ -598,9 +598,17 @@ export function connect(): void {
       case 'match.report':
         state.completedReport = msg.report;
         break;
-      case 'view':
-        state.view = msg.view;
+      case 'view': {
+        const old = state.view;
+        const next = msg.view as MatchView | null;
+        const last = old?.recent.at(-1);
+        if (old && (!next || old.matchId !== next.matchId || (last && (
+          !next.recent.some((dart) => dart.id === last.id) ||
+          (next.recent.at(-1)?.id === last.id && next.recent.at(-1)?.label !== last.label)
+        )))) clearBoardEffect();
+        state.view = next;
         break;
+      }
       case 'board':
         if (msg.event?.type === 'board.connected' || msg.event?.type === 'board.heartbeat') {
           state.boardOnline = true;
@@ -664,7 +672,7 @@ export function connect(): void {
   };
 }
 
-function announce(event: { type: string; [k: string]: unknown }): void {
+function announce(event: DomainEvent): void {
   if (event.type === 'player.busted') {
     fireBoardEffect('bust', String(event.playerId ?? ''), 'Bust', String(event.reason ?? ''));
   }
@@ -673,6 +681,16 @@ function announce(event: { type: string; [k: string]: unknown }): void {
     const victimId = String(event.victimPlayerId ?? '');
     const victim = state.view?.players.find((p) => p.playerId === victimId)?.name ?? 'Knocked back';
     fireBoardEffect('gotcha', victimId, 'Gotcha!', `${victim}: ${event.from} \u2192 ${event.to}`);
+  }
+  if (event.type === 'minefield.exploded' || event.type === 'minefield.defused') {
+    const origin = event.coords ? mmToSvg(event.coords) : segmentCentre(event.segment);
+    if (event.type === 'minefield.defused') {
+      fireBoardEffect('defuse', event.playerId, 'Defused!', `${event.number === 25 ? 'Bull' : event.number} ${event.rearmed ? 'is armed again (0 HP)' : 'is safe again'}`, { origin, color: '#5cdfac' });
+    } else {
+      const title = event.hazard === 'blast' ? 'Blast zone!' : 'Boom!';
+      const body = event.resetsScore ? (event.value === 0 ? 'Score unchanged' : 'Score reset to 0') : `${event.value} points`;
+      fireBoardEffect(event.hazard, event.playerId, title, body, { origin, color: event.hazard === 'blast' ? '#ffb347' : '#ff425e' });
+    }
   }
   if (event.type === 'leg.won') pushToast('Leg won', `in ${event.darts} darts`, '\u{1F3AF}');
 }
@@ -685,6 +703,12 @@ let effectTimer: ReturnType<typeof setTimeout> | null = null;
  * label under it carries the reason ("bust: 3 left") and has to be readable.
  */
 const EFFECT_MS = 2600;
+
+function clearBoardEffect(): void {
+  if (effectTimer) clearTimeout(effectTimer);
+  effectTimer = null;
+  state.boardEffect = null;
+}
 
 /**
  * Blow up the board.
@@ -701,10 +725,11 @@ function fireBoardEffect(
   playerId: string,
   title: string,
   body: string,
+  effect?: { origin: { x: number; y: number }; color: string },
 ): void {
-  const color = state.view?.players.find((p) => p.playerId === playerId)?.color ?? '#d8453f';
+  const color = effect?.color ?? state.view?.players.find((p) => p.playerId === playerId)?.color ?? '#d8453f';
   const last = state.view?.turn.throws.at(-1);
-  const origin = last?.coords ? mmToSvg(last.coords) : { x: C, y: C };
+  const origin = effect?.origin ?? (last?.coords ? mmToSvg(last.coords) : { x: C, y: C });
 
   state.boardEffect = { key: effectKey++, kind, color, origin, title, body };
   if (effectTimer) clearTimeout(effectTimer);
