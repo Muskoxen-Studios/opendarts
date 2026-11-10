@@ -86,8 +86,15 @@ const instantWin = ref(true);
 
 // Minefield
 const minefieldAutoHP = ref(true);
-const minefieldHP = ref(6);
-const minefieldSuggestedHP = computed(() => minefieldHitPoints(selected.value.length));
+const minefieldHP = ref(2);
+const minefieldSuggestedHP = computed(() => minefieldAutoHP.value ? minefieldHitPoints(selected.value.length, minefieldHP.value) : minefieldHP.value);
+const minefieldMode = ref<'normal' | 'gotcha'>('normal');
+const minefieldLifetime = ref(1);
+const minefieldDefusal = ref(true);
+const minefieldBlastRadius = ref(false);
+const minefieldResetNegative = ref(false);
+const minefieldExactFinish = ref(true);
+const minefieldKnockback = ref<'zero' | 'previousTurn'>('zero');
 const minefieldTarget = ref(301);
 
 // Even/Odd
@@ -241,8 +248,15 @@ async function useLastSettings(): Promise<void> {
     }
     if (setup.gameType === 'minefield') {
       minefieldAutoHP.value = cfg.hitPoints == null;
-      minefieldHP.value = Math.max(6, Number(cfg.hitPoints ?? minefieldSuggestedHP.value));
+      minefieldHP.value = Number(cfg.hitPoints ?? cfg.hitPointsPerPlayer ?? 2);
       minefieldTarget.value = Number(cfg.targetScore ?? 301);
+      minefieldMode.value = cfg.mode === 'gotcha' ? 'gotcha' : 'normal';
+      minefieldLifetime.value = Number(cfg.mineLifetime ?? 1);
+      minefieldDefusal.value = cfg.defusal !== false;
+      minefieldBlastRadius.value = cfg.blastRadius === true;
+      minefieldResetNegative.value = cfg.resetNegative === true;
+      minefieldExactFinish.value = cfg.exactFinish !== false;
+      minefieldKnockback.value = cfg.knockback === 'previousTurn' ? 'previousTurn' : 'zero';
     }
     if (setup.gameType === 'evenodd') {
       startingScore.value = Number(cfg.startingScore ?? 0);
@@ -340,7 +354,15 @@ function buildConfig(): unknown {
     return {
       gameType: 'minefield',
       hitPoints: minefieldAutoHP.value ? null : minefieldHP.value,
+      hitPointsPerPlayer: minefieldAutoHP.value ? minefieldHP.value : 2,
       targetScore: minefieldTarget.value,
+      mode: minefieldMode.value,
+      mineLifetime: minefieldLifetime.value,
+      defusal: minefieldDefusal.value,
+      blastRadius: minefieldBlastRadius.value,
+      resetNegative: minefieldResetNegative.value,
+      exactFinish: minefieldExactFinish.value,
+      knockback: minefieldKnockback.value,
       legsToWin: legsToWin.value,
       setsToWin: setsToWin.value,
       roundLimit: roundLimitValue.value,
@@ -700,26 +722,51 @@ async function start(): Promise<void> {
     <template v-else-if="gameType === 'minefield'">
       <div class="grid">
         <div class="field">
-          <label for="minefield-hp">HP per number</label>
-          <label class="use-handicaps">
-            <input v-model="minefieldAutoHP" type="checkbox" />
-            Scale HP with players ({{ minefieldSuggestedHP }} HP)
-          </label>
-          <input v-if="!minefieldAutoHP" id="minefield-hp" v-model.number="minefieldHP" type="number" min="6" step="1" />
-          <output v-else id="minefield-hp">{{ minefieldSuggestedHP }} HP per number</output>
+          <label for="minefield-mode">Scoring mode</label>
+          <select id="minefield-mode" v-model="minefieldMode">
+            <option value="normal">Normal count-up</option>
+            <option value="gotcha">Gotcha</option>
+          </select>
         </div>
         <div class="field">
           <label for="minefield-target">Target score</label>
           <input id="minefield-target" v-model.number="minefieldTarget" type="number" min="1" />
         </div>
+        <div class="field">
+          <label for="minefield-hp-mode">HP basis</label>
+          <select id="minefield-hp-mode" v-model="minefieldAutoHP">
+            <option :value="true">Per player</option>
+            <option :value="false">Total per number</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="minefield-hp">{{ minefieldAutoHP ? 'HP per player' : 'HP per number' }}</label>
+          <input id="minefield-hp" v-model.number="minefieldHP" type="number" step="1" />
+          <output>{{ minefieldSuggestedHP }} HP per number · zero starts armed</output>
+        </div>
+        <div class="field">
+          <label for="minefield-lifetime">Mine lifetime (explosions)</label>
+          <input id="minefield-lifetime" v-model.number="minefieldLifetime" type="number" step="1" />
+        </div>
+        <div v-if="minefieldMode === 'gotcha'" class="field">
+          <label for="minefield-knockback">Gotcha knock-back</label>
+          <select id="minefield-knockback" v-model="minefieldKnockback">
+            <option value="zero">Back to zero</option>
+            <option value="previousTurn">Back to previous turn</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="use-handicaps"><input v-model="minefieldDefusal" type="checkbox" /> Allow double/triple defusal (inner bull included)</label>
+        <label class="use-handicaps"><input v-model="minefieldBlastRadius" type="checkbox" /> Blast radius: direct mines reset your score; neighbours are blast zones</label>
+        <label v-if="minefieldBlastRadius" class="use-handicaps"><input v-model="minefieldResetNegative" type="checkbox" /> Direct mines also reset negative scores to zero</label>
+        <label v-if="minefieldMode === 'gotcha'" class="use-handicaps"><input v-model="minefieldExactFinish" type="checkbox" /> Finish on the exact target (overshooting busts the turn)</label>
       </div>
       <p class="hint">
-        Everyone shares the field. Each dart removes one HP; the last safe hit still scores.
-        Each mine explodes once, then immediately resets to full HP.
-        Mines start at 1×; every explosion raises that number’s next mine by 0.5×.
-        Doubles and triples defuse mines and score normally without raising the multiplier.
-        Penalties round to whole points. Automatic HP is 3 per player, with a minimum of 6.
-        Both bulls share 25. First to reach or pass the target wins; scores can go negative.
+        Everyone shares the field. Each safe dart removes one HP and scores normally; the arming hit still scores.
+        A cleared mine regains its full HP. Multipliers start at 1× and rise 0.5× after an explosion clears the hazard.
+        Blast zones clear independently and cost the number times its multiplier, rounded to whole points.
+        HP is fixed for each leg; the next leg uses the current player count.
       </p>
     </template>
 

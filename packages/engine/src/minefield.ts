@@ -5,6 +5,7 @@ import {
   minefieldHitPoints,
   MINEFIELD_TARGETS,
   segmentLabel,
+  SEGMENT_ORDER,
   type DomainEvent,
   type MinefieldConfig,
   type MatchView,
@@ -26,17 +27,19 @@ import {
 } from './base.ts';
 import type { BaseState, EngineResult, ForwardCommand, GameEngine } from './types.ts';
 
-/** Shared numbers wear down, explode on the next hit, then immediately recover. */
+/** Shared numbers wear down; mines and blast zones clear after their configured lifetime. */
 export interface MinefieldNumber {
   number: number;
   hp: number;
   multiplier: number;
+  remaining: number;
 }
 
 export interface MinefieldState {
   base: BaseState;
   field: Record<number, MinefieldNumber>;
   hitPoints: number;
+  zones: Record<number, { sources: number[]; remaining: number }>;
   turnValues: number[];
   scores: Record<string, number>;
   turnStartScore: Record<string, number>;
@@ -48,11 +51,50 @@ function seatPlayer(state: MinefieldState, playerId: string): void {
 }
 
 function resetLeg(state: MinefieldState, cfg: MinefieldConfig): void {
-  state.hitPoints = cfg.hitPoints ?? minefieldHitPoints(state.base.players.length);
+  state.hitPoints = cfg.hitPoints ?? minefieldHitPoints(state.base.players.length, cfg.hitPointsPerPlayer);
+  state.zones = {};
   for (const p of state.base.players) seatPlayer(state, p.id);
   state.field = Object.fromEntries(MINEFIELD_TARGETS.map((number) => [
-    number, { number, hp: state.hitPoints, multiplier: MINEFIELD_INITIAL_MULTIPLIER },
+    number, { number, hp: state.hitPoints, multiplier: MINEFIELD_INITIAL_MULTIPLIER, remaining: cfg.mineLifetime },
   ]));
+  if (state.hitPoints === 0) {
+    for (const number of MINEFIELD_TARGETS) spreadBlast(state, number, cfg);
+  }
+}
+
+/** Only scoring wedges have left/right neighbours; bull is never in the radius. */
+function neighbours(number: number): number[] {
+  const index = SEGMENT_ORDER.indexOf(number as (typeof SEGMENT_ORDER)[number]);
+  if (index < 0) return [];
+  return [SEGMENT_ORDER[(index + 19) % 20]!, SEGMENT_ORDER[(index + 1) % 20]!];
+}
+
+function spreadBlast(state: MinefieldState, number: number, cfg: MinefieldConfig): void {
+  if (!cfg.blastRadius) return;
+  for (const adjacent of neighbours(number)) {
+    const zone = state.zones[adjacent] ??= { sources: [], remaining: cfg.mineLifetime };
+    if (!zone.sources.includes(number)) zone.sources.push(number);
+  }
+}
+
+/** Clearing a source also removes its radius, while overlapping sources keep theirs. */
+function clearHazard(state: MinefieldState, number: number, exploded: boolean, cfg: MinefieldConfig): void {
+  const cell = state.field[number]!;
+  const wasMine = cell.hp === 0;
+  cell.hp = state.hitPoints;
+  cell.remaining = cfg.mineLifetime;
+  if (exploded) cell.multiplier += MINEFIELD_MULTIPLIER_STEP;
+  delete state.zones[number];
+  if (wasMine) {
+    for (const adjacent of neighbours(number)) {
+      const zone = state.zones[adjacent];
+      if (!zone) continue;
+      zone.sources = zone.sources.filter((source) => source !== number);
+      if (zone.sources.length === 0) delete state.zones[adjacent];
+    }
+  }
+  // With zero HP, clearing immediately arms a fresh cycle.
+  if (cell.hp === 0) spreadBlast(state, number, cfg);
 }
 
 function beginTurn(state: MinefieldState): void {
@@ -86,6 +128,7 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
       base: createBaseState(players),
       field: {},
       hitPoints: 0,
+      zones: {},
       turnValues: [],
       scores: {},
       turnStartScore: {},
@@ -182,25 +225,46 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
         base.legDarts[player.id] = (base.legDarts[player.id] ?? 0) + 1;
 
         const number = state.field[dart.segment.number];
+        const score = state.scores[player.id] ?? 0;
         let delta = dart.value;
         if (dart.segment.ring !== 'MISS' && number) {
-          if (number.hp > 0) {
+          const mine = number.hp === 0;
+          const zone = state.zones[number.number];
+          if (!mine && !zone) {
             // The arming dart still scores normally, including doubles/triples.
             number.hp -= 1;
+            if (number.hp === 0) spreadBlast(state, number.number, cfg);
           } else {
-            // Precision hits defuse the mine, earn their normal score and do not escalate it.
-            const defused = dart.segment.ring === 'DOUBLE' || dart.segment.ring === 'TRIPLE' || dart.segment.ring === 'BULL';
-            if (!defused) {
-              // Round the positive penalty first so .5 always rounds up, even when subtracted.
-              delta = -Math.round(number.number * number.multiplier);
-              number.multiplier += MINEFIELD_MULTIPLIER_STEP;
+            const defused = cfg.defusal && (dart.segment.ring === 'DOUBLE' || dart.segment.ring === 'TRIPLE' || dart.segment.ring === 'BULL');
+            if (defused) {
+              events.push({ type: 'minefield.defused', playerId: player.id, number: number.number, segment: dart.segment, coords: dart.coords, rearmed: state.hitPoints === 0 });
+              clearHazard(state, number.number, false, cfg);
+            } else {
+              if (mine && cfg.blastRadius) {
+                // Negative-score protection avoids turning a mine into a free recovery.
+                delta = score >= 0 || cfg.resetNegative ? -score : 0;
+              } else {
+                delta = -Math.round(number.number * number.multiplier);
+              }
+              events.push({ type: 'minefield.exploded', playerId: player.id, number: number.number, hazard: mine ? 'mine' : 'blast', value: delta, resetsScore: mine && cfg.blastRadius, segment: dart.segment, coords: dart.coords });
+              const hazard = mine ? number : zone!;
+              hazard.remaining -= 1;
+              if (hazard.remaining === 0) clearHazard(state, number.number, true, cfg);
             }
-            number.hp = state.hitPoints;
           }
         }
+        const next = score + delta;
+        if (cfg.mode === 'gotcha' && cfg.exactFinish && next > cfg.targetScore) {
+          state.scores[player.id] = state.turnStartScore[player.id] ?? 0;
+          state.turnValues.push(0);
+          events.push({ type: 'throw.recorded', playerId: player.id, dartIndex: base.turn.length - 1, value: 0 });
+          events.push({ type: 'player.busted', playerId: player.id, reason: `overshot ${cfg.targetScore}` });
+          events.push({ type: 'turn.completed', playerId: player.id, total: 0, darts: base.turn.length, busted: true });
+          base.turnEnded = true;
+          return { state, events };
+        }
         state.turnValues.push(delta);
-        state.scores[player.id] = (state.scores[player.id] ?? 0) + delta;
-
+        state.scores[player.id] = next;
         events.push({
           type: 'throw.recorded',
           playerId: player.id,
@@ -208,7 +272,18 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
           value: delta,
         });
 
-        if ((state.scores[player.id] ?? 0) >= cfg.targetScore) {
+        const won = cfg.mode === 'gotcha' && cfg.exactFinish ? next === cfg.targetScore : next >= cfg.targetScore;
+        if (cfg.mode === 'gotcha' && !won && next > 0 && delta !== 0) {
+          for (const opponent of base.players) {
+            if (opponent.id === player.id || state.scores[opponent.id] !== next) continue;
+            const to = cfg.knockback === 'zero' ? 0 : (state.turnStartScore[opponent.id] ?? 0);
+            if (to === next) continue;
+            state.scores[opponent.id] = to;
+            events.push({ type: 'gotcha.knockback', byPlayerId: player.id, victimPlayerId: opponent.id, from: next, to });
+          }
+        }
+
+        if (won) {
           events.push({
             type: 'turn.completed',
             playerId: player.id,
@@ -259,12 +334,22 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
         checkout: null,
         detail: {
           targetScore: cfg.targetScore,
+          mode: cfg.mode,
+          blastRadius: cfg.blastRadius,
+          resetNegative: cfg.resetNegative,
+          defusal: cfg.defusal,
+          mineLifetime: cfg.mineLifetime,
           hitPoints: state.hitPoints,
           field: MINEFIELD_TARGETS.map((number) => {
             const cell = state.field[number]!;
+            const hazard = cell.hp === 0 ? 'mine' : state.zones[number] ? 'blast' : null;
             return {
               ...cell,
-              nextMultiplier: cell.hp === 0 ? cell.multiplier : null,
+              hazard,
+              hitsRemaining: hazard === 'mine' ? cell.remaining : (state.zones[number]?.remaining ?? 0),
+              resetsScore: hazard === 'mine' && cfg.blastRadius,
+              penalty: hazard === 'mine' && cfg.blastRadius ? null : Math.round(number * cell.multiplier),
+              nextMultiplier: hazard ? cell.multiplier : null,
             };
           }),
         },

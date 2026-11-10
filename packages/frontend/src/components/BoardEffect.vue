@@ -67,6 +67,13 @@ const shards = computed(() => {
       <!-- The flash: the whole board goes white for a frame or two. -->
       <circle class="flash" :cx="C" :cy="C" :r="SIZE / 2" />
 
+      <g v-if="level === 'full' && (effect.kind === 'mine' || effect.kind === 'blast')" :transform="`translate(${origin.x} ${origin.y})`" class="explosion-core">
+        <circle class="fireball" r="1" />
+        <circle class="smoke smoke-1" r="1" />
+        <circle class="smoke smoke-2" r="1" />
+        <circle class="smoke smoke-3" r="1" />
+      </g>
+
       <!-- The shockwave, from where the dart landed rather than from centre. -->
       <circle class="wave" :cx="origin.x" :cy="origin.y" :r="1" :stroke="effect.color" />
       <circle class="wave wave-2" :cx="origin.x" :cy="origin.y" :r="1" :stroke="effect.color" />
@@ -163,6 +170,22 @@ const shards = computed(() => {
   opacity: 0;
   animation: flash 260ms ease-out both;
 }
+.fireball { fill: #fff3bc; animation: fireball 650ms ease-out both; }
+.smoke { fill: #8b7279; animation: smoke 1100ms ease-out both; }
+.smoke-1 { --sx: -65px; --sy: -130px; animation-delay: 140ms; }
+.smoke-2 { --sx: 75px; --sy: -150px; animation-delay: 210ms; }
+.smoke-3 { --sx: 0px; --sy: -190px; animation-delay: 290ms; }
+@keyframes fireball {
+  0% { r: 5; opacity: 1; fill: #fff8d1; }
+  35% { r: 110; opacity: 0.95; fill: #ffb347; }
+  100% { r: 155; opacity: 0; fill: #f0324b; }
+}
+@keyframes smoke {
+  0% { r: 10; opacity: 0; transform: translate(0, 0); }
+  25% { opacity: 0.65; }
+  100% { r: 70; opacity: 0; transform: translate(var(--sx), var(--sy)); }
+}
+.effect.defuse .flash, .effect.defuse .shard { display: none; }
 /* A knockback is someone else's doing, so it hits softer than your own bust. */
 .effect.gotcha .flash { animation-duration: 200ms; }
 
@@ -216,7 +239,7 @@ const shards = computed(() => {
  * Celebration.vue makes about its confetti.
  */
 @media (prefers-reduced-motion: reduce) {
-  .wave, .shard { display: none; }
+  .wave, .shard, .explosion-core { display: none; }
   .flash { animation-duration: 400ms; }
   /* The label still has to appear and go away, so it only loses the movement. */
   .banner { animation-name: banner-fade; }

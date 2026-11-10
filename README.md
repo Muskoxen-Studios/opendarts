@@ -473,33 +473,44 @@ can itself be negative for a harder start. `targetScore` (default 100) is the
 finish line: the higher it is, the longer the game runs and the more a run of
 odd numbers can be clawed back before someone reaches it.
 
-**Minefield** — everyone shares HP and mines for numbers 1–20 and bull (25).
-Safe hits score normally and remove one HP per dart regardless of ring. At zero
-HP the number becomes a mine; the arming dart still scores. A single or outer-bull hit
-**explodes once and immediately resets that number to full HP**. A double,
-triple or inner bull instead **defuses** the mine, earns its normal scored value
-and restores full HP without raising the multiplier. It costs the
-base number times the current multiplier, rounded to the nearest whole point
-(halves round up), with no extra ring multiplier. A following dart can score on
-that number again. Every explosion raises only that number's next mine cycle by
-**0.5×** (1×, 1.5×, 2×, 2.5×, ...). It must lose all its HP again before the
-next explosion. Both bull rings share the 25 mine: safe hits score 25/50, the
-first explosion costs 25, and the second costs **38**, never 37.5. Misses do
-nothing and scores can go negative; scores and scoring deltas are whole points.
+**Minefield** — shared HP, mines and optional blast zones on numbers 1–20 and
+bull (25). Safe darts score normally and remove one HP each; the final HP hit
+still scores before arming the number. Choose normal count-up (default target
+301) or Gotcha, including exact finishes, overshoot busts and zero/previous-turn
+knockbacks. A bust restores turn-start score while physical board changes and
+earlier knockbacks remain, matching ordinary Gotcha scoring.
 
-Automatic HP is **3 per player, with a minimum of 6 per number**: 6 for one or
-two players, 9 for three, 12 for four. `hitPoints: null` (the default) enables
-this; a manual override uses an integer of at least 6. Legacy explicit HP
-values below 6 normalize to 6 so saved matches still load. HP is resolved at the
-start of each leg and stays fixed for that leg, including mine resets, so a
-mid-leg roster change cannot unexpectedly resize numbers. The next new or
-restarted leg uses the current roster size. `targetScore` defaults to 301.
-First to reach or cross it wins the leg; all scores, HP and multipliers reset
-for a new or restarted leg. The optional round limit awards the leg to the
-highest score, with ties going to seat order. The dartboard shows HP badges on
-safe numbers and blinking red wedges with mine icons and multipliers on armed
-numbers. Both bull rings blink together; reduced-motion users see steady red.
-Full examples are in the Minefield setup manual.
+HP is configurable as **X per player** (`hitPoints: null`,
+`hitPointsPerPlayer`, default 2) or **X total** (`hitPoints`). There is no extra
+floor or cap; values are nonnegative whole counts, with zero starting armed.
+Per-player totals are resolved at the start of each leg and remain fixed until
+a new or restarted leg. Existing explicit total HP values are preserved.
+
+`mineLifetime` counts explosions before a hazard clears, default 1. The last
+explosion restores full HP and raises that field's next mine multiplier by
+0.5×; the multiplier stays fixed throughout a lifetime. Normal penalties use the
+base number times its multiplier, rounded to whole points, halves up. A 1.5×
+bull costs 38, never 37.5. `defusal` (default on) lets doubles, triples and inner
+bull clear the whole hazard, score normally and keep its multiplier unchanged.
+Turn it off to have all rings trigger hazards.
+
+`blastRadius` (default off) makes direct mine hits reset the player's score to
+zero and creates normal-penalty blast zones on the two neighbouring wedges in
+physical board order: a mine on 20 covers 1 and 5, initially costing 1 and 5.
+`resetNegative` controls whether a direct mine also raises a negative score to
+zero; off leaves negative scores unchanged while still consuming an explosion.
+Bull has no radius and is never a zone. Zones clear independently with the
+configured lifetime and do not regenerate until a new neighbouring mine arms.
+Clearing a source removes its remaining radius; overlapping sources preserve a
+zone without stacking damage or replenishing its lifetime. Direct mines take
+precedence over zones, and zones never spread recursively.
+
+The board shows red mine badges (→0 for score-reset mines), amber blast-zone
+penalties and safe HP. Tooltips include remaining lifetime and defusal rules.
+Actual explosions animate at the hit segment with fireball, smoke, waves and
+sparks; defusal uses a separate green effect. Effects settings and reduced
+motion are respected. New legs, restarts, undo and correction replay account
+for all shared hazards and Gotcha scores. See the setup manual for full rules.
 
 ### Manuals
 

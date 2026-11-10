@@ -204,7 +204,7 @@ function scoreText(player: View['players'][number]): string {
         </div>
 
         <div v-if="view.gameType === 'minefield'" class="minefield-summary">
-          <span>{{ p!.score }} / {{ minefield(p!).targetScore }}</span>
+          <span>{{ minefield(p!).mode === 'gotcha' ? 'Gotcha' : 'Target' }} · {{ p!.score }} / {{ minefield(p!).targetScore }}</span>
           <span>Shared mines and HP are shown on the dartboard.</span>
         </div>
 
