@@ -874,7 +874,7 @@ status check in the `master` branch rules. The title workflow reads PR metadata
 with read-only permissions and never checks out contributor code.
 
 Dependabot checks npm workspaces and GitHub Actions weekly. Minor and patch npm
-updates are grouped; major updates stay separate. npm PRs use `fix(deps):` (or
+updates are grouped; major updates are ignored for both ecosystems. npm PRs use `fix(deps):` (or
 `fix(deps-dev):` for development dependencies) so they trigger patch releases;
 GitHub Actions updates use `chore(deps):` and do not trigger releases by themselves.
 
