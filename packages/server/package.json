@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@darts/schema": "*", "@darts/engine": "*", "@darts/stats": "*", "ws": "^8.18.0" }
+  "dependencies": { "@darts/schema": "*", "@darts/engine": "*", "@darts/stats": "*", "ws": "^8.22.1" }
 }

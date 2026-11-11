@@ -33,9 +33,9 @@
     "release": "node scripts/release.mjs"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@types/ws": "^8.18.1",
-    "electron-builder": "^26.15.3",
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"
   },
