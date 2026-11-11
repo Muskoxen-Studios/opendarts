@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { computed, ref } from 'vue';
 import Heatmap from './Heatmap.vue';
 import ThrowReplay from './ThrowReplay.vue';
@@ -104,7 +105,7 @@ const holeCount = computed(() =>
           <p class="eyebrow">{{ gameName }} / {{ report.conceded ? 'Game ended early' : 'Match complete' }}</p>
           <h2 v-if="winner">
             <span class="dot" :style="{ background: winner.color }" />
-            {{ winner.name }} {{ report.conceded ? 'led when the game was ended' : 'wins' }}
+            <PlayerAvatar :player-id="winner.playerId" />{{ winner.name }} {{ report.conceded ? 'led when the game was ended' : 'wins' }}
           </h2>
           <h2 v-else>Match ended</h2>
           <p class="meta">
@@ -118,8 +119,8 @@ const holeCount = computed(() =>
       </header>
 
       <div class="highlights" :aria-label="`${featured?.name ?? 'Match'} highlights`">
-        <article v-for="h in highlights" :key="h.label" class="highlight">
-          <span>{{ h.label }}</span><strong>{{ h.value }}</strong><small>{{ h.detail }}</small>
+        <article v-for="(h, index) in highlights" :key="h.label" class="highlight">
+          <span>{{ h.label }}</span><strong>{{ h.value }}</strong><small><PlayerAvatar v-if="featured && index === 0 && !isGolf && !isX01" :player-id="featured.playerId" />{{ h.detail }}</small>
         </article>
       </div>
 
@@ -131,8 +132,7 @@ const holeCount = computed(() =>
               :class="{ won: p.playerId === report.winnerId }" :style="{ '--player': p.color }">
               <div class="player-heading">
                 <span class="rank">{{ rank + 1 }}</span>
-                <span class="avatar">{{ p.name.slice(0, 1).toUpperCase() }}</span>
-                <div class="player-name"><strong>{{ p.name }}</strong><small>{{ p.darts }} darts<span v-if="report.legsPlayed > 1"> · {{ p.legsWon }} legs won</span></small></div>
+                <div class="player-name"><strong><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</strong><small>{{ p.darts }} darts<span v-if="report.legsPlayed > 1"> · {{ p.legsWon }} legs won</span></small></div>
                 <div class="player-score"><b>{{ isGolf ? p.golf?.points : isX01 ? fmt(p.average3) : p.score }}</b><small>{{ isGolf ? 'points' : isX01 ? 'average' : isCricket ? 'marks' : 'points' }}</small></div>
               </div>
               <div v-if="p.golf" class="player-details">
@@ -161,7 +161,7 @@ const holeCount = computed(() =>
               <li v-for="p in report.players" :key="p.playerId">
                 <template v-for="(c, i) in p.checkouts" :key="i">
                   <span class="pill" :style="{ '--accent': p.color }">
-                    {{ p.name }} &mdash; {{ c.from }} in {{ c.darts }} darts on {{ c.finisher }}
+                    <PlayerAvatar :player-id="p.playerId" />{{ p.name }} &mdash; {{ c.from }} in {{ c.darts }} darts on {{ c.finisher }}
                   </span>
                 </template>
               </li>
@@ -183,7 +183,7 @@ const holeCount = computed(() =>
                 <tbody>
                   <tr v-for="p in standings" :key="p.playerId">
                     <th class="who">
-                      <span class="dot" :style="{ background: p.color }" />{{ p.name }}
+                      <span class="dot" :style="{ background: p.color }" /><PlayerAvatar :player-id="p.playerId" />{{ p.name }}
                     </th>
                     <td
                       v-for="(hole, i) in golfHoles(p)"
@@ -224,7 +224,7 @@ const holeCount = computed(() =>
               :class="{ on: focus === p.playerId }"
               :style="{ '--accent': p.color }"
               @click="focus = p.playerId"
-            >{{ p.name }}</button>
+            ><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</button>
           </div>
           <Heatmap :heatmap="heatmap" :color="heatColor" />
         </div>
@@ -324,7 +324,6 @@ header { padding-bottom: 1rem; border-bottom: 1px solid #ffffff18; align-items: 
 .player-heading { display: flex; align-items: center; gap: 0.65rem; }
 .rank { color: #91acbd; width: 1rem; font-variant-numeric: tabular-nums; }
 .won .rank { color: var(--accent); font-weight: 800; }
-.avatar { width: 2.4rem; height: 2.4rem; flex: none; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--player) 30%, #0b2230); border: 1px solid var(--player); color: #fff; font-weight: 700; }
 .player-name { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .player-name strong { overflow-wrap: anywhere; }
 .player-name small, .player-score small, .player-details small { color: #a2b7c9; font-size: 0.7rem; }

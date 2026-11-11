@@ -116,6 +116,7 @@ function migrate(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_matches_ended ON matches(ended_at);
   `);
 
+  addColumnIfMissing(db, 'profiles', 'email', 'TEXT');
 }
 
 /** Additive migration for databases created before a column existed. */

@@ -16,6 +16,7 @@ import { openDatabase } from './db.ts';
 import { MatchManager, type ServerEvent } from './matchManager.ts';
 import { resolveStatic, sendStatic } from './static.ts';
 import { Store } from './store.ts';
+import { gravatarUrl, gravatarImage } from './gravatar.ts';
 import { MAX_RENDER_BODY, proxyNative } from './nativeProxy.ts';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -112,6 +113,20 @@ async function readBody(req: IncomingMessage, limit = Infinity): Promise<unknown
 
 // -- profiles ---------------------------------------------------------------
 
+// Serve images through our origin so desktop CSP and offline fallback work alike.
+route('GET', '/api/profiles/:id/avatar', async (_req, res, params) => {
+  const profile = store.getProfile(params.id ?? '');
+  const url = gravatarUrl(profile?.email ?? null);
+  const image = url ? await gravatarImage(url) : null;
+  if (!image) {
+    res.writeHead(404, { 'cache-control': 'no-store' });
+    res.end();
+    return;
+  }
+  res.writeHead(200, { 'content-type': image.contentType, 'cache-control': 'private, max-age=60', 'x-content-type-options': 'nosniff' });
+  res.end(image.data);
+});
+
 route('GET', '/api/profiles', (_req, res) => json(res, 200, store.listProfiles()));
 
 route('POST', '/api/profiles', (_req, res, _p, body) => {
@@ -131,6 +146,16 @@ route('PATCH', '/api/profiles/:id', (_req, res, params, body) => {
   const b = body as Record<string, unknown>;
   const patch: Record<string, unknown> = {};
   for (const k of ['name', 'color', 'avatar']) if (k in b) patch[k] = b[k];
+  if ('email' in b) {
+    if (b.email !== null && typeof b.email !== 'string') {
+      return json(res, 400, { error: 'email must be a string or null' });
+    }
+    const email = typeof b.email === 'string' ? b.email.trim() : '';
+    if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+      return json(res, 400, { error: 'Enter a valid email address' });
+    }
+    patch.email = email || null;
+  }
   const updated = store.updateProfile(params.id ?? '', patch);
   updated ? json(res, 200, updated) : json(res, 404, { error: 'not found' });
 });

@@ -7,6 +7,7 @@ export interface Profile {
   name: string;
   color: string;
   avatar: string | null;
+  email: string | null;
   createdAt: string;
 }
 
@@ -261,6 +262,7 @@ export interface Settings {
 
 export interface Celebration {
   key: number;
+  playerId: string;
   playerName: string;
   playerColor: string;
   id: string;
@@ -419,7 +421,7 @@ export const api = {
       body: JSON.stringify({ name, color }),
     });
   },
-  updateProfile(id: string, patch: { name?: string; color?: string }): Promise<Profile> {
+  updateProfile(id: string, patch: { name?: string; color?: string; email?: string | null }): Promise<Profile> {
     return request<Profile>(`/api/profiles/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
@@ -641,6 +643,7 @@ export function connect(): void {
         for (const a of msg.achievements ?? []) {
           if (state.celebrationsEnabled) {
             enqueueCelebration({
+              playerId: msg.playerId,
               playerName: msg.playerName,
               playerColor: color,
               id: a.id,

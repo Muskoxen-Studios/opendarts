@@ -64,6 +64,17 @@ beforeEach(() => {
 });
 
 describe('profiles', () => {
+  it('persists, preserves and clears an optional email address', () => {
+    const player = store.createProfile('Alice');
+    expect(player.email).toBeNull();
+    store.updateProfile(player.id, { email: 'alice@example.com' });
+    expect(new Store(db).getProfile(player.id)?.email).toBe('alice@example.com');
+    store.updateProfile(player.id, { name: 'Alicia' });
+    expect(store.listProfiles()[0]?.email).toBe('alice@example.com');
+    store.updateProfile(player.id, { email: null });
+    expect(store.getProfile(player.id)?.email).toBeNull();
+  });
+
   it('creates and lists local profiles with no login of any kind', () => {
     store.createProfile('Alice');
     store.createProfile('Bob', '#ff0000');

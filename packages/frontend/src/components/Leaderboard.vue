@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { computed, onMounted, ref } from 'vue';
 import Heatmap from './Heatmap.vue';
 import {
@@ -225,7 +226,7 @@ const ARCHIVE_COLUMNS: Array<{ label: string; format: (r: ArchivedRow) => string
             <td class="rank">{{ row.rank }}</td>
             <td class="who">
               <span class="dot" :style="{ background: row.color }" />
-              {{ row.name }}
+              <PlayerAvatar :player-id="row.playerId" />{{ row.name }}
             </td>
             <td v-for="c in COLUMNS" :key="c.key" :class="{ sorted: sortKey === c.key }">
               {{ c.format(row) }}
@@ -317,7 +318,7 @@ const ARCHIVE_COLUMNS: Array<{ label: string; format: (r: ArchivedRow) => string
             <td class="rank">{{ r.rank }}</td>
             <td class="who">
               <span class="dot" :style="{ background: r.color }" />
-              {{ r.name }}
+              <PlayerAvatar :player-id="r.playerId" />{{ r.name }}
             </td>
             <td v-for="c in ARCHIVE_COLUMNS" :key="c.label">{{ c.format(r) }}</td>
           </tr>
