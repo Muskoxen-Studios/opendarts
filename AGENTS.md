@@ -33,7 +33,9 @@ must carry the `.ts` extension (`import { x } from './y.ts'`).
 
 Other entry points: `npm run achievements:backfill` after adding an achievement,
 `npm run package` to stage and build a desktop installer into `build/release`.
-`npm run release -- patch|minor|major|x.y.z` bumps every workspace to one version, commits, tags
+Releases normally use Release Please: squash-merge Conventional Commit PR titles (`fix:`,
+`feat:`, `feat!:`), then merge its generated release PR. See README's release section.
+`npm run release -- patch|minor|major|x.y.z` is the legacy manual path; it bumps every workspace to one version, commits, tags
 `vX.Y.Z` and pushes it -- the tag is what triggers the installer build in `release.yml`. Add
 `--dry-run` to see the plan, `--no-push` to stop after the local tag.
 
