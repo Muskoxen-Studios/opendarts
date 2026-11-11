@@ -395,13 +395,21 @@ export const golfEngine: GameEngine<GolfConfig, GolfState> = {
       };
     });
 
-    // The hole number is the target for every dart left in the turn, so it
-    // fills the same slots a checkout route would -- and lights up the board.
-    const activeHole = active ? (state.hole[active.id] ?? 1) : 1;
-    const hints =
-      active && base.status === 'playing' && activeHole <= cfg.holes
-        ? Array.from({ length: Math.max(0, dartsLeft) }, () => String(activeHole))
-        : [];
+    // Project the targets assuming misses: a hole advances after par + 1
+    // strokes even without a hit. Actual hits recalculate the remaining slots.
+    const hints: string[] = [];
+    if (active && base.status === 'playing' && !base.turnEnded) {
+      let hole = state.hole[active.id] ?? 1;
+      let strokes = state.strokes[active.id] ?? 0;
+      while (hints.length < dartsLeft && hole <= cfg.holes) {
+        hints.push(String(hole));
+        strokes++;
+        if (strokes >= personalPar(cfg, active.id, hole) + 1) {
+          hole++;
+          strokes = 0;
+        }
+      }
+    }
 
     return {
       matchId,

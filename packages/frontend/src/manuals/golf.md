@@ -19,6 +19,11 @@ You also move on without holing it once you are **over your net par without a
 hit**: there is nothing left to score there, so the hole is abandoned for
 nothing. A half-played hole carries over to your next visit.
 
+The empty dart slots show your upcoming targets, allowing for how many attempts
+remain before you must move on. With one attempt left on hole 5, a fresh turn
+shows **5, 6, 6**. Hitting 5 and then 6 updates the last suggestion to **7**.
+Misses use up the remaining attempts, and the hints update after every throw.
+
 **Net par = 4 strokes, plus your proportional share of your handicap.**
 
 ## Points

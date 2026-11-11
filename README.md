@@ -394,6 +394,11 @@ in any ring, so a first-dart hit on a par-4 hole is an albatross. A hole is
 abandoned one stroke over par, for nothing. Play rotates in ordinary three-dart
 turns and a half-played hole carries over to the player's next visit.
 
+Empty dart slots preview the target for each remaining throw, accounting for
+the strokes left before a hole is abandoned. With one attempt left on hole 5,
+a fresh turn shows `5, 6, 6`. Hitting a hole early updates the remaining hints:
+hit 5 then 6 and the final slot suggests 7.
+
 | Result | Points |
 |---|---|
 | 3 under par (albatross) | 5 |

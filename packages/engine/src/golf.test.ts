@@ -9,7 +9,7 @@ import {
   strokeAllowance,
   type GolfHoleResult,
 } from './golf.ts';
-import { play, players, resetDartIds } from './testkit.ts';
+import { play, players, resetDartIds, throwCmd } from './testkit.ts';
 
 const ROSTER = players('Alice', 'Bob');
 const [ALICE, BOB] = ['alice', 'bob'];
@@ -202,11 +202,72 @@ describe('a full round', () => {
 });
 
 describe('the view', () => {
-  it('offers the hole number as the aim for every dart left in the turn', () => {
+  it('repeats the target while enough strokes remain on the hole', () => {
     const m = start(config({ holes: 3, handicaps: { alice: 0, bob: 0 } }));
     expect(m.view.turn.hints).toEqual(['1', '1', '1']);
     play(m, 'S20');
     expect(m.view.turn.hints).toEqual(['1', '1']);
+  });
+
+  it('previews a forced hole change and updates after early hits (issue #9)', () => {
+    const m = start(config({ handicaps: { alice: 0 } }), players('Alice'));
+    play(m, 'S1', 'S2', 'S3', 'S4');
+    play(m, 'MISS', 'MISS', 'MISS', 'MISS');
+    // Start a fresh visit with just one stroke left on hole 5.
+    m.apply({ type: 'NEXT_PLAYER' });
+    expect(m.view.turn.hints).toEqual(['5', '6', '6']);
+
+    play(m, 'S5');
+    expect(m.view.turn.throws.map((t) => t.label)).toEqual(['S5']);
+    expect(m.view.turn.hints).toEqual(['6', '6']);
+    play(m, 'S6');
+    expect(m.view.turn.throws.map((t) => t.label)).toEqual(['S5', 'S6']);
+    expect(m.view.turn.hints).toEqual(['7']);
+
+    m.apply({ type: 'UNDO' });
+    expect(m.view.turn.hints).toEqual(['6', '6']);
+    m.apply({ type: 'UNDO' });
+    expect(m.view.turn.hints).toEqual(['5', '6', '6']);
+  });
+
+  it('advances the preview after the last allowed miss', () => {
+    const m = start(config({ handicaps: { alice: 0 } }), players('Alice'));
+    play(m, 'MISS', 'MISS', 'MISS');
+    expect(m.view.turn.hints).toEqual(['1', '1', '2']);
+    play(m, 'MISS');
+    expect(m.view.turn.hints).toEqual(['1', '2']);
+    play(m, 'MISS');
+    expect(m.view.turn.hints).toEqual(['2']);
+    expect(card(m, ALICE)[0]).toMatchObject({ holed: false, strokes: 5 });
+  });
+
+  it('uses the active player handicap and recalculates par for each projected hole', () => {
+    const m = start(config({ par: 1, handicaps: { alice: 1, bob: 36 } }));
+    play(m, 'MISS', 'MISS', 'MISS');
+    expect(m.view.activePlayerId).toBe(BOB);
+    expect(m.view.turn.hints).toEqual(['1', '1', '1']);
+    m.apply({ type: 'NEXT_PLAYER' });
+    // Alice has no handicap stroke on hole 2, so it allows two attempts.
+    expect(m.view.turn.hints).toEqual(['2', '2', '3']);
+  });
+
+  it('stops the preview at the last hole and hides hints during takeout', () => {
+    const m = start(config({ holes: 1, handicaps: { alice: 0 } }));
+    play(m, 'MISS', 'MISS', 'MISS');
+    m.apply({ type: 'NEXT_PLAYER' });
+    expect(m.view.turn.hints).toEqual(['1', '1']);
+    m.apply(throwCmd('S1'));
+    expect(m.view.awaitingTakeout).toBe(true);
+    expect(m.view.turn.hints).toEqual([]);
+  });
+
+  it('only offers hints while the match is playing', () => {
+    const m = new Match('g1', ROSTER, config());
+    expect(m.view.turn.hints).toEqual([]);
+    m.apply({ type: 'START' });
+    expect(m.view.turn.hints).toEqual(['1', '1', '1']);
+    m.apply({ type: 'END_MATCH' });
+    expect(m.view.turn.hints).toEqual([]);
   });
 
   it('reports the turn total in points, not in board value', () => {
