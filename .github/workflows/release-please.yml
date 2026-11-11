@@ -27,6 +27,8 @@ jobs:
           target-branch: master
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          # The tag step below must finish before another PR is considered.
+          skip-github-pull-request: true
 
       # GitHub defers a draft release's tag until publication. Create it now
       # so the installers can check out the exact release commit.
@@ -41,6 +43,18 @@ jobs:
           gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null 2>&1 || \
             gh api "repos/$GH_REPO/git/refs" \
               -f "ref=refs/tags/$TAG" -f "sha=$RELEASE_SHA"
+
+      - name: Update the release PR
+        # A release merge has no unreleased changes yet. In particular, don't
+        # generate a next-version PR while its draft release is being tagged.
+        if: steps.release.outputs.release_created != 'true'
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target-branch: master
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
 
   installers:
     needs: release
