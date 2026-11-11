@@ -1,9 +1,16 @@
 {
   "name": "@darts/bridge",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@darts/schema": "*", "ws": "^8.22.1" },
-  "devDependencies": { "@darts/fakeboard": "*" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@darts/schema": "*",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@darts/fakeboard": "*"
+  }
 }
