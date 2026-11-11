@@ -866,6 +866,18 @@ merging PRs: `fix: ...` for a patch, `feat: ...` for a minor version, and
 `feat!: ...` for a major version. Other titles such as `docs: ...` and `ci: ...`
 do not trigger a release by themselves. The initial version is 0.4.2.
 
+The **Conventional PR title** check validates PR titles, including after edits.
+Scopes are optional: both `fix: correct scoring` and `fix(engine): correct scoring`
+are valid. Use squash merging and keep the PR title as the merge commit title.
+To block merges with invalid titles, add **Conventional PR title** as a required
+status check in the `master` branch rules. The title workflow reads PR metadata
+with read-only permissions and never checks out contributor code.
+
+Dependabot checks npm workspaces and GitHub Actions weekly. Minor and patch npm
+updates are grouped; major updates stay separate. npm PRs use `fix(deps):` (or
+`fix(deps-dev):` for development dependencies) so they trigger patch releases;
+GitHub Actions updates use `chore(deps):` and do not trigger releases by themselves.
+
 Review the generated changelog and version bump, then merge the release PR in
 GitHub. The workflow creates a draft release, builds and verifies the Windows
 and Linux installers, and publishes only after both succeed. The app then offers
@@ -878,6 +890,9 @@ permissions**, enable **Allow GitHub Actions to create and approve pull requests
 No personal access token is needed. Release PRs created by `GITHUB_TOKEN` do not
 trigger the ordinary PR checks; the installer workflow runs the full
 `npm run check` gate on both platforms before publishing.
+If the title check is required, a maintainer must edit a generated release PR's
+title to trigger it (for example, add a description after the version), since
+bot events from `GITHUB_TOKEN` do not start the title workflow either.
 
 If a build fails, the release stays a draft. Retry the failed jobs, or use
 **Actions → release → Run workflow**, enter the existing tag (for example
