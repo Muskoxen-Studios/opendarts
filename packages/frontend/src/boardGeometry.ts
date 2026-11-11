@@ -74,7 +74,8 @@ export function boardCells(): BoardCell[] {
     const centre = -90 + i * SEGMENT_SWEEP;
     const a0 = centre - half;
     const a1 = centre + half;
-    const dark = i % 2 === 1;
+    // 20 is black with red doubles/triples; adjacent 1 and 5 are light/green.
+    const dark = i % 2 === 0;
 
     const rings: Array<{ ring: Ring; r0: number; r1: number }> = [
       { ring: 'MISS', r0: r(BOARD_MM.DOUBLE_OUTER), r1: r(BOARD_MM.BOARD_OUTER) },
