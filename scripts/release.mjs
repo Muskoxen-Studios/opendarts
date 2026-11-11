@@ -132,6 +132,13 @@ for (const path of manifestPaths()) {
   log(`${relative(REPO, path)} -> ${version}`);
 }
 
+// Keep the automation's version record aligned with a manual release too.
+const releaseManifestPath = join(REPO, '.release-please-manifest.json');
+const releaseManifest = JSON.parse(readFileSync(releaseManifestPath, 'utf8'));
+releaseManifest['.'] = version;
+if (!dryRun) writeFileSync(releaseManifestPath, `${JSON.stringify(releaseManifest, null, 2)}\n`);
+log(`.release-please-manifest.json -> ${version}`);
+
 // The lockfile carries each workspace's version too; refresh it so the release
 // commit does not leave `npm ci` reinstalling a stale tree.
 run('npm', ['install', '--package-lock-only', '--ignore-scripts']);

@@ -853,9 +853,34 @@ matters more than it sounds, because Node resolves bare imports by walking up
 parent directories, so a packed app sitting inside the workspace will find
 `@darts/*` in the repo's own `node_modules` and pass a test it should fail.
 
-Tagging `v*` builds both platforms on GitHub Actions and uploads them to a
-**draft** release, so the notes can be written before anyone's app offers them
-the update.
+### Releases from GitHub
+
+[Release Please](https://github.com/googleapis/release-please) maintains a release
+PR after changes land on `master`. Use Conventional Commit titles when squash
+merging PRs: `fix: ...` for a patch, `feat: ...` for a minor version, and
+`feat!: ...` for a major version. Other titles such as `docs: ...` and `ci: ...`
+do not trigger a release by themselves. The initial version is 0.4.2.
+
+Review the generated changelog and version bump, then merge the release PR in
+GitHub. The workflow creates a draft release, builds and verifies the Windows
+and Linux installers, and publishes only after both succeed. The app then offers
+the update. Every workspace manifest and its lockfile version are bumped together.
+The workflow calls the installer build directly because tags created with
+`GITHUB_TOKEN` do not trigger another workflow.
+
+One-time repository setting: under **Settings → Actions → General → Workflow
+permissions**, enable **Allow GitHub Actions to create and approve pull requests**.
+No personal access token is needed. Release PRs created by `GITHUB_TOKEN` do not
+trigger the ordinary PR checks; the installer workflow runs the full
+`npm run check` gate on both platforms before publishing.
+
+If a build fails, the release stays a draft. Retry the failed jobs, or use
+**Actions → release → Run workflow**, enter the existing tag (for example
+`v0.4.3`), and enable **Publish after both installers pass verification**.
+Manual runs check out that tag regardless of the branch selected in the UI.
+Tag pushes and manual runs without that option still upload to a draft for
+manual publication. `npm run release` remains available as a legacy manual path;
+use the release PR workflow for normal releases.
 
 ## Checks
 
