@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { gravatarUrl } from './gravatar.ts';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   analyzeMatch,
@@ -40,6 +41,7 @@ export interface Profile {
   name: string;
   color: string;
   avatar: string | null;
+  email: string | null;
   createdAt: string;
 }
 
@@ -78,7 +80,7 @@ export class Store {
   listProfiles(): Profile[] {
     const rows = this.db
       .prepare(
-        `SELECT id, name, color, avatar, created_at FROM profiles
+        `SELECT id, name, color, avatar, email, created_at FROM profiles
          WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE`,
       )
       .all() as Array<Record<string, unknown>>;
@@ -87,7 +89,7 @@ export class Store {
 
   getProfile(id: string): Profile | null {
     const row = this.db
-      .prepare(`SELECT id, name, color, avatar, created_at FROM profiles WHERE id = ?`)
+      .prepare(`SELECT id, name, color, avatar, email, created_at FROM profiles WHERE id = ?`)
       .get(id) as Record<string, unknown> | undefined;
     return row ? toProfile(row) : null;
   }
@@ -98,6 +100,7 @@ export class Store {
       name,
       color,
       avatar,
+      email: null,
       createdAt: new Date().toISOString(),
     };
     this.db
@@ -108,14 +111,14 @@ export class Store {
     return profile;
   }
 
-  updateProfile(id: string, patch: Partial<Pick<Profile, 'name' | 'color' | 'avatar'>>): Profile | null {
+  updateProfile(id: string, patch: Partial<Pick<Profile, 'name' | 'color' | 'avatar' | 'email'>>): Profile | null {
     const existing = this.getProfile(id);
     if (!existing) return null;
     const next = { ...existing, ...patch };
     this.db
-      .prepare(`UPDATE profiles SET name = ?, color = ?, avatar = ? WHERE id = ?`)
-      .run(next.name, next.color, next.avatar, id);
-    return next;
+      .prepare(`UPDATE profiles SET name = ?, color = ?, avatar = CASE WHEN ? THEN ? ELSE avatar END, email = ? WHERE id = ?`)
+      .run(next.name, next.color, Number('avatar' in patch), patch.avatar ?? null, next.email, id);
+    return this.getProfile(id);
   }
 
   /** Soft delete, so the profile's matches and statistics stay intact. */
@@ -678,7 +681,8 @@ function toProfile(row: Record<string, unknown>): Profile {
     id: String(row.id),
     name: String(row.name),
     color: String(row.color),
-    avatar: row.avatar ? String(row.avatar) : null,
+    avatar: gravatarUrl(row.email ? String(row.email) : null) ?? (row.avatar ? String(row.avatar) : null),
+    email: row.email ? String(row.email) : null,
     createdAt: String(row.created_at),
   };
 }

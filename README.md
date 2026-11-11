@@ -683,8 +683,13 @@ Past leaderboards stay listed under the table and reopen with a click.
 
 ## Players, statistics and achievements
 
-Profiles are local records — name and colour, no accounts and no logins. Both are
-editable at any time from the Players tab, and a rename flows through to historical
+Profiles are local records — name, colour and an optional email address, no accounts
+and no logins. Edit these details from the Players tab; clear the email field to
+remove it. When an email has a Gravatar, its avatar appears beside the player name
+throughout the app. Gravatar requests use a hash of the trimmed, lowercase email;
+images load through the server and missing images or offline lookups leave names
+visible without an avatar. No Gravatar account is required to play.
+A rename flows through to historical
 matches, because matches reference the profile rather than copying its name.
 Deleting one soft-deletes, so its historical matches survive.
 

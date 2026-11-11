@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { computed, nextTick, watch } from 'vue';
 import {
   gotcha,
@@ -77,7 +78,7 @@ watch(
       </template>
       <span v-else class="mini-score">{{ p.score }}</span>
       <div>
-        <span class="mini-name">{{ p.name }}</span>
+        <span class="mini-name"><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</span>
         <span v-if="killer(p).isKiller" class="mini-knife" title="Killer">&#x1F52A;</span>
       </div>
       <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>

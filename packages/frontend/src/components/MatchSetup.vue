@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { computed, ref, watch } from 'vue';
 import { minefieldHitPoints } from '@darts/schema';
 import { api, store, type GolfHandicap, type ModeHandicap } from '../store.ts';
@@ -487,7 +488,7 @@ async function start(): Promise<void> {
             class="chip"
             :style="{ '--accent': p.color }"
             @click="toggle(p.id)"
-          >{{ p.name }}</button>
+          ><PlayerAvatar :player-id="p.id" />{{ p.name }}</button>
           <p v-if="filteredProfiles.length === 0" class="hint">No matching players.</p>
         </div>
         <div v-if="selectedProfiles.length" class="chips selected-chips">
@@ -497,7 +498,7 @@ async function start(): Promise<void> {
             class="chip on"
             :style="{ '--accent': p.color }"
             @click="toggle(p.id)"
-          >{{ p.name }}</button>
+          ><PlayerAvatar :player-id="p.id" />{{ p.name }}</button>
         </div>
       </template>
     </div>
@@ -560,7 +561,7 @@ async function start(): Promise<void> {
           :key="id"
           class="handicap-row"
         >
-          <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+          <span class="who"><PlayerAvatar :player-id="id" />{{ store.profiles.find((p) => p.id === id)?.name }}</span>
           <select v-model.number="handicapFor(id).startScore">
             <option :value="undefined">default ({{ startScore }})</option>
             <option :value="170">170</option>
@@ -625,7 +626,7 @@ async function start(): Promise<void> {
           playing every hole to par is worth.
         </p>
         <div v-for="id in selected" :key="id" class="handicap-row golf-row">
-          <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+          <span class="who"><PlayerAvatar :player-id="id" />{{ store.profiles.find((p) => p.id === id)?.name }}</span>
           <input
             v-model.number="golfHandicaps[id]"
             type="number"
@@ -699,7 +700,7 @@ async function start(): Promise<void> {
         </label>
         <template v-if="useKillerHandicaps">
           <div v-for="id in selected" :key="id" class="handicap-row golf-row">
-            <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+            <span class="who"><PlayerAvatar :player-id="id" />{{ store.profiles.find((p) => p.id === id)?.name }}</span>
             <input
               v-model.number="killerHandicaps[id]"
               type="number"
@@ -824,7 +825,7 @@ async function start(): Promise<void> {
         </label>
         <template v-if="useGotchaHandicaps">
           <div v-for="id in selected" :key="id" class="handicap-row golf-row">
-            <span class="who">{{ store.profiles.find((p) => p.id === id)?.name }}</span>
+            <span class="who"><PlayerAvatar :player-id="id" />{{ store.profiles.find((p) => p.id === id)?.name }}</span>
             <input
               v-model.number="gotchaHandicaps[id]"
               type="number"

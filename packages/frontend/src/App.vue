@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './components/PlayerAvatar.vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseSegmentLabel, type Segment } from '@darts/schema';
 import { minefield } from './gameDetail.ts';
@@ -353,7 +354,7 @@ async function rematch(): Promise<void> {
                       <ul>
                         <li v-for="p in view.players" :key="p.playerId">
                           <span class="dot" :style="{ background: p.color }" />
-                          <span class="who">{{ p.name }}</span>
+                          <span class="who"><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</span>
                           <button
                             class="del"
                             :disabled="view.players.length <= 1"
@@ -369,7 +370,7 @@ async function rematch(): Promise<void> {
                           class="chip"
                           :style="{ '--accent': p.color }"
                           @click="addToMatch(p.id)"
-                        >+ {{ p.name }}</button>
+                        ><PlayerAvatar :player-id="p.id" />+ {{ p.name }}</button>
                       </div>
                       <p v-else class="hint">Everyone is already in this match.</p>
                     </section>

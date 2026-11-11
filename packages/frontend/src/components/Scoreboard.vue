@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { computed } from 'vue';
 import {
   gotcha,
@@ -134,7 +135,7 @@ function scoreText(player: View['players'][number]): string {
             <th class="who" scope="row">
               <div class="cricket-player">
                 <div class="cricket-identity">
-                  <span class="cricket-player-name">{{ p.name }}</span>
+                  <span class="cricket-player-name"><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</span>
                   <span class="cricket-turn-label" :class="{ visible: p.isActive }" :aria-hidden="!p.isActive">At the oche</span>
                   <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>
                 </div>
@@ -164,7 +165,7 @@ function scoreText(player: View['players'][number]): string {
         :class="{ active: p!.isActive, winner: view.winnerId === p!.playerId, out: isOut(p!, view.gameType) }"
         :style="{ '--accent': p!.color }">
         <div class="row">
-          <span class="name">{{ p!.name }}</span>
+          <span class="name"><PlayerAvatar :player-id="p!.playerId" />{{ p!.name }}</span>
           <span v-if="placeOf(p!)" class="place" :class="`p${placeOf(p!)}`">
             {{ ordinal(placeOf(p!)!) }}
           </span>

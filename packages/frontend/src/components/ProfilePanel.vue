@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { ref } from 'vue';
 import Heatmap from './Heatmap.vue';
 import { api, store, type AchievementView, type Heatmap as HeatmapData, type Profile } from '../store.ts';
@@ -78,11 +79,13 @@ async function removeAchievement(profileId: string, achievementId: string): Prom
 const editing = ref<string | null>(null);
 const draftName = ref('');
 const draftColor = ref('');
+const draftEmail = ref('');
 
 function startEdit(p: Profile): void {
   editing.value = p.id;
   draftName.value = p.name;
   draftColor.value = p.color;
+  draftEmail.value = p.email ?? '';
 }
 
 function cancelEdit(): void {
@@ -92,7 +95,7 @@ function cancelEdit(): void {
 async function saveEdit(id: string): Promise<void> {
   const name = draftName.value.trim();
   if (!name) return;
-  await api.updateProfile(id, { name, color: draftColor.value });
+  await api.updateProfile(id, { name, color: draftColor.value, email: draftEmail.value.trim() || null });
   editing.value = null;
   await api.loadProfiles();
 }
@@ -174,7 +177,7 @@ const HEADLINE: Array<[string, string]> = [
 
     <ul class="list">
       <li v-for="p in store.profiles" :key="p.id">
-        <div v-if="editing === p.id" class="head editing">
+        <form v-if="editing === p.id" class="head editing" @submit.prevent="saveEdit(p.id)">
           <input
             v-model="draftName"
             class="edit-name"
@@ -182,9 +185,13 @@ const HEADLINE: Array<[string, string]> = [
             autocomplete="off"
             data-1p-ignore
             data-lpignore="true"
-            @keyup.enter="saveEdit(p.id)"
             @keyup.escape="cancelEdit"
           />
+          <label>
+            Email (optional)
+            <input v-model="draftEmail" type="email" maxlength="254" autocomplete="off"
+              placeholder="player@example.com" @keyup.escape="cancelEdit" />
+          </label>
           <div class="swatches">
             <button
               v-for="c in PALETTE"
@@ -197,14 +204,14 @@ const HEADLINE: Array<[string, string]> = [
               @click="draftColor = c"
             />
           </div>
-          <button class="primary small" @click="saveEdit(p.id)">Save</button>
-          <button class="ghost" @click="cancelEdit">Cancel</button>
-        </div>
+          <button class="primary small" type="submit">Save</button>
+          <button class="ghost" type="button" @click="cancelEdit">Cancel</button>
+        </form>
 
         <div v-else class="head">
           <span class="dot" :style="{ background: p.color }" />
-          <button class="name" @click="inspect(p.id)">{{ p.name }}</button>
-          <button class="edit" title="Rename or recolour" @click="startEdit(p)">&#9998;</button>
+          <button class="name" @click="inspect(p.id)"><PlayerAvatar :player-id="p.id" />{{ p.name }}</button>
+          <button class="edit" title="Edit player" @click="startEdit(p)">&#9998;</button>
           <button class="del" title="Remove" @click="remove(p.id)">&times;</button>
         </div>
 

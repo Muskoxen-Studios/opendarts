@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import PlayerAvatar from './PlayerAvatar.vue';
 import { computed } from 'vue';
 
 export interface Celebration {
   key: number;
+  playerId: string;
   playerName: string;
   playerColor: string;
   id: string;
@@ -71,7 +73,7 @@ const confetti = computed(() => {
         <h2>{{ celebration.name }}</h2>
         <p class="desc">{{ celebration.description }}</p>
         <p class="who" :style="{ '--accent': celebration.playerColor }">
-          {{ celebration.playerName }}
+          <PlayerAvatar :player-id="celebration.playerId" />{{ celebration.playerName }}
         </p>
         <button class="dismiss" @click="emit('dismiss')">
           {{ queued > 0 ? `Next (${queued} more)` : 'Nice' }}
