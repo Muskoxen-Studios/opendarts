@@ -17,6 +17,6 @@
     "@types/three": "^0.180.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "vite": "^6.0.7",
-    "vue-tsc": "^2.2.0"
+    "vue-tsc": "^3.3.14"
   }
 }
