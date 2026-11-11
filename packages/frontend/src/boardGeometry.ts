@@ -120,6 +120,23 @@ export function svgToMm(x: number, y: number): Coords {
   return { x: (x - C) / (BOARD_RADIUS / BOARD_MM.BOARD_OUTER), y: (C - y) / (BOARD_RADIUS / BOARD_MM.BOARD_OUTER) };
 }
 
+/** Convert a viewport click using the SVG's actual screen transform, including
+ * viewBox letterboxing and CSS transforms, rather than its element bounds. */
+export function clientToBoardCoords(
+  x: number,
+  y: number,
+  screen: Pick<DOMMatrixReadOnly, 'a' | 'b' | 'c' | 'd' | 'e' | 'f'>,
+): Coords | null {
+  const determinant = screen.a * screen.d - screen.b * screen.c;
+  if (!Number.isFinite(determinant) || determinant === 0) return null;
+  const dx = x - screen.e;
+  const dy = y - screen.f;
+  return svgToMm(
+    (screen.d * dx - screen.c * dy) / determinant,
+    (screen.a * dy - screen.b * dx) / determinant,
+  );
+}
+
 /** Where a segment's centre sits, used to anchor a marker on a labelled dart. */
 export function segmentCentre(segment: Segment): { x: number; y: number } {
   if (segment.ring === 'BULL') return { x: C, y: C };

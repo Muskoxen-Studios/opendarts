@@ -6,12 +6,12 @@ import {
   BULL_INNER_R,
   BULL_OUTER_R,
   C,
+  clientToBoardCoords,
   mmToSvg,
   NUMBERS,
   r,
   segmentCentre,
   SIZE,
-  svgToMm,
 } from '../boardGeometry.ts';
 import { BOARD_MM } from '@darts/schema';
 
@@ -119,17 +119,14 @@ function rankOf(segment: Segment): number {
  * real coordinates. Board-sourced darts still arrive without them, which is why
  * nothing downstream may depend on this.
  */
-function coordsFrom(ev: MouseEvent): Coords {
-  const el = svg.value;
-  if (!el) return { x: 0, y: 0 };
-  const rect = el.getBoundingClientRect();
-  const x = ((ev.clientX - rect.left) / rect.width) * SIZE;
-  const y = ((ev.clientY - rect.top) / rect.height) * SIZE;
-  return svgToMm(x, y);
+function coordsFrom(ev: MouseEvent): Coords | null {
+  const screen = svg.value?.getScreenCTM();
+  return screen ? clientToBoardCoords(ev.clientX, ev.clientY, screen) : null;
 }
 
 function fire(segment: Segment, ev: MouseEvent): void {
-  emit('throw', { segment, coords: coordsFrom(ev) });
+  const coords = coordsFrom(ev);
+  if (coords) emit('throw', { segment, coords });
 }
 
 const dartMarks = computed(() =>
