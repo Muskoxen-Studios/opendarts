@@ -804,7 +804,8 @@ Reachable from the Settings tab:
   plus X01 checkout requirements when a player comes to the oche with a legal
   checkout route. Gotcha knockbacks say “Gotcha!” instead of a sound effect or
   confirmation knock. Separate sound effects cover busts (shattering glass), wins
-  and Minefield explosions, with a shared volume slider and test button.
+  and Minefield explosions, with a shared volume slider and test button. Mine
+  and blast-zone hits play a short booming explosion; a chain plays one burst.
   With sound effects enabled, each registered throw that is neither a miss nor
   a bust also gets a short, dull knock like a dart hitting the board. This plays immediately, even
   during commentary, so missing feedback can flag a lost board connection.

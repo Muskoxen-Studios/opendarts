@@ -17,8 +17,8 @@ export const audioSettings = readonly(settings);
 export const voiceSupported = typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
 export const effectsSupported = typeof AudioContext !== 'undefined';
 
-type Cue = 'bust' | 'win' | 'hit';
-export interface AudioPlan { words: string[]; cue?: Cue; throwConfirmed?: boolean }
+type Cue = 'bust' | 'win' | 'explosion';
+export interface AudioPlan { words: string[]; cue?: Cue; throwConfirmed?: boolean; explosion?: boolean }
 
 /** Domain events precede their view. Use both to avoid guessing rules or replaying history. */
 export function planAudio(old: MatchView | null, next: MatchView | null, events: readonly DomainEvent[]): AudioPlan {
@@ -50,7 +50,7 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
       if (e.type === 'turn.completed' && !e.busted) words.push(e.total === 0 ? 'No score.' : `${e.total}.`);
     }
   }
-  if (!cue && events.some(e => e.type === 'minefield.exploded')) cue = 'hit';
+  const explosion = events.some(e => e.type === 'minefield.exploded');
   // Only announce a requirement on arrival at the oche, with a server-provided
   // legal route. A bogey number or an undo must never trigger a checkout call.
   const starts = events.some(e => e.type === 'match.started');
@@ -79,7 +79,7 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
   const throwConfirmed = !gotcha && last && last.label !== 'MISS' &&
     events.some(e => e.type === 'throw.recorded' && e.playerId === last.playerId) &&
     !events.some(e => e.type === 'player.busted' || (e.type === 'turn.completed' && e.busted));
-  return { words, cue, ...(throwConfirmed ? { throwConfirmed: true } : {}) };
+  return { words, cue, ...(throwConfirmed ? { throwConfirmed: true } : {}), ...(explosion ? { explosion: true } : {}) };
 }
 
 let context: AudioContext | undefined;
@@ -91,6 +91,7 @@ let finishSpeech: (() => void) | undefined;
 const waits = new Map<ReturnType<typeof setTimeout>, () => void>();
 const tones = new Set<OscillatorNode | AudioBufferSourceNode>();
 let glassBuffer: AudioBuffer | undefined;
+let explosionBuffer: AudioBuffer | undefined;
 export function stopAudio(): void {
   generation++;
   queue.length = 0;
@@ -164,12 +165,17 @@ async function playCue(cue: Cue | undefined): Promise<void> {
   if (!settings.effects || !effectsSupported || !cue) return;
   try {
     if (!context || context.state !== 'running') return;
+    if (cue === 'explosion') {
+      playExplosion();
+      await wait(1100);
+      return;
+    }
     if (cue === 'bust') {
       playGlassShatter();
       await wait(900);
       return;
     }
-    const notes = cue === 'win' ? [523, 659, 784] : [330, 165];
+    const notes = [523, 659, 784];
     notes.forEach((frequency, i) => {
       tone(frequency, context!.currentTime + i * 0.12, 0.2, settings.volume * 0.18);
     });
@@ -208,9 +214,34 @@ function playGlassShatter(): void {
     for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
     for (let i = 0; i < samples.length; i++) samples[i] *= 0.8 / peak;
   }
+  playBuffer(glassBuffer);
+}
+
+/** A sharp initial blast followed by a low boom and fading noise. */
+function playExplosion(): void {
+  if (!explosionBuffer) {
+    const rate = context!.sampleRate;
+    explosionBuffer = context!.createBuffer(1, rate, rate);
+    const samples = explosionBuffer.getChannelData(0);
+    let seed = 91;
+    let rumble = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const t = i / rate;
+      seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+      const noise = (seed >>> 0) / 2147483648 - 1;
+      rumble += 0.15 * (noise - rumble);
+      const envelope = (1 - Math.exp(-t * 900)) * Math.exp(-t * 7);
+      const boom = Math.sin(2 * Math.PI * (45 * t + 3 * (1 - Math.exp(-t * 18))));
+      samples[i] = envelope * (0.5 * boom + 0.3 * rumble + 0.2 * noise * Math.exp(-t * 55));
+    }
+  }
+  playBuffer(explosionBuffer);
+}
+
+function playBuffer(buffer: AudioBuffer): void {
   const source = context!.createBufferSource();
   const gain = context!.createGain();
-  source.buffer = glassBuffer;
+  source.buffer = buffer;
   gain.gain.setValueAtTime(settings.volume * 0.6, context!.currentTime);
   source.connect(gain).connect(context!.destination);
   tones.add(source);
@@ -240,6 +271,8 @@ async function drain(current: number): Promise<void> {
   await primeOutput(current);
   while (current === generation && queue.length) {
     const plan = queue.shift()!;
+    if (plan.explosion) await playCue('explosion');
+    if (current !== generation) return;
     await playCue(plan.cue);
     if (current !== generation) return;
     await speak(plan.words);
@@ -250,8 +283,8 @@ async function drain(current: number): Promise<void> {
 export function playAudio(plan: AudioPlan): void {
   if (!unlocked || (typeof document !== 'undefined' && document.hidden) || settings.volume === 0) return;
   if (plan.throwConfirmed && settings.effects && effectsSupported) void confirmThrow(generation);
-  if (!(settings.voice && voiceSupported && plan.words.length) && !(settings.effects && effectsSupported && plan.cue)) return;
-  queue.push({ words: [...plan.words], cue: plan.cue });
+  if (!(settings.voice && voiceSupported && plan.words.length) && !(settings.effects && effectsSupported && (plan.cue || plan.explosion))) return;
+  queue.push({ words: [...plan.words], cue: plan.cue, explosion: plan.explosion });
   if (!active) {
     active = true;
     void drain(generation);

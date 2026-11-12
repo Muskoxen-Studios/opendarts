@@ -90,6 +90,16 @@ describe('announcer decisions', () => {
     expect(planAudio(view(), next, [dart, { type: 'turn.completed', playerId: 'alice', total: 0, darts: 3, busted: false }]).words).toEqual(['Miss.', 'No score.']);
     expect(planAudio(view(), view({ recent: [{ id: 'single', playerId: 'alice', label: 'S20', value: 20 }] }), [dart]).words).toEqual([]);
   });
+  it('plays one explosion for mine or blast-zone hits and chains, including alongside a bust', () => {
+    for (const hazard of ['mine', 'blast'] as const) {
+      const hit = { type: 'minefield.exploded', playerId: 'alice', number: 20, hazard, value: -20, resetsScore: false, segment: { number: 20, ring: 'SINGLE_OUTER' }, coords: null } as const;
+      const next = view({ gameType: 'minefield' });
+      expect(planAudio(view(), next, [hit, { ...hit, number: 5 }]).explosion).toBe(true);
+      expect(planAudio(view(), next, [hit, { type: 'player.busted', playerId: 'alice', reason: 'overshoot' }])).toMatchObject({ explosion: true, cue: 'bust', words: ['Bust.'] });
+      expect(planAudio(view(), next, []).explosion).toBeUndefined();
+      expect(planAudio(view(), next, [{ type: 'minefield.defused', playerId: 'alice', number: 20, segment: hit.segment, coords: null }]).explosion).toBeUndefined();
+    }
+  });
 });
 
 describe('Golf target announcements', () => {
@@ -261,12 +271,14 @@ describe('browser audio', () => {
     audio.playAudio({ words: [], throwConfirmed: true });
     expect(oscillators).toHaveLength(5);
   });
-  it('plays a bounded glass-shatter buffer before bust speech, and stops it on mute', async () => {
+  it.each(['bust', 'explosion'] as const)('plays a bounded %s buffer before speech, and stops it on mute', async (effect) => {
     vi.useFakeTimers();
     const speak = vi.fn();
     vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn() });
     vi.stubGlobal('SpeechSynthesisUtterance', class {});
-    const samples = new Float32Array(19200);
+    const duration = effect === 'bust' ? 0.8 : 1;
+    const waitMs = effect === 'bust' ? 900 : 1100;
+    const samples = new Float32Array(24000 * duration);
     const buffer = { getChannelData: () => samples };
     const source = { buffer: null as unknown, connect: (gain: unknown) => gain, start: vi.fn(), stop: vi.fn(), disconnect: vi.fn() };
     const volume = vi.fn();
@@ -288,21 +300,22 @@ describe('browser audio', () => {
     vi.stubGlobal('localStorage', { getItem: () => '{"voice":true,"effects":true,"volume":0.5}', setItem: vi.fn() });
     const audio = await import('./audio.ts');
     audio.unlockAudio();
-    audio.playAudio({ words: ['Bust.'], cue: 'bust' });
+    const plan = effect === 'bust' ? { words: ['Bust.'], cue: 'bust' as const } : { words: ['No score.'], explosion: true };
+    audio.playAudio(plan);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(createBuffer).toHaveBeenCalledWith(1, 19200, 24000);
+    expect(createBuffer).toHaveBeenCalledWith(1, samples.length, 24000);
     expect(source.buffer).toBe(buffer);
     expect(source.start).toHaveBeenCalledOnce();
     expect(samples.some(sample => Math.abs(sample) > 0.1)).toBe(true);
     expect(samples.every(sample => Number.isFinite(sample) && Math.abs(sample) <= 0.801)).toBe(true);
     expect(volume).toHaveBeenLastCalledWith(0.3, 0);
-    await vi.advanceTimersByTimeAsync(899);
+    await vi.advanceTimersByTimeAsync(waitMs - 1);
     expect(speak).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(speak).toHaveBeenCalledOnce();
     audio.saveAudio({ effects: false });
     expect(source.stop).toHaveBeenCalledOnce();
-    audio.playAudio({ words: [], cue: 'bust' });
+    audio.playAudio({ ...plan, words: [] });
     await vi.advanceTimersByTimeAsync(2000);
     expect(source.start).toHaveBeenCalledOnce();
   });
