@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/Muskoxen-Studios/opendarts/compare/v0.5.0...v0.5.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* support Autodarts 2.1 throw payloads and board status ([#33](https://github.com/Muskoxen-Studios/opendarts/issues/33)) ([97c2202](https://github.com/Muskoxen-Studios/opendarts/commit/97c2202ce19f5d8636d42e0252110230d4ac72c9))
+
 ## [0.5.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.4.2...v0.5.0) (2026-11-11)
 
 
