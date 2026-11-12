@@ -24,6 +24,51 @@ const GAME_LABELS: Record<GameType, string> = {
 const gameType = ref<GameType>('x01');
 const selected = ref<string[]>([]);
 const playerFilter = ref('');
+const draggedPlayer = ref<string | null>(null);
+let dragPointer: number | null = null;
+let orderBeforeDrag: string[] | null = null;
+
+function movePlayer(id: string, target: number): void {
+  const from = selected.value.indexOf(id);
+  if (from < 0 || target < 0 || target >= selected.value.length || from === target) return;
+  const order = [...selected.value];
+  order.splice(from, 1);
+  order.splice(target, 0, id);
+  selected.value = order;
+}
+
+function startPlayerDrag(event: PointerEvent, id: string): void {
+  if (event.button !== 0 || draggedPlayer.value || busy.value || loadingLast.value || selected.value.length < 2) return;
+  const list = (event.currentTarget as HTMLElement).closest('ol');
+  if (!list) return;
+  event.preventDefault();
+  list.setPointerCapture(event.pointerId);
+  dragPointer = event.pointerId;
+  orderBeforeDrag = [...selected.value];
+  draggedPlayer.value = id;
+}
+
+function dragPlayer(event: PointerEvent): void {
+  if (!draggedPlayer.value || event.pointerId !== dragPointer) return;
+  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-player-id]');
+  if (!target || !event.currentTarget || !(event.currentTarget as HTMLElement).contains(target)) return;
+  movePlayer(draggedPlayer.value, selected.value.indexOf(target.dataset.playerId ?? ''));
+}
+
+function finishPlayerDrag(): void {
+  draggedPlayer.value = null;
+  dragPointer = null;
+  orderBeforeDrag = null;
+}
+
+function cancelPlayerDrag(): void {
+  if (orderBeforeDrag) selected.value = orderBeforeDrag;
+  finishPlayerDrag();
+}
+
+function movePlayerBy(id: string, offset: number): void {
+  if (!busy.value && !loadingLast.value) movePlayer(id, selected.value.indexOf(id) + offset);
+}
 
 const filteredProfiles = computed(() => {
   const q = playerFilter.value.trim().toLowerCase();
@@ -123,9 +168,10 @@ const killerHistory = ref<Record<string, ModeHandicap>>({});
 const showManual = ref(false);
 
 const busy = ref(false);
+const loadingLast = ref(false);
 const error = ref<string | null>(null);
 
-const canStart = computed(() => selected.value.length > 0 && !busy.value && (gameType.value !== 'conquest' || conquestRosterValid.value));
+const canStart = computed(() => selected.value.length > 0 && !busy.value && !loadingLast.value && (gameType.value !== 'conquest' || conquestRosterValid.value));
 
 function toggle(id: string): void {
   const i = selected.value.indexOf(id);
@@ -135,6 +181,15 @@ function toggle(id: string): void {
   } else {
     selected.value.push(id);
   }
+}
+
+function shufflePlayers(): void {
+  const order = [...selected.value];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  selected.value = order;
 }
 
 /**
@@ -214,6 +269,27 @@ watch([useKillerHandicaps, selected], loadKillerHandicaps, { deep: true });
 
 const lastError = ref<string | null>(null);
 
+function selectPreviousPlayers(playerIds: string[]): void {
+  selected.value = playerIds.filter((id) => store.profiles.some((p) => p.id === id));
+  playerFilter.value = '';
+}
+
+async function useLastPlayers(): Promise<void> {
+  loadingLast.value = true;
+  lastError.value = null;
+  try {
+    const setup = await api.matchSetup('last');
+    selectPreviousPlayers(setup.playerIds);
+    if (!selected.value.length) lastError.value = 'None of the last game’s players are available. Select players below.';
+  } catch (err) {
+    lastError.value = (err as Error).message === 'no such match'
+      ? 'No finished game yet. Select players below.'
+      : `Could not load the last match: ${(err as Error).message}`;
+  } finally {
+    loadingLast.value = false;
+  }
+}
+
 /**
  * Fill the form from the last match played, players included.
  *
@@ -221,12 +297,13 @@ const lastError = ref<string | null>(null);
  * the settings can still be adjusted before the throw.
  */
 async function useLastSettings(): Promise<void> {
+  loadingLast.value = true;
   lastError.value = null;
   try {
     const setup = await api.matchSetup('last');
     const cfg = setup.config as Record<string, unknown>;
     gameType.value = setup.gameType as GameType;
-    selected.value = setup.playerIds.filter((id) => store.profiles.some((p) => p.id === id));
+    selectPreviousPlayers(setup.playerIds);
 
     legsToWin.value = Number(cfg.legsToWin ?? 1);
     setsToWin.value = Number(cfg.setsToWin ?? 1);
@@ -295,7 +372,11 @@ async function useLastSettings(): Promise<void> {
       await loadHandicaps();
     }
   } catch (err) {
-    lastError.value = (err as Error).message;
+    lastError.value = (err as Error).message === 'no such match'
+      ? 'No finished game yet. Select players below.'
+      : `Could not load the last match: ${(err as Error).message}`;
+  } finally {
+    loadingLast.value = false;
   }
 }
 
@@ -462,9 +543,9 @@ async function start(): Promise<void> {
   <section class="setup">
     <div class="head">
       <div class="page-heading"><p class="page-eyebrow">Set the stage</p><h2>New match</h2><p class="page-description">Your players. Your rules. A fresh challenge.</p></div>
-      <button class="ghost" @click="useLastSettings">Use last game's settings</button>
+      <button class="ghost" :disabled="busy || loadingLast" @click="useLastSettings">Use last game's settings</button>
     </div>
-    <p v-if="lastError" class="hint">Could not load the last match: {{ lastError }}</p>
+    <p v-if="lastError" class="hint" role="status">{{ lastError }}</p>
 
     <div class="field">
       <div class="field-head">
@@ -492,11 +573,33 @@ async function start(): Promise<void> {
     />
 
     <div class="field">
-      <label>Players</label>
+      <div class="field-head player-heading">
+        <label>Players</label>
+        <div class="player-actions">
+          <button class="ghost manual-btn" :disabled="busy || loadingLast" @click="useLastPlayers">{{ loadingLast ? 'Loading…' : "Use last game's players" }}</button>
+          <button class="ghost manual-btn" :disabled="busy || loadingLast || selected.length < 2" @click="shufflePlayers">Shuffle players</button>
+        </div>
+      </div>
       <p v-if="store.profiles.length === 0" class="hint">
         No profiles yet &mdash; add one below.
       </p>
       <template v-else>
+        <p v-if="selectedProfiles.length" id="player-order-help" class="hint">Throwing order · drag a handle to reorder, or focus it and use the arrow keys.</p>
+        <ol v-if="selectedProfiles.length" class="chips selected-chips" aria-label="Selected players in throwing order"
+          @pointermove="dragPlayer" @pointerup="finishPlayerDrag" @pointercancel="cancelPlayerDrag"
+          @lostpointercapture="cancelPlayerDrag" @keydown.esc="cancelPlayerDrag">
+          <li v-for="(p, index) in selectedProfiles" :key="p.id" class="chip on selected-player"
+            :class="{ dragging: draggedPlayer === p.id }" :data-player-id="p.id" :style="{ '--accent': p.color }">
+            <button type="button" class="drag-handle" :disabled="busy || loadingLast || selected.length < 2"
+              :aria-label="`Reorder ${p.name}, position ${index + 1} of ${selectedProfiles.length}`" aria-describedby="player-order-help"
+              @pointerdown="startPlayerDrag($event, p.id)"
+              @keydown.left.prevent="movePlayerBy(p.id, -1)" @keydown.up.prevent="movePlayerBy(p.id, -1)"
+              @keydown.right.prevent="movePlayerBy(p.id, 1)" @keydown.down.prevent="movePlayerBy(p.id, 1)"><span aria-hidden="true">⠿</span></button>
+            <span class="player-order">{{ index + 1 }}.</span>
+            <PlayerAvatar :player-id="p.id" /><span>{{ p.name }}</span>
+            <button type="button" class="remove-player" :disabled="busy || loadingLast" :aria-label="`Remove ${p.name}`" @click="toggle(p.id)">×</button>
+          </li>
+        </ol>
         <input
           v-model="playerFilter"
           type="text"
@@ -512,16 +615,7 @@ async function start(): Promise<void> {
             :style="{ '--accent': p.color }"
             @click="toggle(p.id)"
           ><PlayerAvatar :player-id="p.id" />{{ p.name }}</button>
-          <p v-if="filteredProfiles.length === 0" class="hint">No matching players.</p>
-        </div>
-        <div v-if="selectedProfiles.length" class="chips selected-chips">
-          <button
-            v-for="p in selectedProfiles"
-            :key="p.id"
-            class="chip on"
-            :style="{ '--accent': p.color }"
-            @click="toggle(p.id)"
-          ><PlayerAvatar :player-id="p.id" />{{ p.name }}</button>
+          <p v-if="filteredProfiles.length === 0" class="hint">{{ playerFilter.trim() ? 'No matching players.' : 'All players are selected.' }}</p>
         </div>
       </template>
     </div>
@@ -931,6 +1025,10 @@ h2 { margin: 0; font-size: 1.1rem; }
 }
 .head .ghost:hover { border-color: var(--ui-accent); color: #fff; }
 .field-head { display: flex; align-items: center; gap: 0.75rem; }
+.player-heading { flex-wrap: wrap; }
+.player-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
+.player-actions .manual-btn { margin-left: 0; }
+.player-order { font-variant-numeric: tabular-nums; opacity: 0.75; }
 .manual-btn {
   margin-left: auto; background: none; border: 1px solid var(--ui-border); color: var(--ui-secondary);
   border-radius: 999px; padding: 0.25rem 0.75rem; cursor: pointer; font: inherit; font-size: 0.78rem;
@@ -943,7 +1041,15 @@ label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; c
 .hint { margin: 0; font-size: 0.8rem; color: var(--ui-muted); }
 .tabs, .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .player-search { width: 100%; box-sizing: border-box; }
-.selected-chips { padding-bottom: 0.5rem; border-bottom: 1px solid var(--ui-border); }
+.selected-chips { list-style: none; margin: 0; padding: 0 0 0.5rem; border-bottom: 1px solid var(--ui-border); }
+.selected-player { display: flex; align-items: center; gap: 0.35rem; }
+.selected-player.dragging { outline: 2px solid var(--accent); box-shadow: 0 4px 14px #0005; }
+.drag-handle, .remove-player { background: none; border: 0; color: inherit; padding: 0.2rem; font: inherit; line-height: 1; }
+.drag-handle { cursor: grab; touch-action: none; font-size: 1.4rem; user-select: none; }
+.drag-handle:active { cursor: grabbing; }
+.remove-player { cursor: pointer; font-size: 1.2rem; }
+.drag-handle:focus-visible, .remove-player:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; border-radius: 3px; }
+.chip.selected-player { cursor: default; }
 .chips.scroll {
   max-height: 14rem; overflow-y: auto; align-content: flex-start;
   padding-top: 0.15rem;

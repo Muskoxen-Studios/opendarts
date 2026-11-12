@@ -714,6 +714,14 @@ instead, so they can be adjusted first. Golf handicaps are deliberately *not*
 carried over by either: they move with every round played, and reusing a stale
 one would misprice the game.
 
+In the setup screen's **Players** section, **Use last game's players** selects
+the last finished game's lineup in its original order while keeping the game and rules
+currently chosen. Deleted profiles are skipped. **Shuffle players** randomly
+reorders the selected lineup; numbered chips show the resulting throwing order.
+Drag the selected players by their handles to change the order with a mouse or
+touch, or focus a handle and use the arrow keys. Separate × buttons remove players.
+Shuffling requires at least two selected players and preserves their handicaps.
+
 ## The leaderboard
 
 Every player, ranked, on its own tab. The order is by points — **3 for a win, 1
