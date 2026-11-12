@@ -297,7 +297,7 @@ async function rematch(): Promise<void> {
 
     <main>
       <template v-if="tab === 'play'">
-        <FitToScreen v-if="view">
+        <FitToScreen v-if="view" :class="{ 'cricket-match': view.gameType === 'cricket' }">
           <div class="play-view">
             <!--
               The roster spans the whole window rather than sitting in the left
@@ -448,7 +448,7 @@ nav button.on { background: #2b3240; border-color: var(--ui-accent); color: #fff
   .play { grid-template-columns: 1fr; }
   .board-stage { max-width: 420px; margin: 0 auto; }
 }
-.left, .right { display: flex; flex-direction: column; gap: 0.85rem; }
+.left, .right { display: flex; flex-direction: column; min-width: 0; gap: 0.85rem; }
 
 .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .controls button {
@@ -584,6 +584,8 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
 .roster-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .roster-heading h2 { margin: 0; font-size: 1.2rem; }
 @media (max-width: 640px) and (orientation: portrait) {
+  .match-screen .cricket-match { overflow-y: auto; }
+  .match-screen .cricket-match :deep(.fit-content) { transform: none !important; }
   .match-screen .play { grid-template-columns: 1fr; gap: 0.6rem; }
 }
 @media (max-width: 640px) and (orientation: portrait), (max-height: 600px) and (orientation: landscape) {
@@ -652,6 +654,9 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
     grid-template-columns: minmax(0, 1fr) minmax(0, 45%);
     align-items: stretch;
   }
+  .match-screen .cricket-match .play {
+    grid-template-columns: minmax(0, 1fr) minmax(0, min(34%, 420px));
+  }
   .match-screen .left { min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
   .match-screen .right { min-width: 0; min-height: 0; padding: 0.75rem; gap: 0.65rem; }
   .match-screen .board-stage { flex: 1; min-height: 0; display: grid; place-items: center; }
@@ -667,10 +672,8 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
   .match-screen :deep(.scoreboard .score) { padding-block: 0; line-height: 1; }
   .match-screen :deep(.scoreboard .stats) { margin-top: 0.3rem; padding-top: 0.5rem; }
   .match-screen :deep(.scoreboard .slot) { min-height: 5rem; }
-  .match-screen :deep(.cricket-player-stats),
-  .match-screen :deep(.cricket-turn-label) { display: none; }
+  .match-screen :deep(.cricket-player-stats) { display: none; }
   .match-screen :deep(.cricket-player-name) { font-size: 1rem; }
-  .match-screen :deep(.cricket-board tbody th.who) { padding: 0.45rem; }
   .match-screen :deep(.cricket-board td) { padding-block: 0.45rem; }
 }
 
