@@ -33,7 +33,7 @@ const standings = computed(() => {
 const isX01 = computed(() => props.report.gameType === 'x01');
 const isGolf = computed(() => props.report.gameType === 'golf');
 const isCricket = computed(() => props.report.gameType === 'cricket');
-const gameName = computed(() => ({ x01: 'X01', golf: 'Golf', cricket: 'Cricket', gotcha: 'Gotcha', killer: 'Killer', shanghai: 'Shanghai' })[props.report.gameType] ?? props.report.gameType);
+const gameName = computed(() => ({ conquest: 'Conquest', x01: 'X01', golf: 'Golf', cricket: 'Cricket', gotcha: 'Gotcha', killer: 'Killer', shanghai: 'Shanghai' })[props.report.gameType] ?? props.report.gameType);
 const featured = computed(() => winner.value ?? standings.value[0]);
 const highlights = computed(() => {
   const p = featured.value;

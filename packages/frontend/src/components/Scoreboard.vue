@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConquestPanel from './ConquestPanel.vue';
 import PlayerAvatar from './PlayerAvatar.vue';
 import { computed } from 'vue';
 import {
@@ -159,6 +160,8 @@ function scoreText(player: View['players'][number]): string {
         </tbody>
       </table>
     </div>
+
+    <ConquestPanel v-else-if="view.gameType === 'conquest'" :view="view" />
 
     <div v-else class="players">
       <article v-for="p in activePlayer ? [activePlayer] : []" :key="p!.playerId" class="player"

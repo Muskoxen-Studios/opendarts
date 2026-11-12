@@ -107,35 +107,58 @@ export interface MatchAnalysis {
  * is analysable without touching this file.
  */
 export function analyzeMatch(record: MatchRecord): MatchAnalysis {
-  const match = new Match(record.matchId, record.players, record.config);
+  return new MatchAnalyzer(record).analysis;
+}
 
-  const analysis: MatchAnalysis = {
-    matchId: record.matchId,
-    gameType: record.gameType,
-    players: record.players,
-    winnerId: null,
-    endedAt: record.endedAt,
-    startedAt: record.startedAt ?? null,
-    throws: [],
-    turns: [],
-    checkouts: [],
-    knockbacks: [],
-    legsWon: Object.fromEntries(record.players.map((p) => [p.id, 0])),
-    legsPlayed: 0,
-    cricketMarks: Object.fromEntries(record.players.map((p) => [p.id, 0])),
-    cutthroatTurnPoints: Object.fromEntries(record.players.map((p) => [p.id, []])),
-    golf: null,
-    shanghai: null,
-    conceded: false,
-  };
+/**
+ * A live projection that folds only newly appended commands. Historical edits
+ * rebuild it from the corrected log; ordinary darts never replay earlier turns.
+ */
+export class MatchAnalyzer {
+  private match: Match;
+  private record: MatchRecord;
+  private result: MatchAnalysis;
+  private pending: ThrowRecord[] = [];
+  private turnCricketPoints: Record<string, number> = {};
 
-  let pending: ThrowRecord[] = [];
-  let turnCricketPoints: Record<string, number> = {};
+  constructor(record: MatchRecord) {
+    this.record = record;
+    this.match = new Match(record.matchId, record.players, record.config);
+    this.result = {
+      matchId: record.matchId,
+      gameType: record.gameType,
+      players: record.players,
+      winnerId: null,
+      endedAt: record.endedAt,
+      startedAt: record.startedAt ?? null,
+      throws: [],
+      turns: [],
+      checkouts: [],
+      knockbacks: [],
+      legsWon: Object.fromEntries(record.players.map((p) => [p.id, 0])),
+      legsPlayed: 0,
+      cricketMarks: Object.fromEntries(record.players.map((p) => [p.id, 0])),
+      cutthroatTurnPoints: Object.fromEntries(record.players.map((p) => [p.id, []])),
+      golf: null,
+      shanghai: null,
+      conceded: false,
+    };
 
-  for (const cmd of record.commands) {
-    const before = match.view;
-    const events: DomainEvent[] = match.apply(cmd);
+    for (const cmd of record.commands) this.append(cmd);
+  }
 
+  append(cmd: MatchCommand): void {
+    const before = this.match.view;
+    const events: DomainEvent[] = this.match.apply(cmd);
+    if (cmd.type === 'UNDO' || cmd.type === 'CORRECT_THROW') {
+      const rebuilt = new MatchAnalyzer({ ...this.record, commands: [...this.match.log] });
+      this.match = rebuilt.match;
+      this.result = rebuilt.result;
+      this.pending = rebuilt.pending;
+      this.turnCricketPoints = rebuilt.turnCricketPoints;
+      return;
+    }
+    const analysis = this.result;
     if (cmd.type === 'THROW') {
       const activeId = before.activePlayerId;
       const activeView = before.players.find((p) => p.playerId === activeId);
@@ -153,7 +176,14 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
         coords: cmd.throw.coords ?? null,
       };
       analysis.throws.push(rec);
-      pending.push(rec);
+      if (this.record.gameType === 'cricket') {
+        const marks = rec.ring === 'TRIPLE' ? 3 : rec.ring === 'DOUBLE' || rec.ring === 'BULL' ? 2 : rec.ring === 'MISS' ? 0 : 1;
+        if ([15, 16, 17, 18, 19, 20, 25].includes(rec.number)) {
+          analysis.cricketMarks[rec.playerId] = (analysis.cricketMarks[rec.playerId] ?? 0) + marks;
+        }
+      }
+
+      this.pending.push(rec);
     }
 
     for (const e of events) {
@@ -164,14 +194,14 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
             total: e.total,
             darts: e.darts,
             busted: e.busted,
-            throws: pending,
+            throws: this.pending,
             leg: before.leg,
           });
-          for (const [pid, pts] of Object.entries(turnCricketPoints)) {
+          for (const [pid, pts] of Object.entries(this.turnCricketPoints)) {
             if (pts > 0) analysis.cutthroatTurnPoints[pid]?.push(pts);
           }
-          pending = [];
-          turnCricketPoints = {};
+          this.pending = [];
+          this.turnCricketPoints = {};
           break;
         }
         case 'leg.won': {
@@ -181,7 +211,7 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
         }
         case 'x01.checkout': {
           const last = analysis.throws.at(-1);
-          const turnStart = pending[0]?.scoreBefore ?? last?.scoreBefore ?? 0;
+          const turnStart = this.pending[0]?.scoreBefore ?? last?.scoreBefore ?? 0;
           analysis.checkouts.push({
             playerId: e.playerId,
             startScore: e.score,
@@ -192,7 +222,7 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
           break;
         }
         case 'cricket.points': {
-          turnCricketPoints[e.playerId] = (turnCricketPoints[e.playerId] ?? 0) + e.points;
+          this.turnCricketPoints[e.playerId] = (this.turnCricketPoints[e.playerId] ?? 0) + e.points;
           break;
         }
         case 'gotcha.knockback': {
@@ -218,51 +248,44 @@ export function analyzeMatch(record: MatchRecord): MatchAnalysis {
     }
   }
 
-  if (record.gameType === 'golf') {
-    // Read off the final view rather than tracking holes here: the engine
-    // already publishes each player's card, and duplicating that logic is how
-    // the two drift apart.
-    const finalView = match.view;
-    const golf: GolfAnalysis = {
-      handicaps: {},
-      points: {},
-      holes: {},
-      holeCount: 0,
-      holesPlayed: 0,
-    };
-    for (const p of finalView.players) {
-      const holes = (p.detail.results as GolfHoleResult[] | undefined) ?? [];
-      golf.handicaps[p.playerId] = Number(p.detail.handicap ?? 0);
-      golf.points[p.playerId] = p.score;
-      golf.holes[p.playerId] = holes;
-      golf.holeCount = Math.max(golf.holeCount, Number(p.detail.holes ?? 0));
-      golf.holesPlayed = Math.max(golf.holesPlayed, holes.length);
-    }
-    analysis.golf = golf;
-  }
-
-  if (record.gameType === 'shanghai') {
-    // Read off the final view, same reasoning as golf: the engine already
-    // publishes each player's round-by-round card.
-    const finalView = match.view;
-    const shanghai: Record<string, number[]> = {};
-    for (const p of finalView.players) {
-      shanghai[p.playerId] = (p.detail.results as number[] | undefined) ?? [];
-    }
-    analysis.shanghai = shanghai;
-  }
-
-  if (record.gameType === 'cricket') {
-    for (const t of analysis.throws) {
-      const marks = t.ring === 'TRIPLE' ? 3 : t.ring === 'DOUBLE' || t.ring === 'BULL' ? 2 : t.ring === 'MISS' ? 0 : 1;
-      const isTarget = [15, 16, 17, 18, 19, 20, 25].includes(t.number);
-      if (isTarget) {
-        analysis.cricketMarks[t.playerId] = (analysis.cricketMarks[t.playerId] ?? 0) + marks;
+  get analysis(): MatchAnalysis {
+    const analysis = this.result;
+    if (this.record.gameType === 'golf') {
+      // Read off the final view rather than tracking holes here: the engine
+      // already publishes each player's card, and duplicating that logic is how
+      // the two drift apart.
+      const finalView = this.match.view;
+      const golf: GolfAnalysis = {
+        handicaps: {},
+        points: {},
+        holes: {},
+        holeCount: 0,
+        holesPlayed: 0,
+      };
+      for (const p of finalView.players) {
+        const holes = (p.detail.results as GolfHoleResult[] | undefined) ?? [];
+        golf.handicaps[p.playerId] = Number(p.detail.handicap ?? 0);
+        golf.points[p.playerId] = p.score;
+        golf.holes[p.playerId] = holes;
+        golf.holeCount = Math.max(golf.holeCount, Number(p.detail.holes ?? 0));
+        golf.holesPlayed = Math.max(golf.holesPlayed, holes.length);
       }
+      analysis.golf = golf;
     }
-  }
 
-  return analysis;
+    if (this.record.gameType === 'shanghai') {
+      // Read off the final view, same reasoning as golf: the engine already
+      // publishes each player's round-by-round card.
+      const finalView = this.match.view;
+      const shanghai: Record<string, number[]> = {};
+      for (const p of finalView.players) {
+        shanghai[p.playerId] = (p.detail.results as number[] | undefined) ?? [];
+      }
+      analysis.shanghai = shanghai;
+    }
+
+    return analysis;
+  }
 }
 
 function labelOf(cmd: Extract<MatchCommand, { type: 'THROW' }>): string {

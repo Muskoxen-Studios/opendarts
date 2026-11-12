@@ -1,3 +1,4 @@
+import { conquestEngine } from './conquest.ts';
 import type { GameConfig, GameType } from '@darts/schema';
 import { cricketEngine } from './cricket.ts';
 import { evenOddEngine } from './evenOdd.ts';
@@ -18,6 +19,7 @@ import { x01Engine } from './x01.ts';
 export type AnyEngine = GameEngine<GameConfig, unknown>;
 
 export const engines: Record<GameType, AnyEngine> = {
+  conquest: conquestEngine as unknown as AnyEngine,
   x01: x01Engine as unknown as AnyEngine,
   cricket: cricketEngine as unknown as AnyEngine,
   gotcha: gotchaEngine as unknown as AnyEngine,

@@ -1,5 +1,5 @@
 import type { DeepReadonly } from 'vue';
-import type { MatchView } from '@darts/schema';
+import type { ConquestTerritoryView, MatchView } from '@darts/schema';
 
 /**
  * The store is exposed through Vue's readonly() wrapper so components cannot
@@ -61,6 +61,7 @@ export function placeOf(player: Player): number | null {
  */
 export function isOut(player: Player, gameType: View['gameType']): boolean {
   if (placeOf(player) !== null) return true;
+  if (gameType === 'conquest') return conquest(player).eliminated && !conquest(player).canComeback;
   return gameType === 'killer' && killer(player).eliminated;
 }
 
@@ -88,5 +89,20 @@ export function minefield(player: Player) {
       resetsScore: boolean;
       penalty: number | null;
     }[] | undefined) ?? [],
+  };
+}
+
+export function conquest(player: Player) {
+  const d = player.detail;
+  return {
+    home: (d.home as string | undefined) ?? '',
+    factionId: (d.factionId as string | null | undefined) ?? null,
+    eliminated: d.eliminated === true,
+    canComeback: d.canComeback === true,
+    canInvokeGod: d.canInvokeGod === true,
+    godPower: d.godPower === true,
+    splitTerritories: d.splitTerritories === true,
+    fortifiedHomes: d.fortifiedHomes === true,
+    territories: (d.territories as readonly ConquestTerritoryView[] | undefined) ?? [],
   };
 }

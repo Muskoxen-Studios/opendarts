@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { segmentValue, type GameConfig, type Segment } from '@darts/schema';
-import { seg } from '../../engine/src/testkit.ts';
+import { dart, seg } from '../../engine/src/testkit.ts';
+import { Match } from '@darts/engine';
 import { openDatabase } from './db.ts';
 import { MatchManager, type ServerEvent } from './matchManager.ts';
 import { Store } from './store.ts';
@@ -1108,3 +1109,39 @@ function seedPlayers() {
   const bob = toPlayer(store.createProfile('Bob'));
   return [alice, bob] as const;
 }
+
+
+describe('live match work stays bounded as the log grows', () => {
+  it.each(['simulator', 'board'] as const)('appends and projects only new events for %s after a long resumed game', (source) => {
+    const roster = [...seedPlayers()];
+    const historical = new Match('long-game', roster, X01);
+    historical.apply({ type: 'START' });
+    for (let i = 0; i < 900; i++) {
+      historical.apply({ type: 'THROW', throw: dart('MISS') });
+      if (historical.view.awaitingTakeout) historical.apply({ type: 'ADVANCE_TURN' });
+    }
+    const id = store.createMatch('x01', X01, roster);
+    store.replaceCommands(id, historical.log);
+    manager.resume(id);
+    const engineCalls = vi.spyOn(Match.prototype, 'apply');
+    const append = vi.spyOn(store, 'appendCommand');
+    const rewrite = vi.spyOn(store, 'replaceCommands');
+    try {
+      const cmd = { type: 'throw.detected' as const, throw: { ...dart('T20'), value: 999, source } };
+      manager.onBoardEvent(cmd);
+      // One live reducer and one incremental analysis reducer, independent of history.
+      expect(engineCalls).toHaveBeenCalledTimes(2);
+      expect(rewrite).not.toHaveBeenCalled();
+      expect(append).toHaveBeenCalledTimes(1);
+      expect(store.commandsFor(id).at(-1)).toMatchObject({ throw: { value: 60 } });
+      const restored = new MatchManager(store, () => {});
+      expect(restored.resume(id)).toEqual(manager.view);
+      manager.apply({ type: 'UNDO' });
+      expect(rewrite).toHaveBeenCalledTimes(1);
+      expect(store.commandsFor(id)).toEqual(historical.log);
+      expect(manager.view?.players[0]?.score).toBe(501);
+    } finally {
+      engineCalls.mockRestore(); append.mockRestore(); rewrite.mockRestore();
+    }
+  });
+});
