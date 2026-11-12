@@ -1,4 +1,5 @@
 import { describeFetchError } from './fetchError.ts';
+import { normalizeStatus, type RawThrow } from './adapters/autodarts.ts';
 
 /**
  * The Board Manager's local control API.
@@ -33,10 +34,7 @@ export function isBoardAction(value: string): value is BoardAction {
  * (recon/FINDINGS.md §3). `throws` is cumulative for the current visit to the
  * board and is absent -- not `[]` -- once a takeout has finished.
  */
-export interface RawBoardThrow {
-  segment: { name: string; bed: string; number?: number; multiplier?: number };
-  coords?: { x: number; y: number };
-}
+export type RawBoardThrow = RawThrow;
 
 export interface RawBoardState {
   connected: boolean;
@@ -94,7 +92,12 @@ export async function boardState(baseUrl: string): Promise<BoardCommandResult & 
   try {
     const res = await fetch(`${base}/api/state`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return { ok: false, error: `board returned ${res.status} for /api/state` };
-    return { ok: true, state: (await res.json()) as RawBoardState };
+    const state = (await res.json()) as RawBoardState;
+    return { ok: true, state: {
+      ...state,
+      status: normalizeStatus(state.status),
+      numThrows: state.numThrows ?? state.throws?.length ?? 0,
+    } };
   } catch (err) {
     return { ok: false, error: describeFetchError(err, base) };
   }

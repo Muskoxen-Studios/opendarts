@@ -812,6 +812,13 @@ local control API, and the throw payload — `coords` is `{x, y}` normalised by
 `multiplier` alongside `name`/`bed`; and `throws[]` is cumulative for the visit
 rather than per turn.
 
+Detection 2.1 uses camelCase status names (`throw`, `takeoutInProgress`) and
+flat dart fields (`segmentName`, `segmentNumber`, `bed`, `coordsX`, `coordsY`).
+The bridge translates both this format and the older nested format into the
+same events. The settings panel derives the dart count from `throws[]` when
+`numThrows` is absent. HTTP polling also restores the status indicator while
+the board is idle; it never scores darts from a snapshot.
+
 Two rules keep the boundary worth having:
 
 - **`coords` is nullable and nothing depends on it.** Game logic, statistics and

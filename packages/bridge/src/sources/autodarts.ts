@@ -1,5 +1,5 @@
-import { segmentValue, type BoardEvent, type BoardStatus, type Coords, type Segment } from '@darts/schema';
-import { normalizeThrow, ThrowShapeError } from '../adapters/autodarts.ts';
+import { segmentValue, type Coords, type Segment } from '@darts/schema';
+import { normalizeStatus, normalizeThrow, ThrowShapeError } from '../adapters/autodarts.ts';
 import type { EventSink, Source } from './types.ts';
 
 export interface AutodartsOptions {
@@ -139,11 +139,18 @@ export function autodartsSource(opts: AutodartsOptions): Source {
     try {
       const res = await fetch(`${httpUrl}/api/state`, { signal: AbortSignal.timeout(2500) });
       if (!res.ok || closed) return;
-      const body = (await res.json()) as { connected?: boolean; status?: string };
-      if (body.status && body.status !== 'Takeout in progress') clearStuck();
+      const body = (await res.json()) as { connected?: boolean; status?: string; running?: boolean };
+      if (closed) return;
+      // A new status word must not make a reachable board lose its heartbeat.
       // `connected: false` means the manager is up but the board is not.
-      if (body.connected !== false && !closed) alive(emit);
-    } catch {
+      if (body.connected !== false) alive(emit);
+      if (body.status) {
+        const status = normalizeStatus(body.status);
+        if (status !== 'Takeout in progress') clearStuck();
+        emit({ type: 'board.status', status, running: Boolean(body.running) });
+      }
+    } catch (err) {
+      if (err instanceof ThrowShapeError) console.error('[bridge] board status did not match expectations', err);
       // Unreachable: let the heartbeat deadline run out.
     }
   };
@@ -174,20 +181,26 @@ export function autodartsSource(opts: AutodartsOptions): Source {
           | undefined;
         if (!data) return;
 
-        if (data.status) {
+        let status;
+        try {
+          status = data.status ? normalizeStatus(data.status) : undefined;
+        } catch (err) {
+          console.error('[bridge] board status did not match expectations', err);
+        }
+        if (status) {
           emit({
             type: 'board.status',
-            status: data.status as BoardStatus,
+            status,
             running: Boolean(data.running),
           });
         }
 
         const takeoutWasOpen = takeoutOpen;
-        if (data.status === 'Takeout in progress') {
+        if (status === 'Takeout in progress') {
           takeoutOpen = true;
           emit({ type: 'takeout.started' });
           armStuck(emit);
-        } else if (data.status) {
+        } else if (status) {
           clearStuck();
         }
 

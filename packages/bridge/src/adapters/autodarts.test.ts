@@ -1,7 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import { toRawCoords } from '@darts/fakeboard';
 import { SEGMENT_ANGLE, SEGMENT_ORDER, type Segment } from '@darts/schema';
-import { normalizeThrow, toCoords, toSegment, ThrowShapeError } from './autodarts.ts';
+import { normalizeStatus, normalizeThrow, toCoords, toSegment, ThrowShapeError } from './autodarts.ts';
+
+describe('Detection 2.1 compatibility', () => {
+  it('normalizes flat darts and scales their coordinates with the same axes', () => {
+    expect(normalizeThrow({
+      segmentName: 'T20', segmentNumber: 20, bed: 'Triple', multiplier: 3,
+      coordsX: 0, coordsY: 0.6, failed: false,
+    })).toMatchObject({ segment: { number: 20, ring: 'TRIPLE' }, value: 60, coords: { x: 0, y: 102 } });
+  });
+
+  it('keeps scoring when coordinates are missing and discards failed locations', () => {
+    const dart = { segmentName: 'M20', segmentNumber: 20, bed: 'Outside' };
+    expect(normalizeThrow(dart)).toMatchObject({ value: 0, coords: null });
+    expect(normalizeThrow({ ...dart, failed: true, coordsX: 0, coordsY: 0 }))
+      .toMatchObject({ value: 0, coords: null });
+  });
+
+  it('rejects an unknown flat bed instead of guessing a score', () => {
+    expect(() => normalizeThrow({ segmentName: 'T20', segmentNumber: 20, bed: 'Quadruple' }))
+      .toThrow(ThrowShapeError);
+  });
+
+  it('normalizes status enums while preserving legacy words', () => {
+    expect(normalizeStatus('throw')).toBe('Throw');
+    expect(normalizeStatus('takeoutInProgress')).toBe('Takeout in progress');
+    expect(normalizeStatus('Takeout in progress')).toBe('Takeout in progress');
+    expect(() => normalizeStatus('newUnknownStatus')).toThrow(ThrowShapeError);
+  });
+});
 
 describe('segment translation', () => {
   it('maps the bed enum onto our rings', () => {
