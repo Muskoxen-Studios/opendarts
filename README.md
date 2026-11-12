@@ -377,9 +377,13 @@ leg:
 **Cricket** — standard and cut-throat. In cut-throat, points go to opponents who
 have not closed the number and the lowest score wins.
 
-The live Cricket table combines each player's points, marks, MPR, darts and
-sets/legs in one row, with the current thrower highlighted. It replaces the
-separate player strip and score card, leaving more room for larger target marks.
+The live Cricket table has one column per player, with names, avatars and large
+point totals above target rows 20–15 and Bull. Avatars sit beside the score at
+the score's height, as on the X01 player cards. Empty cells are blank; one mark
+is a slash, two a cross and three a circled cross on green. The current thrower
+is highlighted, with MPR, darts and sets/legs in the column header when space
+allows. It replaces the separate player strip and score card. Larger rosters
+scroll horizontally while target labels stay visible on the left.
 
 Marks-per-round is computed over **completed rounds only**. Dividing running
 marks by a fractional round makes the figure meaningless mid-turn — a treble on

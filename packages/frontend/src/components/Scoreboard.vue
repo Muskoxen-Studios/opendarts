@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import PlayerAvatar from './PlayerAvatar.vue';
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import {
   gotcha,
   minefield,
@@ -20,6 +20,26 @@ const isShanghai = computed(() => props.view.gameType === 'shanghai');
 const isKiller = computed(() => props.view.gameType === 'killer');
 const isGotcha = computed(() => props.view.gameType === 'gotcha');
 const isEvenOdd = computed(() => props.view.gameType === 'evenodd');
+const cricketBoard = ref<HTMLElement | null>(null);
+function revealCricketPlayer(): void {
+  const wrap = cricketBoard.value;
+  const header = wrap?.querySelector<HTMLElement>('th.active');
+  if (!wrap || !header) return;
+  const left = header.offsetLeft;
+  const labelWidth = wrap.querySelector<HTMLElement>('.target-heading')?.offsetWidth ?? 0;
+  if (left < wrap.scrollLeft + labelWidth) wrap.scrollLeft = left - labelWidth;
+  else if (left + header.offsetWidth > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = left + header.offsetWidth - wrap.clientWidth;
+}
+watch([isCricket, () => props.view.activePlayerId], async () => {
+  await nextTick();
+  revealCricketPlayer();
+}, { immediate: true });
+watch(cricketBoard, (wrap, _old, onCleanup) => {
+  if (!wrap) return;
+  const observer = new ResizeObserver(revealCricketPlayer);
+  observer.observe(wrap);
+  onCleanup(() => observer.disconnect());
+});
 
 /**
  * Cricket combines everyone in its marks table. Other games use the player
@@ -119,27 +139,26 @@ function scoreText(player: View['players'][number]): string {
       Keep Cricket's points, player stats and marks together, so the table
       replaces both the player strip and the active player's score card.
     -->
-    <div v-if="isCricket" class="cricket-board-wrap">
-      <table class="cricket-board">
+    <div v-if="isCricket" ref="cricketBoard" class="cricket-board-wrap" tabindex="0" aria-label="Cricket scores, scroll horizontally for more players">
+      <table class="cricket-board" :style="{ '--player-count': view.players.length }">
         <caption class="sr-only">Cricket player scores and target marks</caption>
-        <colgroup><col class="player-column" /><col v-for="t in cricketTargets" :key="t" /></colgroup>
+        <colgroup><col class="target-column" /><col v-for="p in view.players" :key="p.playerId" /></colgroup>
         <thead>
           <tr>
-            <th class="who" scope="col">Player / points</th>
-            <th v-for="t in cricketTargets" :key="t" scope="col">{{ t === 25 ? 'Bull' : t }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in view.players" :key="p.playerId" :class="{ active: p.isActive, out: placeOf(p) !== null, winner: view.winnerId === p.playerId }"
-            :style="{ '--accent': p.color }">
-            <th class="who" scope="row">
+            <th class="target-heading" scope="col"><span class="sr-only">Target</span></th>
+            <th v-for="p in view.players" :key="p.playerId" class="who" scope="col"
+              :class="{ active: p.isActive, out: placeOf(p) !== null, winner: view.winnerId === p.playerId }"
+              :aria-current="p.isActive ? 'true' : undefined"
+              :style="{ '--accent': p.color }">
               <div class="cricket-player">
                 <div class="cricket-identity">
-                  <span class="cricket-player-name"><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</span>
-                  <span class="cricket-turn-label" :class="{ visible: p.isActive }" :aria-hidden="!p.isActive">At the oche</span>
+                  <span class="cricket-player-name">{{ p.name }}</span>
                   <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>
                 </div>
-                <strong class="cricket-points" :aria-label="`${p.score} points`">{{ p.score }}</strong>
+                <div class="cricket-score">
+                  <PlayerAvatar class="cricket-avatar" :player-id="p.playerId" />
+                  <strong class="cricket-points" :aria-label="`${p.score} points`">{{ p.score }}</strong>
+                </div>
                 <div class="cricket-player-stats">
                   <span>{{ fmt(p.stats.mpr, 2) }} MPR</span>
                   <span>{{ p.stats.dartsThrown }} darts</span>
@@ -147,9 +166,16 @@ function scoreText(player: View['players'][number]): string {
                 </div>
               </div>
             </th>
-            <td v-for="t in cricketTargets" :key="t" :class="{ closed: marks(p, t) >= 3 }" :aria-label="`${t === 25 ? 'Bull' : t}: ${Math.min(marks(p, t), 3)} marks`">
-              <svg class="cricket-mark" :class="{ empty: marks(p, t) === 0 }" viewBox="0 0 40 40" aria-hidden="true">
-                <circle v-if="marks(p, t) === 0" cx="20" cy="20" r="1.5" fill="currentColor" stroke="none" />
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="t in cricketTargets" :key="t">
+            <th class="target-label" scope="row" :aria-label="t === 25 ? 'Bull' : String(t)"><span>{{ t === 25 ? 'B' : t }}</span></th>
+            <td v-for="p in view.players" :key="p.playerId"
+              :class="{ closed: marks(p, t) >= 3, active: p.isActive, out: placeOf(p) !== null, winner: view.winnerId === p.playerId }"
+              :style="{ '--accent': p.color }"
+              :aria-label="`${p.name}, ${t === 25 ? 'Bull' : t}: ${Math.min(marks(p, t), 3)} marks`">
+              <svg v-if="marks(p, t) > 0" class="cricket-mark" viewBox="0 0 40 40" aria-hidden="true">
                 <path v-if="marks(p, t) >= 1" d="M12 28 28 12" />
                 <path v-if="marks(p, t) >= 2" d="M12 12 28 28" />
                 <circle v-if="marks(p, t) >= 3" cx="20" cy="20" r="17" />
@@ -411,37 +437,34 @@ function scoreText(player: View['players'][number]): string {
 .score-value { margin-left: auto; text-align: right; }
 
 /* Cricket's table is the complete roster and scoreboard, including points. */
-.cricket-board-wrap { overflow: hidden; }
-.cricket-board { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.cricket-board .player-column { width: 30%; }
-.cricket-board th, .cricket-board td { padding: 0.7rem 0.35rem; text-align: center; font-variant-numeric: tabular-nums; }
-.cricket-board thead th { font-size: clamp(0.75rem, 2cqw, 1.15rem); color: var(--ui-muted); font-weight: 650; padding-block: 0.85rem; }
-.cricket-board th.who { text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.cricket-board thead th.who { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
-.cricket-board tbody tr { border-top: 1px solid var(--ui-border); }
-.cricket-board tbody th.who { border-left: 4px solid var(--accent); padding: 0.8rem; }
-.cricket-board tbody tr.active { background: color-mix(in srgb, var(--accent) 12%, var(--ui-surface-deep)); }
-.cricket-board tbody tr.out { opacity: 0.62; }
-.cricket-board tbody tr.winner { opacity: 1; }
-.cricket-player { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.6rem; }
-.cricket-identity { flex: 1 1 5rem; min-width: 0; }
-.cricket-player-name { display: block; color: var(--ui-text); font-weight: 650; font-size: clamp(0.85rem, 2cqw, 1.2rem); line-height: 1.25; }
-.cricket-turn-label { display: block; visibility: hidden; color: var(--accent); font-size: 0.65rem; line-height: 1.5; margin-top: 0.2rem; }
-.cricket-turn-label.visible { visibility: visible; }
+.cricket-board-wrap { position: relative; overflow-x: auto; scrollbar-width: thin; }
+.cricket-board { width: 100%; min-width: calc(3rem + var(--player-count) * 8.5rem); table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.cricket-board .target-column { width: 3rem; }
+.cricket-board th, .cricket-board td { text-align: center; font-variant-numeric: tabular-nums; }
+.cricket-board th.who { padding: 0.85rem 0.6rem; vertical-align: top; overflow-wrap: anywhere; background: color-mix(in srgb, var(--accent) 30%, var(--ui-surface)); border-bottom: 3px solid transparent; }
+.cricket-board th.who.active { background: color-mix(in srgb, var(--accent) 45%, var(--ui-surface)); box-shadow: inset 3px 0 var(--accent), inset -3px 0 var(--accent), inset 0 3px var(--accent); }
+.cricket-board .out { opacity: 0.62; }
+.cricket-board .winner { opacity: 1; box-shadow: inset 0 0 0 2px var(--ui-success); }
+.cricket-player { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; container-type: inline-size; }
+.cricket-identity { min-width: 0; width: 100%; }
+.cricket-player-name { display: block; color: var(--ui-text); font-weight: 650; font-size: clamp(0.85rem, 2cqw, 1.2rem); line-height: 1.3; }
 .mini-place { color: #ffda80; font-size: 0.75rem; font-weight: 750; }
-.cricket-points { color: var(--ui-accent); font-size: clamp(1.5rem, 4cqw, 2.8rem); line-height: 1.1; letter-spacing: -0.04em; }
-.cricket-player-stats { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; color: var(--ui-muted); font-size: 0.65rem; font-weight: 400; line-height: 1.5; }
-.cricket-mark { display: block; width: 100%; max-width: 3.8rem; height: auto; margin-inline: auto; color: var(--ui-secondary); fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; }
-.cricket-mark.empty { color: #48667b; }
-.cricket-board td.closed { background: #173c32; }
-.cricket-board td.closed .cricket-mark { color: #79e5b3; }
+.cricket-score { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.65rem; width: 100%; font-size: clamp(2.8rem, 26cqw, 5.5rem); }
+.cricket-score > .cricket-avatar { width: 1em; height: 1em; margin: 0; }
+.cricket-points { color: var(--ui-text); font-size: 1em; line-height: 1; letter-spacing: -0.04em; }
+.cricket-player-stats { display: flex; justify-content: center; flex-wrap: wrap; gap: 0.1rem 0.6rem; color: var(--ui-secondary); font-size: 0.65rem; font-weight: 400; line-height: 1.5; }
+.cricket-board tbody td { height: clamp(3.1rem, 6.5vh, 5.5rem); padding: 0.35rem; background: #1c2733; border-top: 1px solid #101c28; border-left: 1px solid #101c28; }
+.cricket-board tbody tr:nth-child(odd) td { background: #263440; }
+.cricket-board tbody td.active { box-shadow: inset 3px 0 var(--accent), inset -3px 0 var(--accent); }
+.cricket-board .target-heading { background: transparent; }
+.cricket-board .target-label { position: sticky; left: 0; z-index: 1; color: #fff; background: #0754c9; border-top: 1px solid #09409a; font-size: clamp(1.35rem, 2.5cqw, 1.85rem); font-weight: 750; }
+.cricket-board .target-label > span { position: relative; z-index: 1; }
+.cricket-mark { display: block; width: 2.6rem; height: 2.6rem; margin-inline: auto; color: #f4f7fa; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; }
+.cricket-board tbody tr td.closed { background: #076143; }
+.cricket-board td.closed .cricket-mark { color: #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @container (max-width: 500px) {
-  .cricket-board .player-column { width: 34%; }
-  .cricket-board thead th { font-size: 0.7rem; }
-  .cricket-board tbody th.who { padding: 0.5rem; }
-  .cricket-board th, .cricket-board td { padding-inline: 0.15rem; }
-  .cricket-player { gap: 0.2rem; }
+  .cricket-board th.who { padding: 0.65rem 0.4rem; }
   .cricket-player-stats { font-size: 0.6rem; }
 }
 
@@ -706,7 +729,7 @@ function scoreText(player: View['players'][number]): string {
 .slot { background: linear-gradient(145deg, #1d4057, #102a3c); border-color: #345b72; border-radius: 14px; min-height: 6.5rem; box-shadow: inset 0 1px #ffffff08; }
 .slot.thrown { border-bottom: 3px solid var(--ui-accent); }.slot.empty { color: #56748b; }.slot.hint { color: #86a6bf; background: #0d2333; }.slot.hint.next { background: #332b18; color: #ffdc80; border-color: #977b38; }
 .turn-total { border: 1px solid var(--ui-border-soft); border-radius: 12px; background: var(--ui-surface-deep); padding: 0.65rem 1rem; }.turn-total .value { color: var(--ui-accent); }
-.cricket-board-wrap { border: 1px solid var(--ui-border); border-radius: 12px; padding: 0.4rem; background: var(--ui-surface-deep); }
+.cricket-board-wrap { border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface-deep); }
 @media (max-width: 580px) { .player { padding: 0.85rem; }.meta { letter-spacing: 0.03em; font-size: 0.7rem; }.slot { min-height: 5rem; font-size: 2.6rem; } }
 
 </style>
