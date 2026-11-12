@@ -64,13 +64,14 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
     const player = next.players.find(p => p.playerId === next.activePlayerId);
     if (player?.checkout?.length) words.push(`You require ${player.score}.`);
   }
-  if (!corrected && next.gameType === 'golf' && next.status === 'playing') {
+  if (!corrected && next.gameType === 'golf' && next.status === 'playing' && !next.awaitingTakeout) {
     const hole = next.players.find(p => p.playerId === next.activePlayerId)?.detail.hole;
     const previousHole = old?.players.find(p => p.playerId === old.activePlayerId)?.detail.hole;
     const completedHole = events.some(e => e.type === 'golf.hole');
     // Read the actual current target, not the projected remaining-dart hints:
-    // handicaps can keep a hole open across several turns.
-    if ((starts || ((completedHole || turnChanged) && hole !== previousHole)) &&
+    // handicaps can keep a hole open across several turns. After the last dart,
+    // wait for handover and call the incoming target even if its number is unchanged.
+    if ((starts || turnChanged || (completedHole && hole !== previousHole)) &&
       typeof hole === 'number' && Number.isInteger(hole) && hole > 0) {
       words.push(`Target ${hole}.`);
     }
