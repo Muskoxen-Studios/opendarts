@@ -1,6 +1,7 @@
 import { reactive, readonly } from 'vue';
 import type { MatchView, Segment, DomainEvent } from '@darts/schema';
 import { C, mmToSvg, segmentCentre } from './boardGeometry.ts';
+import { planAudio, playAudio, stopAudio } from './audio.ts';
 
 export interface Profile {
   id: string;
@@ -582,6 +583,8 @@ export const api = {
 };
 
 export function connect(): void {
+  let audioEvents: DomainEvent[] = [];
+  let receivedView = false;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
 
@@ -590,6 +593,8 @@ export function connect(): void {
   };
 
   ws.onclose = () => {
+    audioEvents = [];
+    stopAudio();
     state.connected = false;
     setTimeout(connect, 1500);
   };
@@ -607,7 +612,13 @@ export function connect(): void {
         if (old && (!next || old.matchId !== next.matchId || (last && (
           !next.recent.some((dart) => dart.id === last.id) ||
           (next.recent.at(-1)?.id === last.id && next.recent.at(-1)?.label !== last.label)
-        )))) clearBoardEffect();
+        )))) {
+          clearBoardEffect();
+          stopAudio();
+        }
+        playAudio(planAudio(receivedView ? old : null, next, audioEvents));
+        receivedView = true;
+        audioEvents = [];
         state.view = next;
         break;
       }
@@ -667,6 +678,7 @@ export function connect(): void {
         break;
       }
       case 'domain':
+        audioEvents.push(...(msg.events ?? []));
         for (const e of msg.events ?? []) announce(e);
         break;
       default:

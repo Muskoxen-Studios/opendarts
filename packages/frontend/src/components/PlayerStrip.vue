@@ -49,39 +49,42 @@ watch(
     <article v-for="p in view.players" :key="p.playerId" :ref="(el) => setMiniEl(p.playerId, el as Element | null)"
       class="mini" :class="{ active: p.isActive, winner: view.winnerId === p.playerId, out: isOut(p, view.gameType) }"
       :style="{ '--accent': p.color }">
-      <!--
-        Killer is played against everyone else's number, lives and killer
-        status, so all of that has to be visible here too -- not just for
-        whoever is throwing. The number takes the big slot other games use
-        for the score; lives are hearts, same idea as the big card's, plus
-        a knife the moment a player becomes a killer.
-      -->
-      <template v-if="isKiller">
-        <span class="mini-score">
-          <template v-if="killer(p).eliminated">OUT</template>
-          <template v-else-if="killer(p).number === null">?</template>
-          <template v-else>{{ killer(p).number }}</template>
-        </span>
-        <span class="mini-lives">
-          <span v-for="i in killer(p).startingLives" :key="i" class="life"
-            :style="{ '--fill': heartFill(p, i) }" />
-        </span>
-      </template>
-      <!--
-        Gotcha counts up to a target, so the score is the number that moves --
-        but what you actually judge an opponent by is how far they still have
-        to go. Both, the gap small underneath.
-      -->
-      <template v-else-if="isGotcha">
-        <span class="mini-score">{{ p.score }}</span>
-        <span class="mini-togo">{{ gotcha(p).remaining }} to go</span>
-      </template>
-      <span v-else class="mini-score">{{ p.score }}</span>
-      <div>
-        <span class="mini-name"><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</span>
-        <span v-if="killer(p).isKiller" class="mini-knife" title="Killer">&#x1F52A;</span>
-      </div>
-      <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>
+      <PlayerAvatar class="mini-avatar" :player-id="p.playerId" />
+      <div class="mini-content">
+        <div class="mini-identity">
+          <span class="mini-name" :title="p.name">{{ p.name }}</span>
+          <span v-if="killer(p).isKiller" class="mini-knife" title="Killer">&#x1F52A;</span>
+        </div>
+        <!--
+          Killer is played against everyone else's number, lives and killer
+          status, so all of that has to be visible here too -- not just for
+          whoever is throwing. The number takes the big slot other games use
+          for the score; lives are hearts, same idea as the big card's, plus
+          a knife the moment a player becomes a killer.
+        -->
+        <template v-if="isKiller">
+          <span class="mini-score">
+            <template v-if="killer(p).eliminated">OUT</template>
+            <template v-else-if="killer(p).number === null">?</template>
+            <template v-else>{{ killer(p).number }}</template>
+          </span>
+          <span class="mini-lives">
+            <span v-for="i in killer(p).startingLives" :key="i" class="life"
+              :style="{ '--fill': heartFill(p, i) }" />
+          </span>
+        </template>
+        <!--
+          Gotcha counts up to a target, so the score is the number that moves --
+          but what you actually judge an opponent by is how far they still have
+          to go. Both, the gap small underneath.
+        -->
+        <template v-else-if="isGotcha">
+          <span class="mini-score">{{ p.score }}</span>
+          <span class="mini-togo">{{ gotcha(p).remaining }} to go</span>
+        </template>
+        <span v-else class="mini-score">{{ p.score }}</span>
+        <span v-if="placeOf(p)" class="mini-place">{{ ordinal(placeOf(p)!) }}</span>
+        </div>
     </article>
   </div>
 </template>
@@ -131,9 +134,8 @@ watch(
 .mini {
   flex: none;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
+  align-items: stretch;
+  gap: 0.65rem;
   min-width: 9.5rem;
   border: 1px solid var(--ui-border);
   border-top: 3px solid var(--accent);
@@ -141,6 +143,24 @@ watch(
   padding: 0.75rem 1.1rem;
   background: var(--ui-surface);
   transition: background 120ms ease, border-color 120ms ease;
+}
+
+.mini-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.mini-identity { min-width: 0; max-width: 100%; }
+.mini > .mini-avatar {
+  width: clamp(2rem, 4vw, 3.5rem);
+  height: auto;
+  align-self: stretch;
+  margin: 0;
+  border-radius: 8px;
 }
 
 /*
@@ -235,16 +255,16 @@ watch(
 .strip { gap: 0.8rem; padding: 0.2rem 0.2rem 0.5rem; }
 .mini { border-radius: 14px; background: linear-gradient(155deg, #153347, #0d2232); padding: 0.9rem 1.25rem; box-shadow: 0 6px 20px #0002; }
 .mini.active { background: radial-gradient(ellipse at top, color-mix(in srgb, var(--accent) 24%, transparent), transparent 85%), var(--ui-surface); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 6px 24px #0003; }
-.mini.active .mini-name { color: var(--ui-text); }.mini-score { letter-spacing: -0.04em; line-height: 1.1; }.mini-name { margin-top: 0.25rem; }
+.mini.active .mini-name { color: var(--ui-text); }.mini-score { letter-spacing: -0.04em; line-height: 1.1; }
 @media (prefers-reduced-motion: reduce) { .strip { scroll-behavior: auto; } }
 
-.strip.fit { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); overflow: visible; }
+.strip.fit { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); overflow: visible; }
 .strip.fit .mini { min-width: 0; padding: 0.55rem 0.7rem; }
 .strip.fit .mini-score { font-size: 2.7rem; }
 .strip.fit .mini-name { max-width: 100%; font-size: 1.05rem; white-space: normal; overflow-wrap: anywhere; text-align: center; }
 .strip.fit .mini-togo, .strip.fit .mini-place { font-size: 0.9rem; }
 @media (max-width: 640px) {
-  .strip.fit { grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); gap: 0.4rem; }
+  .strip.fit { grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.4rem; }
   .strip.fit .mini { padding: 0.35rem; }.strip.fit .mini-score { font-size: 2rem; }
   .strip.fit .mini-name { font-size: 0.8rem; }.strip.fit .mini-togo { font-size: 0.7rem; }
 }
@@ -252,7 +272,7 @@ watch(
 
 @media (max-height: 600px) and (orientation: landscape) {
   .strip.fit { padding-bottom: 0.2rem; }
-  .strip.fit .mini { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 0.5rem; padding: 0.3rem 0.6rem; }
+  .strip.fit .mini { gap: 0.5rem; padding: 0.3rem 0.6rem; }
   .strip.fit .mini-score { font-size: 2rem; }
   .strip.fit .mini-name { margin: 0; font-size: 0.85rem; }
 }

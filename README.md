@@ -399,6 +399,11 @@ the strokes left before a hole is abandoned. With one attempt left on hole 5,
 a fresh turn shows `5, 6, 6`. Hitting a hole early updates the remaining hints:
 hit 5 then 6 and the final slot suggests 7.
 
+With voice announcements enabled, the caller says “Target 1” at the start and
+announces each new target after a hit or an abandoned hole. Calls follow the
+active player's actual hole, including changes when play passes to another
+player, and use the same speech queue as scores and misses.
+
 | Result | Points |
 |---|---|
 | 3 under par (albatross) | 5 |
@@ -699,6 +704,9 @@ remove it. When an email has a Gravatar, its avatar appears beside the player na
 throughout the app. Gravatar requests use a hash of the trimmed, lowercase email;
 images load through the server and missing images or offline lookups leave names
 visible without an avatar. No Gravatar account is required to play.
+Outside Cricket's table, player fields show the name above the score with an
+avatar spanning the field's content height on the left. The current player's
+card shows a large avatar beside the score, with the score aligned to the right.
 A rename flows through to historical
 matches, because matches reference the profile rather than copying its name.
 Deleting one soft-deletes, so its historical matches survive.
@@ -792,6 +800,23 @@ buttons grey out and say why, rather than offering dead controls.
 
 Reachable from the Settings tab:
 
+- **Sounds & voice** — opt-in spoken turn totals, misses, busts and leg/match wins,
+  plus X01 checkout requirements when a player comes to the oche with a legal
+  checkout route. Gotcha knockbacks say “Gotcha!” instead of a sound effect or
+  confirmation knock. Separate sound effects cover busts (shattering glass), wins
+  and Minefield explosions, with a shared volume slider and test button. Mine
+  and blast-zone hits play a short booming explosion; a chain plays one burst.
+  Exploding throws skip the confirmation knock and spoken turn score.
+  With sound effects enabled, each registered throw that is neither a miss nor
+  a bust also gets a short, dull knock like a dart hitting the board. This plays immediately, even
+  during commentary, so missing feedback can flag a lost board connection.
+  Preferences are saved per browser; both switches default to off. Speech uses
+  the system's English voice (availability depends on the browser and installed
+  voices). Click or press a key in the app to allow playback. Hidden tabs stay
+  silent; reconnecting, undoing or correcting darts does not replay old calls.
+  Calls omit player names and play in order, waiting for each announcement to
+  finish even when the simulator immediately advances the turn. An idle audio
+  output gets a one-second lead-in before playback; effects finish before speech.
 - **Celebrations** — on/off, and how long they stay on screen.
 - **Bust & Gotcha burst** — how loud the dartboard gets when a turn busts or a
   knockback lands: *full* (shockwave and debris), *subtle* (flash and shake), or
