@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.6.0...v0.7.0) (2026-11-12)
+
+
+### Features
+
+* add Conquest and keep live scoring responsive ([#44](https://github.com/Muskoxen-Studios/opendarts/issues/44)) ([51a9c2a](https://github.com/Muskoxen-Studios/opendarts/commit/51a9c2a9652645221058a3d5c2074b5ba0625f9d))
+* improve Cricket scoreboard layout and player visibility ([#43](https://github.com/Muskoxen-Studios/opendarts/issues/43)) ([e95d382](https://github.com/Muskoxen-Studios/opendarts/commit/e95d382133b8183b2dd507481f320149e895eac8))
+* reuse and reorder players in match setup ([#46](https://github.com/Muskoxen-Studios/opendarts/issues/46)) ([2d2a83a](https://github.com/Muskoxen-Studios/opendarts/commit/2d2a83ac69a6d243d91785c398de3e92988bdc54))
+
+
+### Bug Fixes
+
+* defer Golf target calls until player handover ([#40](https://github.com/Muskoxen-Studios/opendarts/issues/40)) ([cacf072](https://github.com/Muskoxen-Studios/opendarts/commit/cacf072fefaa9336383a82e27a9cd4c03fd4f1ee))
+
 ## [0.6.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.5.2...v0.6.0) (2026-11-12)
 
 
