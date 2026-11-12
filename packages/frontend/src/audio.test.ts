@@ -132,13 +132,32 @@ describe('Golf target announcements', () => {
       }
     }
   });
-  it('keeps miss and score calls before the new target and does not repeat it after takeout', () => {
+  it('defers the new target after a third-dart miss until takeout, including solo play', () => {
     const next = golf(2, { awaitingTakeout: true, recent: [{ id: 'miss', playerId: 'alice', label: 'MISS', value: 0 }] });
     expect(planAudio(golf(1), next, [
       completed(1, false), { type: 'throw.recorded', playerId: 'alice', dartIndex: 2, value: 0 },
       { type: 'turn.completed', playerId: 'alice', total: 0, darts: 3, busted: false },
-    ]).words).toEqual(['Miss.', 'No score.', 'Target 2.']);
-    expect(planAudio(next, { ...next, awaitingTakeout: false }, []).words).toEqual([]);
+    ]).words).toEqual(['Miss.', 'No score.']);
+    expect(planAudio(next, { ...next, awaitingTakeout: false }, []).words).toEqual(['Target 2.']);
+  });
+  it.each([1, 2, 5])('after a third-dart hit waits for handover to announce the incoming target %i', (incomingHole) => {
+    const old = golf(1);
+    const held = golf(2, {
+      awaitingTakeout: true,
+      turn: { throws: [], total: 3, dartsRemaining: 0, hints: [] },
+      recent: [{ id: 'hit', playerId: 'alice', label: 'S1', value: 1 }],
+    });
+    const bob = { ...held.players[0]!, playerId: 'bob', name: 'Bob', isActive: false, detail: { hole: incomingHole, holes: 18 } };
+    old.players.push(bob);
+    held.players.push(bob);
+    expect(planAudio(old, held, [
+      completed(1, true), { type: 'throw.recorded', playerId: 'alice', dartIndex: 2, value: 3 },
+      { type: 'turn.completed', playerId: 'alice', total: 3, darts: 3, busted: false },
+    ]).words).toEqual(['3.']);
+    const incoming = { ...held, activePlayerId: 'bob', awaitingTakeout: false,
+      turn: { throws: [], total: 0, dartsRemaining: 3, hints: [] } };
+    expect(planAudio(held, incoming, []).words).toEqual([`Target ${incomingHole}.`]);
+    expect(planAudio(incoming, incoming, []).words).toEqual([]);
   });
   it('calls the incoming player’s actual hole when players are at different targets', () => {
     const old = golf(5, { awaitingTakeout: true });

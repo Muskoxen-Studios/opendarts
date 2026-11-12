@@ -400,9 +400,10 @@ a fresh turn shows `5, 6, 6`. Hitting a hole early updates the remaining hints:
 hit 5 then 6 and the final slot suggests 7.
 
 With voice announcements enabled, the caller says “Target 1” at the start and
-announces each new target after a hit or an abandoned hole. Calls follow the
-active player's actual hole, including changes when play passes to another
-player, and use the same speech queue as scores and misses.
+announces each new target after a hit or an abandoned hole while darts remain.
+After the third dart it waits for the player switch, then announces the incoming
+player's target, even if it is the same number. Calls follow the active player's
+actual hole and use the same speech queue as scores and misses.
 
 | Result | Points |
 |---|---|
