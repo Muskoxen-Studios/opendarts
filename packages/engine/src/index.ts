@@ -10,3 +10,4 @@ export * from './killer.ts';
 export * from './evenOdd.ts';
 export * from './registry.ts';
 export * from './match.ts';
+export * from './conquest.ts';

@@ -2,7 +2,7 @@
 import PlayerAvatar from './components/PlayerAvatar.vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseSegmentLabel, type Segment } from '@darts/schema';
-import { minefield } from './gameDetail.ts';
+import { conquest, minefield } from './gameDetail.ts';
 import BoardControls from './components/BoardControls.vue';
 import BoardEffect from './components/BoardEffect.vue';
 import Celebration from './components/Celebration.vue';
@@ -233,7 +233,7 @@ async function rematch(): Promise<void> {
 </script>
 
 <template>
-  <div class="app" :class="{ 'match-screen': matchScreen }">
+  <div class="app" :class="{ 'match-screen': matchScreen, 'conquest-match': matchScreen && view?.gameType === 'conquest' }">
     <header class="top" :class="{ 'match-header': matchScreen }" @keydown.esc="headerExpanded = false">
       <div v-if="matchScreen" class="compact-toolbar">
         <span class="compact-board-status" role="status">
@@ -320,7 +320,7 @@ async function rematch(): Promise<void> {
             </div>
             <PlayerStrip v-if="view.gameType !== 'cricket'" :view="view" fit />
 
-            <div class="play" :class="{ 'minefield-board': view.gameType === 'minefield' }">
+            <div class="play" :class="{ 'minefield-board': view.gameType === 'minefield' || view.gameType === 'conquest' }">
               <section class="left">
                 <Scoreboard :view="view" />
               </section>
@@ -330,6 +330,9 @@ async function rematch(): Promise<void> {
                   <Dartboard
                     :highlight="hintSegments"
                     :highlight-numbers="hintNumbers"
+                    :conquest="view.gameType === 'conquest' && view.players[0] ? conquest(view.players[0]).territories : undefined"
+                    :conquest-players="view.players"
+                    :conquest-split="view.players[0] ? conquest(view.players[0]).splitTerritories : false"
                     :minefield="view.gameType === 'minefield' && view.players[0] ? minefield(view.players[0]).field : undefined"
                     :minefield-defusal="view.players[0] ? minefield(view.players[0]).defusal : true"
                     :minefield-reset-negative="view.players[0] ? minefield(view.players[0]).resetNegative : false"
@@ -339,6 +342,7 @@ async function rematch(): Promise<void> {
                   />
                   <BoardEffect :effect="store.boardEffect" :level="store.effects" />
                 </div>
+                <p v-if="view.gameType === 'conquest'" class="minefield-legend">Colours = factions · ★ = home · badges = attack marks · gold border = capturable</p>
                 <p v-if="view.gameType === 'minefield'" class="minefield-legend">
                   Badges = HP · red = mine<span v-if="view.players[0] && minefield(view.players[0]).blastRadius"> (resets score) · amber = blast zone</span>
                   · {{ view.players[0] && minefield(view.players[0]).defusal ? 'double/triple defuses' : 'defusal off' }}
@@ -363,7 +367,8 @@ async function rematch(): Promise<void> {
                           >&times;</button>
                         </li>
                       </ul>
-                      <div v-if="availableToJoin.length" class="join">
+                      <p v-if="view.gameType === 'conquest'" class="hint">Conquest homes are fixed; late joins are unavailable.</p>
+                      <div v-else-if="availableToJoin.length" class="join">
                         <button
                           v-for="p in availableToJoin"
                           :key="p.id"
@@ -706,5 +711,15 @@ nav button.on { background: #56cfff1a; color: var(--ui-accent); border-color: #5
   .match-heading :deep(.turn-notice) { flex-basis: 100%; order: 1; }
   .match-heading .board-history { flex: 1 1 100%; flex-wrap: wrap; }
   .board-history .recent { flex-basis: 100%; }
+}
+/* Territory ownership must remain readable on phones; let the board and faction
+   list scroll at their natural size instead of shrinking the entire match. */
+@media (max-width: 900px) {
+  .conquest-match :deep(.fit-viewport) { overflow: auto; }
+  .conquest-match :deep(.fit-content) { transform: none !important; }
+  .conquest-match .play-view > :deep(.strip) { display: none; }
+}
+@media (max-width: 640px) and (orientation: portrait) {
+  .conquest-match .right { grid-row: 1; }
 }
 </style>

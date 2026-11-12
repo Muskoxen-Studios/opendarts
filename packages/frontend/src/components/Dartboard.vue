@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { parseSegmentLabel, type Coords, type Segment } from '@darts/schema';
+import { parseSegmentLabel, type Coords, type Segment, type ConquestTerritoryView } from '@darts/schema';
 import {
   boardCells,
   BULL_INNER_R,
@@ -43,6 +43,9 @@ const props = defineProps<{
     readonly resetsScore: boolean;
     readonly penalty: number | null;
   }[];
+  conquest?: readonly ConquestTerritoryView[];
+  conquestPlayers?: readonly { readonly playerId: string; readonly name: string; readonly color: string }[];
+  conquestSplit?: boolean;
   minefieldDefusal?: boolean;
   minefieldResetNegative?: boolean;
 }>();
@@ -74,9 +77,22 @@ function isBlast(number: number): boolean {
 function mineDescription(number: number): string {
   return mineMarkers.value.find((cell) => cell.number === number)?.description ?? '';
 }
+function conquestCell(segment: Segment) {
+  if (!props.conquest || segment.number < 1 || segment.number > 20 || segment.ring === 'MISS') return;
+  const lane = props.conquestSplit && (segment.ring === 'TRIPLE' || segment.ring === 'SINGLE_INNER') ? 'inner' : 'outer';
+  return props.conquest.find((t) => t.number === segment.number && t.lane === lane);
+}
+function factionColor(id: string | null) { return props.conquestPlayers?.find((p) => p.playerId === id)?.color ?? '#505865'; }
+function factionName(id: string | null) { return props.conquestPlayers?.find((p) => p.playerId === id)?.name ?? 'Neutral'; }
+const conquestMarkers = computed(() => (props.conquest ?? []).filter((t) => t.homeId || t.marks).map((t) => ({
+  ...t, ...segmentCentre({ number: t.number, ring: t.lane === 'inner' ? 'SINGLE_INNER' : 'SINGLE_OUTER' }),
+  description: `${t.number}${props.conquestSplit ? ` ${t.lane}` : ''}: ${factionName(t.ownerId)}${t.homeId ? `, home of ${factionName(t.homeId)}` : ''}, ${t.marks}/${t.required} attack marks${t.attackerId ? ` by ${factionName(t.attackerId)}` : ''}`,
+})));
 const svg = ref<SVGSVGElement | null>(null);
 
 function fillOf(cell: (typeof cells)[number]): string {
+  const territory = conquestCell(cell.segment);
+  if (territory) return factionColor(territory.ownerId);
   switch (cell.segment.ring) {
     case 'MISS':
       return cell.dark ? '#15181d' : '#191d23';
@@ -154,7 +170,7 @@ const dartMarks = computed(() =>
       :d="w.d"
       :fill="fillOf(w)"
       class="wedge"
-      :class="{ target: rankOf(w.segment) === 0, 'target-later': rankOf(w.segment) > 0, mine: isMine(w.segment.number), blast: isBlast(w.segment.number), fragile: mineNumbers.get(w.segment.number)?.hp === 1 }"
+      :class="{ target: rankOf(w.segment) === 0, 'target-later': rankOf(w.segment) > 0, mine: isMine(w.segment.number), blast: isBlast(w.segment.number), fragile: mineNumbers.get(w.segment.number)?.hp === 1, capturable: conquestCell(w.segment)?.capturable }"
       :aria-label="w.label"
       @click="fire(w.segment, $event)"
     >
@@ -219,6 +235,12 @@ const dartMarks = computed(() =>
       <text v-else y="10" class="mine-hp">{{ hpLabel(cell.hp) }}</text>
     </g>
 
+    <g v-for="t in conquestMarkers" :key="t.id" class="conquest-marker" :transform="`translate(${t.x} ${t.y})`" role="img" :aria-label="t.description">
+      <title>{{ t.description }}</title>
+      <rect x="-37" y="-24" width="74" height="48" rx="12" :stroke="factionColor(t.attackerId ?? t.ownerId)" />
+      <text y="9">{{ t.homeId ? '★ ' : '' }}{{ t.marks }}/{{ t.required }}</text>
+    </g>
+
     <g v-for="(m, i) in dartMarks" :key="`mark-${i}`" class="dart-mark">
       <circle :cx="m.x" :cy="m.y" :r="24" class="halo" :fill="props.markColor ?? '#ffd166'" />
       <circle :cx="m.x" :cy="m.y" :r="10" :fill="props.markColor ?? '#ffd166'" stroke="#0c0e12" stroke-width="3" />
@@ -265,6 +287,11 @@ const dartMarks = computed(() =>
 .mine-marker.armed text { fill: #ffe4e6; }
 .mine-marker .mine-hp { font-size: 36px; }
 .mine-marker .mine-multiplier { font-size: 30px; }
+
+.wedge.capturable { stroke: #ffd166; stroke-width: 4; }
+.conquest-marker { pointer-events: none; }
+.conquest-marker rect { fill: #10141d; stroke-width: 4; }
+.conquest-marker text { fill: #fff; text-anchor: middle; font: 700 22px system-ui, sans-serif; }
 
 .dart-mark { pointer-events: none; }
 .dart-mark .halo { opacity: 0.22; }

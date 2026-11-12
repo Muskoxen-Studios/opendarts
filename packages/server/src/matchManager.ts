@@ -1,6 +1,7 @@
 import { Match } from '@darts/engine';
 import {
   analyzeMatch,
+  MatchAnalyzer,
   CATALOGUE,
   computeCareer,
   evaluateMatch,
@@ -50,6 +51,7 @@ export class MatchManager {
   private resetBoard: (() => void) | undefined;
   private match: Match | null = null;
   private matchId: string | null = null;
+  private liveAnalyzer: MatchAnalyzer | null = null;
   /** Latest board status, surfaced to the UI as a connection indicator. */
   private boardOnline = false;
 
@@ -141,6 +143,9 @@ export class MatchManager {
     const id = this.store.createMatch(config.gameType, config, players);
     this.matchId = id;
     this.match = new Match(id, players, config);
+    this.liveAnalyzer = new MatchAnalyzer({
+      matchId: id, gameType: config.gameType, config, players, commands: [], endedAt: null,
+    });
     this.announced.clear();
     this.heldAtMatchStart.clear();
     for (const p of players) this.snapshotHeld(p.id);
@@ -162,6 +167,7 @@ export class MatchManager {
     if (!record) return null;
     this.matchId = matchId;
     this.match = Match.fromLog(matchId, record.players, record.config, record.commands);
+    this.liveAnalyzer = new MatchAnalyzer(record);
     this.announced.clear();
     this.heldAtMatchStart.clear();
     for (const p of this.match.view.players) this.snapshotHeld(p.playerId);
@@ -175,9 +181,18 @@ export class MatchManager {
     const wasFinished = this.match.finished;
     const events = this.match.apply(cmd);
 
-    // Persist the whole log: undo and correction edit history rather than
-    // appending, so an incremental append would drift from the real state.
-    this.store.replaceCommands(this.matchId, this.match.log);
+    if (cmd.type === 'UNDO' || cmd.type === 'CORRECT_THROW') {
+      // Historical edits replace the durable log and invalidate its projection.
+      this.store.replaceCommands(this.matchId, this.match.log);
+      this.liveAnalyzer = new MatchAnalyzer(this.liveRecord()!);
+    } else {
+      // Match normalises dart values before logging. Persist and project that
+      // exact command, without revisiting any of the previous commands.
+      const log = this.match.log;
+      const appended = log[log.length - 1]!;
+      this.store.appendCommand(this.matchId, log.length - 1, appended);
+      this.liveAnalyzer!.append(appended);
+    }
 
     if (events.length > 0) this.broadcast({ type: 'domain', events });
     this.broadcast({ type: 'view', view: this.match.view });
@@ -215,11 +230,10 @@ export class MatchManager {
    * Achievements held before this match started are never touched.
    */
   private checkLiveAchievements(): void {
-    const record = this.liveRecord();
-    if (!record || !this.match) return;
+    if (!this.match || !this.liveAnalyzer) return;
 
-    const analysis = analyzeMatch(record);
-    const history = [...this.finishedAnalyses.filter((a) => a.matchId !== record.matchId), analysis];
+    const analysis = this.liveAnalyzer.analysis;
+    const history = [...this.finishedAnalyses.filter((a) => a.matchId !== this.matchId), analysis];
 
     for (const player of this.match.view.players) {
       const id = player.playerId;

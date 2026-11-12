@@ -359,6 +359,7 @@ route('POST', '/api/simulate', async (_req, res, _p, body) => {
 
 /** Add a player to the match already in progress. */
 route('POST', '/api/match/players', (_req, res, _p, body) => {
+  if (manager.view?.gameType === 'conquest') return json(res, 409, { error: 'Conquest homes are fixed; late joins are unavailable.' });
   const id = (body as { profileId?: unknown })?.profileId;
   if (typeof id !== 'string') return json(res, 400, { error: 'profileId is required' });
   const profile = store.getProfile(id);

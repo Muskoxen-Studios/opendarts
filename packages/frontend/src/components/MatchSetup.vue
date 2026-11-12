@@ -7,7 +7,7 @@ import GameManual from './GameManual.vue';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
-type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd' | 'minefield';
+type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd' | 'minefield' | 'conquest';
 
 const GAME_LABELS: Record<GameType, string> = {
   x01: 'X01',
@@ -18,6 +18,7 @@ const GAME_LABELS: Record<GameType, string> = {
   killer: 'Killer',
   evenodd: 'Even/Odd',
   minefield: 'Minefield',
+  conquest: 'Conquest',
 };
 
 const gameType = ref<GameType>('x01');
@@ -102,6 +103,14 @@ const minefieldTarget = ref(301);
 const startingScore = ref(0);
 const targetScore = ref(100);
 
+// Conquest
+const conquestDefeat = ref<'elimination' | 'conversion'>('elimination');
+const conquestComeback = ref(false);
+const conquestSplit = ref(false);
+const conquestMultipliers = ref(false);
+const conquestFortified = ref(false);
+const conquestRosterValid = computed(() => selected.value.length >= 2 && 20 % selected.value.length === 0);
+
 // Killer
 const startingLives = ref(3);
 const friendlyFire = ref(false);
@@ -116,7 +125,7 @@ const showManual = ref(false);
 const busy = ref(false);
 const error = ref<string | null>(null);
 
-const canStart = computed(() => selected.value.length > 0 && !busy.value);
+const canStart = computed(() => selected.value.length > 0 && !busy.value && (gameType.value !== 'conquest' || conquestRosterValid.value));
 
 function toggle(id: string): void {
   const i = selected.value.indexOf(id);
@@ -247,6 +256,13 @@ async function useLastSettings(): Promise<void> {
       endRound.value = Number(cfg.endRound ?? 7);
       instantWin.value = cfg.instantWin !== false;
     }
+    if (setup.gameType === 'conquest') {
+      conquestDefeat.value = cfg.defeatMode === 'conversion' ? 'conversion' : 'elimination';
+      conquestComeback.value = cfg.comebackFoothold === true;
+      conquestSplit.value = cfg.splitTerritories === true;
+      conquestMultipliers.value = cfg.multipliers === true;
+      conquestFortified.value = cfg.fortifiedHomes === true;
+    }
     if (setup.gameType === 'minefield') {
       minefieldAutoHP.value = cfg.hitPoints == null;
       minefieldHP.value = Number(cfg.hitPoints ?? cfg.hitPointsPerPlayer ?? 2);
@@ -296,6 +312,13 @@ function handicapFor(id: string) {
 }
 
 function buildConfig(): unknown {
+  if (gameType.value === 'conquest') return {
+    gameType: 'conquest', defeatMode: conquestDefeat.value,
+    comebackFoothold: conquestComeback.value, splitTerritories: conquestSplit.value,
+    multipliers: conquestMultipliers.value, fortifiedHomes: conquestFortified.value,
+    legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value,
+  };
+
   if (gameType.value === 'cricket') {
     return {
       gameType: 'cricket',
@@ -452,7 +475,7 @@ async function start(): Promise<void> {
       </div>
       <div class="tabs">
         <button
-          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd', 'minefield'] as GameType[])"
+          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd', 'minefield', 'conquest'] as GameType[])"
           :key="g"
           :class="{ on: gameType === g }"
           :aria-pressed="gameType === g"
@@ -769,6 +792,34 @@ async function start(): Promise<void> {
         Blast zones clear independently and cost the number times its multiplier, rounded to whole points.
         HP is fixed for each leg; the next leg uses the current player count.
       </p>
+    </template>
+
+    <template v-else-if="gameType === 'conquest'">
+      <div class="grid">
+        <div class="field">
+          <label for="conquest-defeat">On home capture</label>
+          <select id="conquest-defeat" v-model="conquestDefeat">
+            <option value="elimination">Eliminate — take their land; players are out</option>
+            <option value="conversion">Convert — take their land; players join your faction</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="conquest-board">Territories</label>
+          <select id="conquest-board" v-model="conquestSplit">
+            <option :value="false">20 — one per number</option>
+            <option :value="true">40 — inner and outer halves</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="use-handicaps"><input v-model="conquestMultipliers" type="checkbox" /> Doubles count 2 marks; trebles count 3</label>
+        <label class="use-handicaps"><input v-model="conquestFortified" type="checkbox" /> Fortified homes: 9 permanent marks, no healing or comeback</label>
+        <label class="use-handicaps"><input v-model="conquestComeback" type="checkbox" :disabled="conquestFortified" /> Comeback foothold: reclaim your original home without adjacency</label>
+      </div>
+      <p class="hint">Capture adjacent territory with 3 marks. Enemy hits interrupt ordinary attacks from anywhere.
+        Last independent faction wins. The uniquely last leader can hit inner bull to arm an instant enemy-base capture. In the split board, doubles belong to the outer half and trebles to the inner half.
+        Fortified home damage persists; taking the attacker's neighbouring territory stops further damage.</p>
+      <p class="hint" :role="conquestRosterValid ? undefined : 'alert'">Select 2, 4, 5, 10 or 20 players for equally spaced outer homes. Late joins are unavailable.</p>
     </template>
 
     <!-- Even/Odd -->

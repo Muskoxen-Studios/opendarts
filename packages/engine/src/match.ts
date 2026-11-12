@@ -35,6 +35,7 @@ export class Match {
   private commands: MatchCommand[];
   private state: unknown;
   private events: DomainEvent[];
+  private recordedThrows: RecentThrow[] = [];
 
   constructor(matchId: string, players: Player[], rawConfig: unknown) {
     this.matchId = matchId;
@@ -71,26 +72,24 @@ export class Match {
    * it. Lets the UI correct a dart that has already left the current turn --
    * notably one that caused a bust and an unwanted handover.
    *
-   * Every THROW command produces exactly one `throw.recorded` event, so the
-   * two sequences line up index for index.
+   * Cache accepted darts alongside their recording events. Reading the last six
+   * must not scan the full command/event history on every scoreboard update.
+   * Undo and correction rebuild the cache along with the engine state.
    */
   recentThrows(limit = 6): RecentThrow[] {
-    const throwCommands = this.commands.filter((c) => c.type === 'THROW');
-    const recorded = this.events.filter((e) => e.type === 'throw.recorded');
-    const out: RecentThrow[] = [];
-    const start = Math.max(0, throwCommands.length - limit);
-    for (let i = start; i < throwCommands.length; i++) {
-      const cmd = throwCommands[i];
-      if (!cmd || cmd.type !== 'THROW') continue;
-      const ev = recorded[i];
-      out.push({
-        id: cmd.throw.id,
-        label: segmentLabel(cmd.throw.segment),
-        value: cmd.throw.value,
-        playerId: ev && ev.type === 'throw.recorded' ? ev.playerId : '',
-      });
-    }
-    return out;
+    return limit > 0 ? this.recordedThrows.slice(-limit).map((t) => ({ ...t })) : [];
+  }
+
+  private recordThrow(cmd: ForwardCommand, events: DomainEvent[]): void {
+    if (cmd.type !== 'THROW') return;
+    const recorded = events.find((e) => e.type === 'throw.recorded');
+    if (!recorded || recorded.type !== 'throw.recorded') return;
+    this.recordedThrows.push({
+      id: cmd.throw.id,
+      label: segmentLabel(cmd.throw.segment),
+      value: cmd.throw.value,
+      playerId: recorded.playerId,
+    });
   }
 
   /** The full command log. This is the source of truth. */
@@ -112,8 +111,6 @@ export class Match {
    * react to them (toasts, achievement checks) without re-processing history.
    */
   apply(cmd: MatchCommand): DomainEvent[] {
-    const before = this.events.length;
-
     if (cmd.type === 'UNDO') {
       const idx = this.lastThrowIndex();
       if (idx < 0) return [];
@@ -145,8 +142,9 @@ export class Match {
     this.commands.push(normalized);
     const result = this.engine.reduce(this.state, normalized, this.config);
     this.state = result.state;
-    this.events = [...this.events, ...result.events];
-    return this.events.slice(before);
+    for (const event of result.events) this.events.push(event);
+    this.recordThrow(normalized, result.events);
+    return result.events;
   }
 
   /**
@@ -171,11 +169,13 @@ export class Match {
   private refold(): void {
     this.state = this.engine.createInitialState(this.players, this.config);
     const events: DomainEvent[] = [];
+    this.recordedThrows = [];
     for (const cmd of this.commands) {
       if (!isForward(cmd)) continue;
       const result = this.engine.reduce(this.state, cmd, this.config);
       this.state = result.state;
       events.push(...result.events);
+      this.recordThrow(cmd, result.events);
     }
     this.events = events;
   }

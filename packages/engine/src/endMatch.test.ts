@@ -139,6 +139,14 @@ describe('ending a match early', () => {
     expect(m.view.winnerId).toBe('alice');
   });
 
+  it('gives Conquest to the independent leader with the most territory', () => {
+    const m = new Match('conquest-end', ROSTER, { gameType: 'conquest', multipliers: true });
+    m.apply({ type: 'START' });
+    play(m, 'T1', 'MISS', 'MISS');
+    m.apply({ type: 'END_MATCH' });
+    expect(m.view.winnerId).toBe('alice');
+  });
+
   it('does nothing to a match that is already over', () => {
     const m = start(X01);
     nineDarter(m);

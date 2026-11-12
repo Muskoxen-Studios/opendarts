@@ -195,6 +195,32 @@ export const MinefieldConfigSchema = z.object({
 });
 export type MinefieldConfig = z.infer<typeof MinefieldConfigSchema>;
 
+export const ConquestConfigSchema = z.object({
+  gameType: z.literal('conquest'),
+  defeatMode: z.enum(['elimination', 'conversion']).default('elimination'),
+  comebackFoothold: z.boolean().default(false),
+  splitTerritories: z.boolean().default(false),
+  multipliers: z.boolean().default(false),
+  fortifiedHomes: z.boolean().default(false),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type ConquestConfig = z.infer<typeof ConquestConfigSchema>;
+
+/** Shared board projection; ownership and attacks are faction leader ids. */
+export interface ConquestTerritoryView {
+  id: string;
+  number: number;
+  lane: 'inner' | 'outer';
+  ownerId: string | null;
+  attackerId: string | null;
+  marks: number;
+  required: number;
+  homeId: string | null;
+  capturable: boolean;
+}
+
 export const GameConfigSchema = z.discriminatedUnion('gameType', [
   X01ConfigSchema,
   CricketConfigSchema,
@@ -204,6 +230,7 @@ export const GameConfigSchema = z.discriminatedUnion('gameType', [
   KillerConfigSchema,
   EvenOddConfigSchema,
   MinefieldConfigSchema,
+  ConquestConfigSchema,
 ]);
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 export type GameType = GameConfig['gameType'];

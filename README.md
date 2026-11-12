@@ -532,6 +532,52 @@ sparks; defusal uses a separate green effect. Effects settings and reduced
 motion are respected. New legs, restarts, undo and correction replay account
 for all shared hazards and Gotcha scores. See the setup manual for full rules.
 
+### Conquest
+
+Conquest is a territory game with **elimination** and **conversion** modes.
+Each player starts with one outer home in their colour, equally spaced in physical
+board order; valid starting rosters are 2, 4, 5, 10 or 20 players. Three marks
+capture a neighbouring field. Enemy hits reset ordinary attacks from anywhere;
+if adjacent, the same dart begins the new attack. Friendly hits defend ordinary
+fields. Progress persists between turns and after losing adjacency, but additional
+marks always require current adjacency. Captures apply immediately within the
+three-dart turn. Misses and outer bull do nothing.
+
+Every home capture transfers all of the defeated faction's territory to the
+conqueror. Elimination removes its players and ordinary attacks. Conversion also
+recruits its players and transfers its attacks; allies share counters and defense while
+keeping seating order. Captured homes become ordinary territory, and capturing
+the surviving original capital transfers the entire faction again. The last
+independent faction's original leader wins immediately, without needing every
+territory. Converted allies do not receive individual match wins.
+
+**Power of God:** the uniquely last independent faction leader (strictly fewer
+territories than every other independent faction) can hit inner bull to arm one
+remote instant capture of an enemy capital, including a fortified home, and
+**all territory owned by that faction**. Territory always transfers to the attacker,
+even in elimination mode; defeated players follow the configured elimination/conversion rule. Converted and eliminated players
+cannot arm it and do not enter the ranking. Misses and other fields preserve the
+charge across turns; catching up, tying for last, losing the home or resetting
+the leg clears it. Charges do not stack and a fresh inner bull is needed to
+rearm. On the split board, only the outer home (outer single/double) triggers it.
+The panel shows eligibility and armed status, with bull/capital board highlights.
+
+| Config | Default | Behaviour and purpose |
+|---|---|---|
+| `defeatMode` | `elimination` | `conversion` keeps conquered players involved as allies and accelerates faction growth. |
+| `comebackFoothold` | `false` | Defeated players keep turns and may reclaim their original ordinary home without adjacency. Converted players can use this to become independent; other land and allies stay with the former faction. No comeback after the leg ends. |
+| `splitTerritories` | `false` | 40 fields: inner/outer halves border same-ring neighbours and each other on the same number, never diagonally or through bull. Homes remain outer. Trebles affect inner fields; doubles affect outer fields. |
+| `multipliers` | `false` | Doubles/trebles award 2/3 marks rather than one; excess marks never spill to another field. |
+| `fortifiedHomes` | `false` | Homes need 9 permanent marks. Neither defense nor sabotage heals damage. Only adjacent enemies add marks; the final attacker captures, even if others contributed. Captured fortified homes cannot be comeback footholds, overriding `comebackFoothold`. |
+| `roundLimit` | `null` | Optional cap awards the leg to the independent leader owning most territories; converted/eliminated players rank below leaders and ties use seat order. End game uses the same ranking after banked sets/legs. |
+
+The live board colours ownership, marks homes with a star, shows attack progress
+and highlights capturable fields. The faction panel shows allegiance and home
+damage. Late joins are rejected because the initial spacing is fixed; departures
+are allowed. Removing a leader dissolves their faction and neutralises its land.
+After departures, subsequent legs spread the remaining homes as evenly as possible.
+The [Conquest manual](packages/frontend/src/manuals/conquest.md) covers all interactions.
+
 ### Manuals
 
 Each game has a manual — its full rules — behind the **manual** button on the
@@ -732,6 +778,12 @@ Three things fall out of this that are painful to retrofit:
    history is corrected too.
 3. **Corrections propagate.** Fixing a misdetected dart updates the match,
    career statistics and achievements consistently.
+
+Ordinary commands append one durable log entry and update a live analysis with
+only the new command. Undo and correction replace the edited log and rebuild
+that analysis. Recent-dart views are cached too, so routine scoring does not
+replay or rewrite the whole match as the game grows. Simulated throws and real
+board throws use this same path.
 
 Progress is written after every dart, so bars move during a match rather than
 only when it ends, and every achievement declares its target statically so a
