@@ -121,7 +121,7 @@ be 24+.
 
 ## Packaging
 
-See the Packaging section of the root README. The one thing worth knowing here:
+See [Packaging](../../docs/development.md#packaging). The one thing worth knowing here:
 `@darts/*` must resolve through **symlinks**, because Node refuses to
 type-strip TypeScript whose real path is inside `node_modules`. electron-builder
 prunes those links, and `scripts/package/afterPack.cjs` puts them back.
