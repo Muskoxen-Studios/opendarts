@@ -2,6 +2,16 @@
 
 For a feature overview, see the [README](../README.md). Full game rules are available in the setup screen’s **manual** button and in the [game manuals](../packages/frontend/src/manuals/).
 
+## Match setup
+
+In the setup screen's **Players** section, **Use last game's players** selects
+the last finished game's lineup in its original order while keeping the game and
+rules currently chosen. Deleted profiles are skipped. **Shuffle players** randomly
+reorders the selected lineup; numbered chips show the resulting throwing order.
+Drag the selected players by their handles to change the order with a mouse or
+touch, or focus a handle and use the arrow keys. Separate × buttons remove players.
+Shuffling requires at least two selected players and preserves their handicaps.
+
 ## The live match screen
 
 During play, the header collapses to a compact bar with board status, board

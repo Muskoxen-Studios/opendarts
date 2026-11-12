@@ -14,6 +14,8 @@ Board Manager; no Autodarts cloud game service or account is required.
   for desktop screens and portrait phones.
 - **Flexible matches** — legs and sets, optional round limits, and handicaps in
   supported modes so mixed abilities can play together.
+- **Player order** — reuse the last game's lineup, shuffle players, or reorder
+  them with mouse, touch or keyboard controls.
 - **Help at the oche** — X01 checkout routes in the dart slots and on the board,
   plus target hints for Golf.
 - **Match controls** — undo, correct a misread dart, end a turn or finish a game
