@@ -10,6 +10,6 @@
     "@darts/schema": "*",
     "@darts/engine": "*",
     "@darts/stats": "*",
-    "ws": "^8.22.1"
+    "ws": "^8.22.2"
   }
 }
