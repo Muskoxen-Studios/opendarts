@@ -93,8 +93,15 @@ describe('announcer decisions', () => {
   it('plays one explosion for mine or blast-zone hits and chains, including alongside a bust', () => {
     for (const hazard of ['mine', 'blast'] as const) {
       const hit = { type: 'minefield.exploded', playerId: 'alice', number: 20, hazard, value: -20, resetsScore: false, segment: { number: 20, ring: 'SINGLE_OUTER' }, coords: null } as const;
-      const next = view({ gameType: 'minefield' });
+      const next = view({ gameType: 'minefield', recent: [{ id: 'dart', playerId: 'alice', label: 'S20', value: 20 }] });
       expect(planAudio(view(), next, [hit, { ...hit, number: 5 }]).explosion).toBe(true);
+      for (const total of [-20, 0, 40]) {
+        expect(planAudio(view(), next, [hit,
+          { type: 'throw.recorded', playerId: 'alice', dartIndex: 2, value: 20 },
+          { type: 'turn.completed', playerId: 'alice', total, darts: 3, busted: false },
+        ])).toEqual({ words: [], cue: undefined, explosion: true });
+      }
+      expect(planAudio(view(), next, [hit, { type: 'throw.recorded', playerId: 'alice', dartIndex: 0, value: 20 }])).toEqual({ words: [], cue: undefined, explosion: true });
       expect(planAudio(view(), next, [hit, { type: 'player.busted', playerId: 'alice', reason: 'overshoot' }])).toMatchObject({ explosion: true, cue: 'bust', words: ['Bust.'] });
       expect(planAudio(view(), next, []).explosion).toBeUndefined();
       expect(planAudio(view(), next, [{ type: 'minefield.defused', playerId: 'alice', number: 20, segment: hit.segment, coords: null }]).explosion).toBeUndefined();

@@ -29,6 +29,7 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
   const checkout = events.find(e => e.type === 'x01.checkout');
   const bust = events.find(e => e.type === 'player.busted');
   const gotcha = events.some(e => e.type === 'gotcha.knockback');
+  const explosion = events.some(e => e.type === 'minefield.exploded');
   if (win && 'playerId' in win) {
     words.push(win.type === 'match.won' ? 'Game shot. Match won.' : 'Game shot. Leg won.');
     cue = 'win';
@@ -47,10 +48,9 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
       next.recent.at(-1)?.playerId === e.playerId && next.recent.at(-1)?.label === 'MISS');
     if (missed) words.push('Miss.');
     for (const e of events) {
-      if (e.type === 'turn.completed' && !e.busted) words.push(e.total === 0 ? 'No score.' : `${e.total}.`);
+      if (e.type === 'turn.completed' && !e.busted && !explosion) words.push(e.total === 0 ? 'No score.' : `${e.total}.`);
     }
   }
-  const explosion = events.some(e => e.type === 'minefield.exploded');
   // Only announce a requirement on arrival at the oche, with a server-provided
   // legal route. A bogey number or an undo must never trigger a checkout call.
   const starts = events.some(e => e.type === 'match.started');
@@ -76,7 +76,7 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
     }
   }
   const last = next.recent.at(-1);
-  const throwConfirmed = !gotcha && last && last.label !== 'MISS' &&
+  const throwConfirmed = !gotcha && !explosion && last && last.label !== 'MISS' &&
     events.some(e => e.type === 'throw.recorded' && e.playerId === last.playerId) &&
     !events.some(e => e.type === 'player.busted' || (e.type === 'turn.completed' && e.busted));
   return { words, cue, ...(throwConfirmed ? { throwConfirmed: true } : {}), ...(explosion ? { explosion: true } : {}) };

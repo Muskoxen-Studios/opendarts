@@ -806,6 +806,7 @@ Reachable from the Settings tab:
   confirmation knock. Separate sound effects cover busts (shattering glass), wins
   and Minefield explosions, with a shared volume slider and test button. Mine
   and blast-zone hits play a short booming explosion; a chain plays one burst.
+  Exploding throws skip the confirmation knock and spoken turn score.
   With sound effects enabled, each registered throw that is neither a miss nor
   a bust also gets a short, dull knock like a dart hitting the board. This plays immediately, even
   during commentary, so missing feedback can flag a lost board connection.
