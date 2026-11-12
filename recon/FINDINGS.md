@@ -187,3 +187,43 @@ against a dart that is not on an axis.
 The capture that settled it, `recon/captures/live-ws-2026-08-20T10-06-03-291Z.ndjson`,
 is worth keeping as a `replay` fixture: it is a real three-dart-then-takeout
 sequence, not a synthesised one.
+
+## 7. Detection 2.1.1 compatibility — CONFIRMED
+
+Captured 2026-11-12 against our real board at the same address. `/api/version`
+returned `2.1.1`. A passive 45-second capture recorded seven `state` frames,
+covering a complete T5, S13, S7 visit and takeout. The original capture is
+`recon/captures/autodarts-2.1.1-2026-11-12T09-18-45.616Z.ndjson`; its unaltered
+state frames are preserved in the tracked regression fixture
+`packages/bridge/src/fixtures/autodarts-2.1.1-turn.ndjson`.
+
+These observations confirm the changes first identified from the
+[HomeDarts local API implementation](https://github.com/Dennis-Otto/homedarts-for-autodarts/blob/main/custom_components/homedarts/local_api.py)
+and its [2.1 captured turn fixture](https://github.com/Dennis-Otto/homedarts-for-autodarts/blob/main/tests/fixtures/board_manager_2.1.0_frames.jsonl):
+
+- The `state` envelope remains `{type, data}` on `/api/events`.
+- Status/event values use camelCase, including `throw`, `takeout`,
+  `takeoutInProgress`, `throwDetected` and `takeoutFinished`.
+- Each dart is flat: `segmentName`, `segmentNumber`, `bed`, `multiplier`,
+  `coordsX`, `coordsY`, with `failed` and `bouncer` flags. Beds retain their
+  previous spelling, such as `SingleInner` and `Triple`.
+- `throws[]` remains cumulative, and the takeout clears it. `numThrows` is
+  absent; the count can be derived from the array length.
+- The first dart appears while `event` still says `takeoutFinished`, then is
+  repeated in a `throwDetected` frame. Deduplicate by cumulative array length,
+  not by the event word.
+- Only `state` frames arrived on `/api/events` during the capture. HTTP polling
+  provided 15 heartbeats. The patched source emitted exactly three throws
+  (15, 13, 7), one takeout start and one completion; all emitted events passed
+  `BoardEventSchema` validation.
+
+Failed darts were not observed in this capture. Based on the upstream handling,
+the adapter discards their location while preserving segment-based scoring, so
+a failed location at zero cannot plot as a bull.
+
+Previously the adapter rejected flat darts, and the server rejected forwarded
+camelCase statuses against `BoardStatusSchema`. Together these explain lost
+throws and the missing status indicator. Regression tests cover both formats,
+including event validation, deduplication and the takeout sequence. The source
+also forwards status from HTTP polling so an idle board restores the indicator
+without needing a new throw; HTTP snapshots do not generate scoring events.

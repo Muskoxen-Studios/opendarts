@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BOARD_NORM, segmentValue, type Ring, type Segment } from '@darts/schema';
+import { BOARD_NORM, BoardStatusSchema, segmentValue, type Ring, type Segment } from '@darts/schema';
 
 /**
  * THE ANTI-CORRUPTION BOUNDARY.
@@ -53,7 +53,40 @@ const RawThrowSchema = z.object({
   coords: z.unknown().optional(),
 });
 
-export type RawThrow = z.infer<typeof RawThrowSchema>;
+// Detection 2.1 flattened each dart; keep this translation at the boundary.
+const FlatThrowSchema = z.object({
+  segmentName: z.string(),
+  segmentNumber: z.number(),
+  bed: z.string(),
+  multiplier: z.number().optional(),
+  coordsX: z.unknown().optional(),
+  coordsY: z.unknown().optional(),
+  failed: z.boolean().optional(),
+}).transform((dart) => ({
+  segment: {
+    name: dart.segmentName,
+    number: dart.segmentNumber,
+    bed: dart.bed,
+    multiplier: dart.multiplier,
+  },
+  coords: dart.failed ? null : { x: dart.coordsX, y: dart.coordsY },
+}));
+
+const CompatibleThrowSchema = z.union([RawThrowSchema, FlatThrowSchema]);
+
+const statusNames = new Map(BoardStatusSchema.options.flatMap((status) => [
+  [status, status] as const,
+  [status[0]!.toLowerCase() + status.slice(1).replace(/ (\w)/g, (_, char: string) => char.toUpperCase()), status] as const,
+]));
+
+/** Accept the legacy words and Detection 2.1's camelCase enum, never guess. */
+export function normalizeStatus(raw: unknown) {
+  const status = typeof raw === 'string' ? statusNames.get(raw) : undefined;
+  if (!status) throw new ThrowShapeError('Unrecognised board status.', raw);
+  return status;
+}
+
+export type RawThrow = z.input<typeof CompatibleThrowSchema>;
 
 const BED_TO_RING: Record<string, Ring> = {
   Single: 'SINGLE_OUTER',
@@ -137,7 +170,7 @@ export function toCoords(raw: unknown): { x: number; y: number } | null {
 let seq = 0;
 
 export function normalizeThrow(raw: unknown, ts: string = new Date().toISOString()) {
-  const parsed = RawThrowSchema.safeParse(raw);
+  const parsed = CompatibleThrowSchema.safeParse(raw);
   if (!parsed.success) {
     throw new ThrowShapeError('Unrecognised throw object.', raw);
   }
