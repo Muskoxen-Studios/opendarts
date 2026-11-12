@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.5.2...v0.6.0) (2026-11-12)
+
+
+### Features
+
+* add match audio and improve player avatar layout ([#37](https://github.com/Muskoxen-Studios/opendarts/issues/37)) ([41682fe](https://github.com/Muskoxen-Studios/opendarts/commit/41682fefb25961484be4a32678565da321c9b39f))
+
+
+### Bug Fixes
+
+* **deps:** bump ws from 8.22.1 to 8.22.2 in the minor-and-patch group across 1 directory ([#32](https://github.com/Muskoxen-Studios/opendarts/issues/32)) ([c16a682](https://github.com/Muskoxen-Studios/opendarts/commit/c16a682807ed9232be1e16805087777fc72f9ddd))
+
 ## [0.5.2](https://github.com/Muskoxen-Studios/opendarts/compare/v0.5.1...v0.5.2) (2026-11-12)
 
 
