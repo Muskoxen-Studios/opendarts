@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/Muskoxen-Studios/opendarts/compare/v0.5.1...v0.5.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* explode whole mines and chain adjacent minefield hazards ([#35](https://github.com/Muskoxen-Studios/opendarts/issues/35)) ([bd5e718](https://github.com/Muskoxen-Studios/opendarts/commit/bd5e7180355f366d9afc26e0f213b2f295791083))
+
 ## [0.5.1](https://github.com/Muskoxen-Studios/opendarts/compare/v0.5.0...v0.5.1) (2026-11-12)
 
 
