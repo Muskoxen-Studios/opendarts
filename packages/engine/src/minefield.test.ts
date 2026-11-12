@@ -299,46 +299,69 @@ describe('Minefield options', () => {
 });
 
 describe('Minefield blast radius', () => {
-  it('arms 1 and 5 around 20, penalises them normally and resets direct hits to zero', () => {
-    const m = newMatch({ hitPoints: 1, blastRadius: true, defusal: false });
+  it.each(['1', '20'])('explodes the whole mine on a hit to %s, scoring only the hit field', (hit) => {
+    const m = newMatch({ hitPoints: 2, blastRadius: true, defusal: false }, ['Alice']);
+    play(m, '5'); // collateral damage must restore even a partially worn field
     arm(m, 20);
-    expect(field(m, 20)).toMatchObject({ hazard: 'mine', resetsScore: true });
     expect(field(m, 1)).toMatchObject({ hazard: 'blast', penalty: 1 });
-    expect(field(m, 5)).toMatchObject({ hazard: 'blast', penalty: 5 });
-    expect(field(m, 25).hazard).toBeNull();
-    play(m, '1', '5');
-    expect(scoreOf(m, 'alice')).toBe(14);
-    expect(field(m, 1)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
-    expect(field(m, 5).hazard).toBeNull();
-    // Blast-zone explosions do not spread the radius recursively.
-    expect(field(m, 18).hazard).toBeNull();
-    m.apply({ type: 'NEXT_PLAYER' }); // back to Alice after the completed turn
-    play(m, '20');
-    expect(scoreOf(m, 'alice')).toBe(0);
-    expect(field(m, 20)).toMatchObject({ hp: 1, hazard: null, multiplier: 1.5 });
+    expect(field(m, 5)).toMatchObject({ hazard: 'blast', hp: 1, penalty: 5 });
+    play(m, hit);
+    expect(m.view.turn.throws.at(-1)!.value).toBe(hit === '1' ? -1 : -45);
+    for (const n of [1, 20, 5]) {
+      expect(field(m, n)).toMatchObject({ hazard: null, hp: 2, multiplier: 1.5 });
+    }
+    expect(field(m, 18)).toMatchObject({ hazard: null, multiplier: 1 });
+    expect(m.allEvents.filter((e) => e.type === 'minefield.exploded')).toHaveLength(1);
   });
 
   it.each([false, true])('applies the negative-score reset option: %s', (resetNegative) => {
     const m = newMatch({ hitPoints: 1, blastRadius: true, defusal: false, resetNegative });
     arm(m, 20);
+    arm(m, 25);
     m.apply({ type: 'NEXT_PLAYER' });
-    m.apply(throwCmd('5'));
+    play(m, '5');
     expect(scoreOf(m, 'bob')).toBe(-5);
-    m.apply(throwCmd('20'));
+    m.apply(throwCmd('25'));
     expect(scoreOf(m, 'bob')).toBe(resetNegative ? 0 : -5);
-    expect(field(m, 20)).toMatchObject({ hp: 1, multiplier: 1.5 });
+    expect(field(m, 25)).toMatchObject({ hp: 1, multiplier: 1.5 });
   });
 
-  it('gives zones independent lifetimes and does not regenerate a cleared zone', () => {
+  it('respects the hit hazard lifetime before clearing the whole mine', () => {
     const m = newMatch({ hitPoints: 1, blastRadius: true, mineLifetime: 2, defusal: false });
     arm(m, 20);
     play(m, '1');
     expect(field(m, 1)).toMatchObject({ hazard: 'blast', hitsRemaining: 1 });
-    play(m, '1');
-    expect(field(m, 1)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
     expect(field(m, 20)).toMatchObject({ hazard: 'mine', hitsRemaining: 2 });
-    play(m, 'MISS');
-    expect(field(m, 1).hazard).toBeNull();
+    play(m, '1');
+    for (const n of [1, 20, 5]) {
+      expect(field(m, n)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
+    }
+  });
+
+  it('chains into an adjacent mine and its radius, and restores the chain on undo', () => {
+    const m = newMatch({ hitPoints: 1, blastRadius: true }, ['Alice']);
+    play(m, '20', 'D1', '1'); // defuse the zone, then arm a mine next to 20
+    expect(field(m, 1).hazard).toBe('mine');
+    const before = m.view;
+    play(m, '20');
+    expect(scoreOf(m, 'alice')).toBe(0);
+    for (const n of [5, 20, 1, 18]) {
+      expect(field(m, n)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
+    }
+    expect(field(m, 4)).toMatchObject({ hazard: null, multiplier: 1 });
+    expect(Match.fromLog(m.matchId, m.players, m.config, [...m.log]).view).toEqual(m.view);
+    m.apply({ type: 'UNDO' });
+    expect(m.view).toEqual(before);
+  });
+
+  it('chains through adjacent mines around the board and rearms zero-HP fields once', () => {
+    const m = newMatch({ hitPoints: 0, blastRadius: true, defusal: false });
+    play(m, '20');
+    for (let n = 1; n <= 20; n++) {
+      expect(field(m, n)).toMatchObject({ hazard: 'mine', multiplier: 1.5, hitsRemaining: 1 });
+    }
+    expect(field(m, 25)).toMatchObject({ hazard: 'mine', multiplier: 1 });
+    expect(m.allEvents.filter((e) => e.type === 'minefield.exploded')).toHaveLength(1);
   });
 
   it('keeps overlapping zones until their last source clears', () => {
@@ -353,12 +376,13 @@ describe('Minefield blast radius', () => {
     expect(field(m, 4).hazard).toBeNull();
   });
 
-  it('clears an overlapping zone independently even when both source mines remain', () => {
+  it('explodes both source mines when their shared blast zone is hit', () => {
     const m = newMatch({ hitPoints: 1, blastRadius: true });
     play(m, '20', '18', '1');
     expect(field(m, 1).hazard).toBeNull();
-    expect(field(m, 20).hazard).toBe('mine');
-    expect(field(m, 18).hazard).toBe('mine');
+    for (const n of [5, 20, 1, 18, 4]) {
+      expect(field(m, n)).toMatchObject({ hazard: null, hp: 1, multiplier: 1.5 });
+    }
   });
 
   it('treats blast-zone doubles as defusals only when the option is enabled', () => {
@@ -368,7 +392,7 @@ describe('Minefield blast radius', () => {
       m.apply(throwCmd('D1'));
       expect(m.view.turn.throws.at(-1)!.value).toBe(defusal ? 2 : -1);
       expect(field(m, 1)).toMatchObject({ hazard: null, multiplier: defusal ? 1 : 1.5 });
-      expect(field(m, 20).hazard).toBe('mine');
+      expect(field(m, 20).hazard).toBe(defusal ? 'mine' : null);
     }
   });
 

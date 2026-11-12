@@ -97,6 +97,21 @@ function clearHazard(state: MinefieldState, number: number, exploded: boolean, c
   if (cell.hp === 0) spreadBlast(state, number, cfg);
 }
 
+/** Resolve the armed field before clearing anything, so chains cannot lose their sources. */
+function explodeHazard(state: MinefieldState, number: number, cfg: MinefieldConfig): void {
+  const affected = new Set([number]);
+  for (const source of state.zones[number]?.sources ?? []) affected.add(source);
+  for (const target of affected) {
+    if (state.field[target]!.hp !== 0) continue;
+    for (const adjacent of neighbours(target)) affected.add(adjacent);
+  }
+  for (const target of affected) clearHazard(state, target, true, cfg);
+  // Restore zero-HP radii that another field's clearing may have removed.
+  if (state.hitPoints === 0) {
+    for (const target of affected) spreadBlast(state, target, cfg);
+  }
+}
+
 function beginTurn(state: MinefieldState): void {
   state.turnValues = [];
   const p = state.base.players[state.base.activeIndex];
@@ -249,7 +264,10 @@ export const minefieldEngine: GameEngine<MinefieldConfig, MinefieldState> = {
               events.push({ type: 'minefield.exploded', playerId: player.id, number: number.number, hazard: mine ? 'mine' : 'blast', value: delta, resetsScore: mine && cfg.blastRadius, segment: dart.segment, coords: dart.coords });
               const hazard = mine ? number : zone!;
               hazard.remaining -= 1;
-              if (hazard.remaining === 0) clearHazard(state, number.number, true, cfg);
+              if (hazard.remaining === 0) {
+                if (cfg.blastRadius) explodeHazard(state, number.number, cfg);
+                else clearHazard(state, number.number, true, cfg);
+              }
             }
           }
         }

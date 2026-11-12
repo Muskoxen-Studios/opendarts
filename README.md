@@ -504,11 +504,16 @@ zero and creates normal-penalty blast zones on the two neighbouring wedges in
 physical board order: a mine on 20 covers 1 and 5, initially costing 1 and 5.
 `resetNegative` controls whether a direct mine also raises a negative score to
 zero; off leaves negative scores unchanged while still consuming an explosion.
-Bull has no radius and is never a zone. Zones clear independently with the
-configured lifetime and do not regenerate until a new neighbouring mine arms.
-Clearing a source removes its remaining radius; overlapping sources preserve a
-zone without stacking damage or replenishing its lifetime. Direct mines take
-precedence over zones, and zones never spread recursively.
+Bull has no radius and is never a zone. When the hit hazard exhausts its
+configured lifetime, the whole mine and its two blast-zone fields explode:
+all regain full HP and each multiplier rises by 0.5×. Hitting a blast zone
+triggers its source mine (or both sources in an overlap). Any active mine
+caught in the explosion also explodes with its own radius, chaining through
+adjacent mines. Only the field actually hit affects the player's score;
+collateral explosions add no penalties. Direct mines take precedence over zones.
+Overlaps do not stack damage or replenish lifetime. Defusal still clears only
+the hit hazard; removing a source removes its radius, preserving zones covered
+by another source.
 
 The board shows red mine badges (→0 for score-reset mines), amber blast-zone
 penalties and safe HP. Tooltips include remaining lifetime and defusal rules.

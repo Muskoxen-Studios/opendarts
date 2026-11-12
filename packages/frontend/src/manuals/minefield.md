@@ -58,17 +58,18 @@ Turn this on for two effects:
   that number times its own multiplier: initially **−1 or −5**.
 
 Bull has no neighbours and never becomes a blast zone; a bull mine still has
-the direct score-reset effect. Blast zones do not spread recursively.
+the direct score-reset effect.
 
-Zones clear independently using the same lifetime setting as mines. Once a
-zone clears, it regains full HP and stays clear even if its source mine is
-still armed. Its multiplier rises 0.5× if explosions cleared it. A later newly
-armed neighbouring mine can create a fresh zone there.
+When the hit field uses its last lifetime hit, **the whole mine and both blast
+zones explode together**. All three fields regain full HP and their multipliers
+rise by 0.5×. Hitting a blast zone triggers its source mine; if two mines cover
+the hit zone, both explode. An active mine caught in an explosion also explodes
+with its own two neighbours, so adjacent mines cause a chain reaction.
 
-Clearing a source mine removes its remaining radius. A zone covered by another
-still-armed source remains dangerous until it clears itself or loses its last
-source. Overlap does not stack penalties or refill lifetime. A field that is
-also a direct mine takes precedence over a blast zone and resets the score.
+**Only the field your dart hit affects your score.** Other fields exploding
+add no penalties or score resets. A field that is itself a mine takes
+precedence over a blast zone and resets the score. Overlapping zones do not
+stack penalties or refill lifetime.
 
 ## Defusal
 
