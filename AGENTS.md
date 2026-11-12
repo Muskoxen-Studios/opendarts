@@ -2,9 +2,21 @@
 
 This file provides shared guidance for coding agents working in this repository.
 
-`README.md` is the long-form document: game rules, feature behaviour, and the reasoning behind
-most design decisions. Read the relevant section there before changing user-facing behaviour.
-This file covers what the README does not: how to work in the tree.
+`README.md` is the user-facing overview: features, game modes and installation.
+Before changing user-facing behaviour, read the relevant game manual in
+`packages/frontend/src/manuals/` and [Playing and player data](docs/gameplay.md).
+[Development and releases](docs/development.md) covers architecture, protocol boundaries,
+packaging and release procedures. Native detector experiments are documented in
+[Native detection playground](docs/native-detection.md) and `services/detector/README.md`.
+This file covers how to work in the tree.
+
+## README scope
+
+Update `README.md` only to showcase new game modes or user-facing features, or to
+correct existing overview and installation information. Keep additions concise;
+link to game manuals or focused docs for detail. Implementation notes, development
+history, debugging findings and release procedures belong in `docs/`, package
+documentation or this file. Do not append change-by-change progress reports to the README.
 
 ## Commands
 
@@ -34,7 +46,7 @@ must carry the `.ts` extension (`import { x } from './y.ts'`).
 Other entry points: `npm run achievements:backfill` after adding an achievement,
 `npm run package` to stage and build a desktop installer into `build/release`.
 Releases normally use Release Please: squash-merge Conventional Commit PR titles (`fix:`,
-`feat:`, `feat!:`), then merge its generated release PR. See README's release section.
+`feat:`, `feat!:`), then merge its generated release PR. See the [release guide](docs/development.md#releases-from-github).
 `npm run release -- patch|minor|major|x.y.z` is the legacy manual path; it bumps every workspace to one version, commits, tags
 `vX.Y.Z` and pushes it -- the tag is what triggers the installer build in `release.yml`. Add
 `--dry-run` to see the plan, `--no-push` to stop after the local tag.
@@ -79,7 +91,7 @@ direction (this bug shipped once).
 | `@darts/schema` | Zod schemas + types; the isolation boundary. |
 | `@darts/engine` | Pure game logic, no I/O. One file per game + one line in `registry.ts`. |
 | `@darts/stats` | Projections: career, leaderboard, golf handicap, achievements. |
-| `@darts/bridge` | Board adapter and the `simulator` / `autodarts` / `replay` sources. |
+| `@darts/bridge` | Board adapter and the `simulator` / `autodarts` / `native` / `replay` sources. |
 | `@darts/fakeboard` | Stand-in Board Manager on :3180; control endpoints live under `/sim`, never `/api`. |
 | `@darts/server` | Hand-rolled router in `main.ts`, `MatchManager`, `Store`, WS at `/ws`. |
 | `@darts/frontend` | Vue 3, single reactive store in `store.ts`, no router and no Pinia. |
@@ -96,8 +108,9 @@ from [testkit.ts](packages/engine/src/testkit.ts) in tests; the engine must also
 
 ### Configuration
 
-`.env` (see `.env.example`) — `SOURCE` (`simulator` | `autodarts` | `replay`), `BOARD_URL`,
-`REPLAY_FILE`, `WEB_PORT`. Simulated darts are POSTed to the *bridge*, not into the server, so
+`.env` (see `.env.example`) — `SOURCE` (`simulator` | `autodarts` | `native` | `replay`), `BOARD_URL`,
+`DETECTOR_URL`, `REPLAY_FILE`, `WEB_PORT`. Native detection requires a separately running detector;
+see the native guides above. Simulated darts are POSTed to the *bridge*, not into the server, so
 they travel the same path a real dart does. Server env: `PORT`, `HOST`, `DB_FILE`
 (default `data/darts.db`), `WEB_ROOT`, `BRIDGE_WS`, `BRIDGE_HTTP`.
 
