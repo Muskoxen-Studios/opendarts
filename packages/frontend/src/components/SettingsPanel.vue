@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import BoardControls from './BoardControls.vue';
 import NativeDetector from './NativeDetector.vue';
+import { audioSettings, effectsSupported, previewAudio, saveAudio, voiceSupported } from '../audio.ts';
 import { api, pushToast, type EffectLevel, type Settings, type SourceConfig } from '../store.ts';
 
 const settings = ref<Settings | null>(null);
@@ -228,6 +229,30 @@ async function recompute(): Promise<void> {
     </div>
 
     <NativeDetector v-if="settings.bridge?.config.kind === 'native'" :key="settings.bridge.config.url" />
+
+    <div class="group">
+      <h3>Sounds &amp; voice</h3>
+      <p class="hint">Audio is off by default. These preferences apply to this browser only.</p>
+      <label class="toggle">
+        <input type="checkbox" :checked="audioSettings.voice" :disabled="!voiceSupported"
+          @change="saveAudio({ voice: ($event.target as HTMLInputElement).checked })" />
+        <span>Announce turn scores, misses, Gotcha knockbacks, Golf targets, X01 checkout requirements, busts and wins</span>
+      </label>
+      <p v-if="!voiceSupported" class="hint">Speech is unavailable in this browser.</p>
+      <label class="toggle">
+        <input type="checkbox" :checked="audioSettings.effects" :disabled="!effectsSupported"
+          @change="saveAudio({ effects: ($event.target as HTMLInputElement).checked })" />
+        <span>Sound effects for registered throws, glass-shattering busts, wins and mine explosions</span>
+      </label>
+      <p v-if="!effectsSupported" class="hint">Sound effects are unavailable in this browser.</p>
+      <label class="row">
+        <span>Volume</span>
+        <input type="range" min="0" max="1" step="0.05" aria-label="Audio volume"
+          :value="audioSettings.volume" @input="saveAudio({ volume: Number(($event.target as HTMLInputElement).value) })" />
+      </label>
+      <button class="secondary" :disabled="!audioSettings.voice && !audioSettings.effects" @click="previewAudio">Test audio</button>
+      <p class="hint">Voice uses your system's English speech voice. Click or press a key in the app after opening it to allow audio.</p>
+    </div>
 
     <div class="group">
       <h3>Celebrations</h3>

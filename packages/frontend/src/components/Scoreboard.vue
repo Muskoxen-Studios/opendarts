@@ -165,14 +165,17 @@ function scoreText(player: View['players'][number]): string {
         :class="{ active: p!.isActive, winner: view.winnerId === p!.playerId, out: isOut(p!, view.gameType) }"
         :style="{ '--accent': p!.color }">
         <div class="row">
-          <span class="name"><PlayerAvatar :player-id="p!.playerId" />{{ p!.name }}</span>
+          <span class="name">{{ p!.name }}</span>
           <span v-if="placeOf(p!)" class="place" :class="`p${placeOf(p!)}`">
             {{ ordinal(placeOf(p!)!) }}
           </span>
           <span class="legs">{{ p!.setsWon }}&ndash;{{ p!.legsWon }}</span>
         </div>
 
-        <div class="score">{{ scoreText(p!) }}</div>
+        <div class="score">
+          <PlayerAvatar class="score-avatar" :player-id="p!.playerId" />
+          <span class="score-value">{{ scoreText(p!) }}</span>
+        </div>
 
         <div v-if="isGolf" class="golf">
           <div class="golf-line">
@@ -395,11 +398,17 @@ function scoreText(player: View['players'][number]): string {
 }
 
 .score {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 3rem;
   font-weight: 700;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
+
+.score > .score-avatar { width: 1em; height: 1em; margin: 0; }
+.score-value { margin-left: auto; text-align: right; }
 
 /* Cricket's table is the complete roster and scoreboard, including points. */
 .cricket-board-wrap { overflow: hidden; }
