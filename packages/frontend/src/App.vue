@@ -20,8 +20,9 @@ import SettingsPanel from './components/SettingsPanel.vue';
 import { api, connect, dismissCelebration, dismissStuckTakeout, pushToast, store, type MatchReport } from './store.ts';
 
 const tab = ref<'play' | 'setup' | 'leaderboard' | 'players' | 'settings'>('play');
+watch(() => store.bullOff?.id, id => { if (id) tab.value = 'setup'; });
 const view = computed(() => store.view);
-const { state: screenAwake, retry: retryScreenAwake } = useScreenAwake(computed(() => view.value?.status === 'playing'));
+const { state: screenAwake, retry: retryScreenAwake } = useScreenAwake(computed(() => view.value?.status === 'playing' || !!store.bullOff && !store.bullOff.complete));
 const screenAwakeDescription = computed(() => {
   if (screenAwake.value === 'active') return 'Screen stays awake while this match is playing.';
   if (screenAwake.value === 'unsupported') return 'Keeping the screen awake requires a supported browser and HTTPS (or localhost). On a plain HTTP network address, use your device’s screen-timeout settings.';
