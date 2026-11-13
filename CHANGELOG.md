@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.7.0...v0.8.0) (2026-11-13)
+
+
+### Features
+
+* add seven Training games and game category tabs ([#49](https://github.com/Muskoxen-Studios/opendarts/issues/49)) ([cee302e](https://github.com/Muskoxen-Studios/opendarts/commit/cee302ea995d85d5823049da300ae3a5d93cea54))
+
 ## [0.7.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.6.0...v0.7.0) (2026-11-12)
 
 
