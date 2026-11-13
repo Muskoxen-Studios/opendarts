@@ -1,7 +1,7 @@
 # open-darts
 
 A self-hosted darts scoreboard for your home, office or pub. Play on an Autodarts
-camera board or try the virtual dartboard in your browser, with nine game modes,
+camera board or try the virtual dartboard in your browser, with sixteen game modes,
 player profiles, statistics and achievements.
 
 Games run locally on your computer or server. Autodarts integration uses the local
@@ -9,7 +9,8 @@ Board Manager; no Autodarts cloud game service or account is required.
 
 ## Features
 
-- **Nine game modes** — from a quick 301 to Cricket, Golf and territory battles.
+- **Sixteen game modes** — tournament favourites, party games, seven training
+  routines and experimental territory battles.
 - **Live scoreboard** — scores, recent darts and an interactive board, with layouts
   for desktop screens and portrait phones.
 - **Flexible matches** — legs and sets, optional round limits, and handicaps in
@@ -37,6 +38,10 @@ Board Manager; no Autodarts cloud game service or account is required.
 Each mode includes a rules manual in the match setup screen. Follow the links
 below for the full rules and options.
 
+The setup screen groups games into **Tournament**, **Party**, **Training** and
+**Experimental** tabs. Training includes scoring, target accuracy and checkout
+practice, following the [Autodarts practice guides](https://docs.autodarts.com/game-modes/practice/).
+
 | Game | How it plays |
 |---|---|
 | [X01](packages/frontend/src/manuals/x01.md) | Count down from 170, 301, 501 or 701. Straight, double or master in/out, per-player handicaps, checkout hints and optional finishing places. |
@@ -46,6 +51,13 @@ below for the full rules and options.
 | [Shanghai](packages/frontend/src/manuals/shanghai.md) | Score on the round’s target number. A single, double and triple of that number in one turn wins immediately. |
 | [Killer](packages/frontend/src/manuals/killer.md) | Claim a number, become a killer by hitting it, then take opponents’ lives. Last player standing wins; optional friendly fire adds risk. |
 | [Even/Odd](packages/frontend/src/manuals/evenodd.md) | Even numbers add points, odd numbers subtract them. Reach the target while keeping your score moving in the right direction. |
+| [Count Up](packages/frontend/src/manuals/countup.md) | Build the highest total over a fixed number of three-dart rounds. |
+| [Around the Clock](packages/frontend/src/manuals/aroundtheclock.md) | Complete a target sequence with configurable order, zones and hits per target. |
+| [Random Checkout](packages/frontend/src/manuals/randomcheckout.md) | Practise random finishes within a visit budget, with straight, double or master out. |
+| [Round the World](packages/frontend/src/manuals/roundtheworld.md) | Take three darts at every target; on-target singles, doubles and triples earn marks. |
+| [Segment Training](packages/frontend/src/manuals/segmenttraining.md) | Practise a fixed or random zone, ending after a hit goal or dart budget. |
+| [Bob's 27](packages/frontend/src/manuals/bobs27.md) | Solo doubles practice from 27 points: correct doubles add points and blank visits subtract. |
+| [121](packages/frontend/src/manuals/121.md) | Climb from 121 towards 170 through double-out attempts, with configurable failure rules. |
 | [Minefield](packages/frontend/src/manuals/minefield.md) | Safe hits wear down a shared board until numbers become mines. Defuse hazards or risk escalating penalties, blast zones and chain reactions. |
 | [Conquest](packages/frontend/src/manuals/conquest.md) | Capture neighbouring territories and enemy capitals. Eliminate rivals or recruit them as allies, with optional split territories and fortified homes. |
 

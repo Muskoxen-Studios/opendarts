@@ -12,6 +12,81 @@ Drag the selected players by their handles to change the order with a mouse or
 touch, or focus a handle and use the arrow keys. Separate × buttons remove players.
 Shuffling requires at least two selected players and preserves their handicaps.
 
+## Training games
+
+**Count Up** — start at zero and add normal board points over eight rounds of
+three darts per player. Singles, doubles and trebles count normally, outer bull
+scores 25, inner bull 50, and misses zero. Everyone plays the final round before
+the highest total wins; equal totals use the original player order. **Rounds per
+player** can be set from 1–100. An optional round limit can end the leg earlier.
+The live card shows each visit and the three-dart average. Rules reference:
+[Count Up guide](https://docs.autodarts.com/game-modes/practice/count-up/).
+
+**Around the Clock** — finish your own sequence of targets, requiring 1–3 hits
+on each. Choose ascending, descending or random order, with bull included by
+default. Full, Single, Outer Single, Double and Triple select the accepted zone.
+Multipliers never skip targets. First to finish wins. The card shows target,
+progress and accuracy. [Reference](https://docs.autodarts.com/game-modes/practice/around-the-clock/).
+
+**Random Checkout** — everyone receives the same random starting total each leg.
+Choose the range, out rule and visit budget. Only checkouts earn legs. Continuous
+practice automatically begins another target; **End game** saves the session and
+compares legs checked out. Disable continuous practice for a finite match.
+[Reference](https://docs.autodarts.com/game-modes/practice/random-checkout/).
+
+**Round the World** — take one three-dart visit per target, advancing even after
+misses. Correct singles/doubles/triples earn 1/2/3 marks. Choose ascending,
+descending or random order, optionally ending on bull. Everyone completes the
+sequence before highest marks wins.
+[Reference](https://docs.autodarts.com/game-modes/practice/round-the-world/).
+
+**Segment Training** — practise a selected number's single, outer single, double
+or triple. Race to a hit goal, or compare hits after an exact dart budget.
+Random mode generates another target zone after each hit and holds it after
+misses; this target-change policy is an OpenDarts convention.
+[Reference](https://docs.autodarts.com/game-modes/practice/segment-training/).
+
+**Bob's 27** — solo doubles practice, starting at 27. Each correct double adds
+its value; a blank visit subtracts that value once. Work through D1–D20 and
+optionally inner bull. Normal mode ends at zero or below; Allow Negative lets
+the sequence continue. A non-positive result is saved without a win.
+[Reference](https://docs.autodarts.com/game-modes/practice/bobs-27/).
+
+**121** — double-out practice from level 121, with 6 or 9 darts per attempt.
+Success raises the level by 1, 3 or 5. Failure drops one, resets to 121, or
+returns to a safehouse banked every 1/2/3/5 checkouts. Checking out 170 wins
+immediately; otherwise compare final levels after the configured attempts.
+Finishing at 121 earns no win.
+[Reference](https://docs.autodarts.com/game-modes/practice/121/).
+
+Training uses the usual takeout, undo, correction, restart, legs/sets and optional
+round cap. Bob's 27 requires exactly one player and rejects late joins; the
+other modes allow multiplayer and roster changes. None has player handicaps.
+Ties use seat order. Early ending ranks sets and legs already won, then the
+game's progress (points, hits, marks or level); Random Checkout uses only wins.
+Round caps compare progress after everyone has played the capped round. Bob's
+27 and 121 keep their no-win conditions when ended early or capped.
+
+The manuals explain each option and bull convention. Random orders/targets use
+a seed saved with the config, so restart, undo, correction and resume reproduce
+them. New matches receive a fresh seed even when loading previous settings.
+History includes game-specific results, darts and coordinate-optional heatmaps.
+Count Up reports scoring averages; the targeting games report hits/marks or
+levels instead of raw board points. X01-only career averages remain X01-only.
+
+## Choosing a game
+
+The new-match screen groups games into four category tabs:
+
+- **Tournament** — X01, Cricket and Golf.
+- **Party** — Gotcha, Shanghai, Killer and Even/Odd.
+- **Training** — Count Up, Around the Clock, Random Checkout, Round the World,
+  Segment Training, Bob's 27 and 121.
+- **Experimental** — Minefield and Conquest.
+
+Choose a category, then a game within it. Loading the last game's settings
+automatically opens the category containing that game.
+
 ## The live match screen
 
 During play, the header collapses to a compact bar with board status, board

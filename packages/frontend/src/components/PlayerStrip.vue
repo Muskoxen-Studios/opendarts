@@ -78,6 +78,10 @@ watch(
           but what you actually judge an opponent by is how far they still have
           to go. Both, the gap small underneath.
         -->
+        <template v-else-if="view.gameType === 'aroundtheclock'">
+          <span class="mini-score">{{ p.detail.targetLabel }}</span>
+          <span class="mini-togo">{{ p.score }}/{{ p.detail.targets }} targets hit</span>
+        </template>
         <template v-else-if="isGotcha">
           <span class="mini-score">{{ p.score }}</span>
           <span class="mini-togo">{{ gotcha(p).remaining }} to go</span>

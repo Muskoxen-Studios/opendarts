@@ -76,6 +76,7 @@ export function buildHeatmap(throws: readonly HeatInput[]): Heatmap {
 }
 
 export interface PlayerSummary {
+  training?: { label: string; detail: Record<string, unknown> } | null;
   playerId: string;
   name: string;
   color: string;
@@ -175,9 +176,10 @@ export function summarizeMatch(a: MatchAnalysis): MatchReport {
       color: p.color,
       darts: mine.length,
       score: scoreOf(a, p.id),
+      training: a.training?.[p.id] ? { label: a.training[p.id]!.label, detail: a.training[p.id]!.detail } : null,
       legsWon: a.legsWon[p.id] ?? 0,
-      average3: a.gameType === 'x01' ? averageOfTurns(turns) : null,
-      first9Average: a.gameType === 'x01' ? averageOfTurns(first9) : null,
+      average3: a.gameType === 'x01' || a.gameType === 'countup' ? averageOfTurns(turns) : null,
+      first9Average: a.gameType === 'x01' || a.gameType === 'countup' ? averageOfTurns(first9) : null,
       bestTurn: scored.length > 0 ? Math.max(...scored.map((t) => t.total)) : null,
       count180: scored.filter((t) => t.total === 180).length,
       count140plus: scored.filter((t) => t.total >= 140).length,
@@ -259,6 +261,8 @@ function winningTurnOf(a: MatchAnalysis): WinningTurn | null {
  * has already been reset for the next leg by the time the match ends.
  */
 function scoreOf(a: MatchAnalysis, playerId: string): number {
+  if (a.gameType === 'randomcheckout') return a.legsWon[playerId] ?? 0;
+  if (a.training?.[playerId]) return a.training[playerId]!.score;
   if (a.gameType === 'golf') return a.golf?.points[playerId] ?? 0;
   if (a.gameType === 'cricket') return a.cricketMarks[playerId] ?? 0;
   const turns = a.turns.filter((t) => t.playerId === playerId && !t.busted);

@@ -278,6 +278,7 @@ route('POST', '/api/matches', (_req, res, _p, body) => {
 
   const ids = Array.isArray(b?.playerIds) ? (b.playerIds as string[]) : [];
   if (ids.length === 0) return json(res, 400, { error: 'at least one player is required' });
+  if (config.data.gameType === 'bobs27' && ids.length !== 1) return json(res, 400, { error: "Bob's 27 requires exactly one player" });
 
   const players = ids.map((id) => store.getProfile(id)).filter((p) => p !== null);
   if (players.length !== ids.length) return json(res, 400, { error: 'unknown profile id' });
@@ -360,6 +361,7 @@ route('POST', '/api/simulate', async (_req, res, _p, body) => {
 /** Add a player to the match already in progress. */
 route('POST', '/api/match/players', (_req, res, _p, body) => {
   if (manager.view?.gameType === 'conquest') return json(res, 409, { error: 'Conquest homes are fixed; late joins are unavailable.' });
+  if (manager.view?.gameType === 'bobs27') return json(res, 409, { error: "Bob's 27 is solo-only; late joins are unavailable." });
   const id = (body as { profileId?: unknown })?.profileId;
   if (typeof id !== 'string') return json(res, 400, { error: 'profileId is required' });
   const profile = store.getProfile(id);

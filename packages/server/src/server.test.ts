@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
-import { segmentValue, type GameConfig, type Segment } from '@darts/schema';
+import { GameConfigSchema, segmentValue, type GameConfig, type Segment } from '@darts/schema';
 import { dart, seg } from '../../engine/src/testkit.ts';
 import { Match } from '@darts/engine';
 import { openDatabase } from './db.ts';
@@ -62,6 +62,66 @@ beforeEach(() => {
   store = new Store(db);
   events = [];
   manager = new MatchManager(store, (e) => events.push(e));
+});
+
+describe('training game persistence and reports', () => {
+  it.each([
+    { gameType: 'countup', options: { rounds: 1 }, script: ['S20', 'D20', 'T20'], score: 120 },
+    { gameType: 'aroundtheclock', options: { finishBull: true }, script: [...Array.from({ length: 20 }, (_, i) => `S${i + 1}`), '25'], score: 21 },
+    { gameType: 'randomcheckout', options: { checkoutMin: 20, checkoutMax: 20, continuous: false }, script: ['S10', 'D5'], score: 1 },
+    { gameType: 'roundtheworld', options: { roundLimit: 1 }, script: ['S1', 'D1', 'T1'], score: 6 },
+    { gameType: 'segmenttraining', options: { mode: 'double', segment: 20, count: 2 }, script: ['D20', 'D20'], score: 2 },
+    { gameType: 'bobs27', options: { roundLimit: 1 }, script: ['D1', 'MISS', 'MISS'], score: 29 },
+    { gameType: '121', options: { maxRounds: 1 }, script: ['T20', 'T19', 'D2'], score: 122 },
+  ])('resumes and reports $gameType from its command log', ({ gameType, options, script, score }) => {
+    const profile = store.createProfile('Alice');
+    const config = GameConfigSchema.parse({ gameType, ...options });
+    manager.start(config, [profile]);
+    const matchId = manager.view!.matchId;
+    throwAt(script[0]!);
+    const previous = manager.view;
+    const restored = new MatchManager(store, e => events.push(e));
+    expect(restored.resume(matchId)).toEqual(previous);
+    manager = restored;
+    for (const label of script.slice(1)) throwAt(label);
+    expect(manager.view?.winnerId).toBe(profile.id);
+    expect(store.setupOf(matchId)?.config).toEqual(config);
+    expect(store.summaryFor(matchId)?.players[0]).toMatchObject({ score, darts: script.length });
+    if (gameType === 'countup') expect(store.summaryFor(matchId)?.players[0]).toMatchObject({ average3: 120, first9Average: 120 });
+    expect(store.summaryFor(matchId)?.heatmap).toMatchObject({ total: script.length, withCoords: 0 });
+  });
+
+  it('rejects a multiplayer Bob setup before abandoning an existing match', () => {
+    const profiles = [store.createProfile('Alice'), store.createProfile('Bob')];
+    manager.start(X01, profiles);
+    const previous = manager.view;
+    expect(() => manager.start(GameConfigSchema.parse({ gameType: 'bobs27' }), profiles)).toThrow('exactly one');
+    expect(manager.view).toEqual(previous);
+    expect(store.listMatches()).toHaveLength(1);
+  });
+
+  it('reports Random Checkout wins across sets rather than only the last set', () => {
+    const profile = store.createProfile('Alice');
+    manager.start(GameConfigSchema.parse({ gameType: 'randomcheckout', checkoutMin: 20, checkoutMax: 20, continuous: false, setsToWin: 2 }), [profile]);
+    throwAt('D10');
+    throwAt('D10');
+    expect(manager.view?.status).toBe('finished');
+    expect(store.summaryFor(manager.view!.matchId)?.players[0]).toMatchObject({ score: 2, legsWon: 2 });
+  });
+
+  it.each([
+    { gameType: 'bobs27', options: {}, script: Array<string>(15).fill('MISS'), score: -3 },
+    { gameType: '121', options: { maxRounds: 1, dartMode: 6 }, script: Array<string>(6).fill('MISS'), score: 121 },
+    { gameType: 'randomcheckout', options: { continuous: false, maxRounds: 1 }, script: Array<string>(3).fill('MISS'), score: 0 },
+  ])('saves failed $gameType practice without a win', ({ gameType, options, script, score }) => {
+    const profile = store.createProfile('Alice');
+    manager.start(GameConfigSchema.parse({ gameType, ...options }), [profile]);
+    for (const label of script) throwAt(label);
+    expect(manager.view).toMatchObject({ status: 'finished', winnerId: null });
+    const report = store.summaryFor(manager.view!.matchId);
+    expect(report).toMatchObject({ winnerId: null, totalDarts: script.length });
+    expect(report?.players[0]).toMatchObject({ score, legsWon: 0 });
+  });
 });
 
 describe('profiles', () => {
