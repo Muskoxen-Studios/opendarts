@@ -1,5 +1,5 @@
 import { reactive, readonly } from 'vue';
-import type { MatchView, Segment, DomainEvent } from '@darts/schema';
+import type { MatchView, Segment, DomainEvent, BullOffView, BullOffCommand } from '@darts/schema';
 import { C, mmToSvg, segmentCentre } from './boardGeometry.ts';
 import { planAudio, playAudio, stopAudio } from './audio.ts';
 
@@ -302,6 +302,7 @@ export interface Toast {
 }
 
 interface State {
+  bullOff: BullOffView | null;
   completedReport: MatchReport | null;
   view: MatchView | null;
   profiles: Profile[];
@@ -324,6 +325,7 @@ interface State {
 }
 
 const state = reactive<State>({
+  bullOff: null,
   completedReport: null,
   view: null,
   profiles: [],
@@ -413,6 +415,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  async startBullOff(playerIds: string[]): Promise<void> {
+    const result = await request<BullOffView>('/api/bull-off', { method: 'POST', body: JSON.stringify({ playerIds }) });
+    if (!state.bullOff || state.bullOff.id === result.id && state.bullOff.revision <= result.revision) state.bullOff = result;
+  },
+  async bullOffCommand(id: string, command: BullOffCommand): Promise<string[] | undefined> {
+    const result = await request<{ bullOff: BullOffView | null; playerIds?: string[] }>(`/api/bull-off/${encodeURIComponent(id)}/command`, { method: 'POST', body: JSON.stringify(command) });
+    const current = state.bullOff;
+    const next = result.bullOff;
+    // HTTP replies can arrive after a newer board update or session cancellation.
+    if (!next) {
+      if (current?.id === id) state.bullOff = null;
+    } else if (current && (current.id === id || current.id === next.id)) {
+      if (current.id !== next.id || next.revision >= current.revision) state.bullOff = next;
+    }
+    return result.playerIds;
+  },
   async loadProfiles(): Promise<void> {
     state.profiles = await request<Profile[]>('/api/profiles');
   },
@@ -602,6 +620,7 @@ export function connect(): void {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data as string);
     switch (msg.type) {
+      case 'bull-off': state.bullOff = msg.bullOff; break;
       case 'match.report':
         state.completedReport = msg.report;
         break;

@@ -1,4 +1,6 @@
 import { Match } from '@darts/engine';
+import { randomUUID } from 'node:crypto';
+import { BullOff } from './bullOff.ts';
 import {
   analyzeMatch,
   MatchAnalyzer,
@@ -12,6 +14,8 @@ import {
 } from '@darts/stats';
 import type {
   BoardEvent,
+  BullOffCommand,
+  BullOffView,
   DomainEvent,
   GameConfig,
   MatchCommand,
@@ -21,6 +25,7 @@ import type {
 import type { Store } from './store.ts';
 
 export type ServerEvent =
+  | { type: 'bull-off'; bullOff: BullOffView | null }
   | { type: 'match.report'; report: MatchReport }
   | { type: 'view'; view: MatchView | null }
   | { type: 'domain'; events: DomainEvent[] }
@@ -54,6 +59,43 @@ export class MatchManager {
   private liveAnalyzer: MatchAnalyzer | null = null;
   /** Latest board status, surfaced to the UI as a connection indicator. */
   private boardOnline = false;
+  private bullOffSession: BullOff | null = null;
+
+  get bullOff(): BullOffView | null { return this.bullOffSession?.view ?? null; }
+
+  startBullOff(players: Player[]): BullOffView {
+    if (this.bullOffSession) throw new Error('A bull-off is already open');
+    this.bullOffSession = new BullOff(randomUUID(), players);
+    this.resetBoard?.();
+    this.broadcast({ type: 'bull-off', bullOff: this.bullOff });
+    return this.bullOff!;
+  }
+
+  commandBullOff(id: string, command: BullOffCommand): { bullOff: BullOffView | null; playerIds?: string[] } {
+    const session = this.bullOffSession;
+    if (!session || session.view.id !== id) throw new Error('This bull-off is no longer open');
+    let playerIds: string[] | undefined;
+    switch (command.type) {
+      case 'CANCEL': this.bullOffSession = null; this.resetBoard?.(); break;
+      case 'FINISH':
+        if (!session.view.complete) throw new Error('Complete the bull-off before applying the order');
+        playerIds = session.view.groups.flat();
+        this.bullOffSession = null;
+        this.resetBoard?.();
+        break;
+      case 'NEXT': if (session.next()) this.resetBoard?.(); break;
+      case 'UNDO': session.undo(); this.resetBoard?.(); break;
+      case 'RESTART':
+        this.bullOffSession = new BullOff(randomUUID(), session.view.players);
+        this.resetBoard?.();
+        break;
+      case 'MEASURE':
+        if (session.measure(command.distanceMm)) session.next();
+        break;
+    }
+    this.broadcast({ type: 'bull-off', bullOff: this.bullOff });
+    return { bullOff: this.bullOff, ...(playerIds ? { playerIds } : {}) };
+  }
 
   /**
    * Analyses of every finished match, cached so live achievement checks after
@@ -135,6 +177,7 @@ export class MatchManager {
   }
 
   start(config: GameConfig, players: Player[]): MatchView {
+    if (this.bullOffSession) throw new Error('Finish or cancel the bull-off before starting a match');
     // Close anything still open. Unlock state is derived from finished matches,
     // so an abandoned match left open would have its achievements wiped by the
     // next rebuild -- it counts as played, with no winner.
@@ -176,6 +219,7 @@ export class MatchManager {
   }
 
   apply(cmd: MatchCommand): MatchView | null {
+    if (this.bullOffSession) return this.view;
     if (!this.match || !this.matchId) return null;
 
     const wasFinished = this.match.finished;
@@ -327,6 +371,15 @@ export class MatchManager {
   }
 
   onBoardEvent(event: BoardEvent): void {
+    if (this.bullOffSession && (event.type === 'throw.detected' || event.type === 'takeout.completed')) {
+      const session = this.bullOffSession;
+      if (event.type === 'throw.detected') {
+        if (session.record(event.throw) && event.throw.source !== 'board') session.next();
+      } else if (session.next() && event.inferred) this.resetBoard?.();
+      this.broadcast({ type: 'board', event });
+      this.broadcast({ type: 'bull-off', bullOff: this.bullOff });
+      return;
+    }
     switch (event.type) {
       case 'board.connected':
       case 'board.heartbeat':

@@ -4,6 +4,8 @@ import { networkInterfaces } from 'node:os';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   CoordsSchema,
+  BullOffCommandSchema,
+  BullOffStartSchema,
   GameConfigSchema,
   MatchCommandSchema,
   SegmentSchema,
@@ -268,10 +270,33 @@ route('GET', '/api/matches/:id/setup', (_req, res, params) => {
 });
 
 route('GET', '/api/state', (_req, res) =>
-  json(res, 200, { view: manager.view, boardOnline: manager.isBoardOnline }),
+  json(res, 200, { view: manager.view, bullOff: manager.bullOff, boardOnline: manager.isBoardOnline }),
 );
 
+route('POST', '/api/bull-off', (_req, res, _p, body) => {
+  const parsed = BullOffStartSchema.safeParse(body);
+  if (!parsed.success) return json(res, 400, { error: parsed.error.message });
+  const players = parsed.data.playerIds.map(id => store.getProfile(id));
+  if (players.some(player => !player)) return json(res, 400, { error: 'Unknown profile id' });
+  try {
+    return json(res, 201, manager.startBullOff(players.filter(player => player !== null).map(({ id, name, color }) => ({ id, name, color }))));
+  } catch (error) {
+    return json(res, 409, { error: (error as Error).message });
+  }
+});
+
+route('POST', '/api/bull-off/:id/command', (_req, res, params, body) => {
+  const command = BullOffCommandSchema.safeParse(body);
+  if (!command.success) return json(res, 400, { error: command.error.message });
+  try {
+    return json(res, 200, manager.commandBullOff(params.id!, command.data));
+  } catch (error) {
+    return json(res, 409, { error: (error as Error).message });
+  }
+});
+
 route('POST', '/api/matches', (_req, res, _p, body) => {
+  if (manager.bullOff) return json(res, 409, { error: 'Finish or cancel the bull-off before starting a match' });
   const b = body as { config?: unknown; playerIds?: unknown };
   const config = GameConfigSchema.safeParse(b?.config);
   if (!config.success) return json(res, 400, { error: config.error.message });
@@ -328,6 +353,7 @@ route('POST', '/api/matches', (_req, res, _p, body) => {
 });
 
 route('POST', '/api/match/command', (_req, res, _p, body) => {
+  if (manager.bullOff) return json(res, 409, { error: 'Finish or cancel the bull-off before changing the match' });
   const cmd = MatchCommandSchema.safeParse((body as { command?: unknown })?.command);
   if (!cmd.success) return json(res, 400, { error: cmd.error.message });
   const view = manager.apply(cmd.data);
@@ -655,6 +681,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (socket) => {
   clients.add(socket);
   socket.send(JSON.stringify({ type: 'view', view: manager.view } satisfies ServerEvent));
+  socket.send(JSON.stringify({ type: 'bull-off', bullOff: manager.bullOff } satisfies ServerEvent));
   socket.on('close', () => clients.delete(socket));
 });
 

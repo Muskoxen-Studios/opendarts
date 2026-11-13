@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import { minefieldHitPoints } from '@darts/schema';
 import { api, store, type GolfHandicap, type ModeHandicap } from '../store.ts';
 import GameManual from './GameManual.vue';
+import BullOff from './BullOff.vue';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
@@ -170,8 +171,27 @@ const showManual = ref(false);
 const busy = ref(false);
 const loadingLast = ref(false);
 const error = ref<string | null>(null);
+const bullOffError = ref<string | null>(null);
 
-const canStart = computed(() => selected.value.length > 0 && !busy.value && !loadingLast.value && (gameType.value !== 'conquest' || conquestRosterValid.value));
+const canStart = computed(() => selected.value.length > 0 && !busy.value && !loadingLast.value && !store.bullOff && (gameType.value !== 'conquest' || conquestRosterValid.value));
+
+async function startBullOff(): Promise<void> {
+  busy.value = true;
+  bullOffError.value = null;
+  try { await api.startBullOff(selected.value); }
+  catch (err) { bullOffError.value = (err as Error).message; }
+  finally { busy.value = false; }
+}
+
+async function finishBullOff(id: string): Promise<void> {
+  busy.value = true;
+  bullOffError.value = null;
+  try {
+    const order = await api.bullOffCommand(id, { type: 'FINISH' });
+    if (order) selectPreviousPlayers(order);
+  } catch (err) { bullOffError.value = (err as Error).message; }
+  finally { busy.value = false; }
+}
 
 function toggle(id: string): void {
   const i = selected.value.indexOf(id);
@@ -572,14 +592,18 @@ async function start(): Promise<void> {
       @close="showManual = false"
     />
 
+    <BullOff v-if="store.bullOff" :session="store.bullOff" :applying="busy" @finish="finishBullOff" />
+
     <div class="field">
       <div class="field-head player-heading">
         <label>Players</label>
         <div class="player-actions">
           <button class="ghost manual-btn" :disabled="busy || loadingLast" @click="useLastPlayers">{{ loadingLast ? 'Loading…' : "Use last game's players" }}</button>
           <button class="ghost manual-btn" :disabled="busy || loadingLast || selected.length < 2" @click="shufflePlayers">Shuffle players</button>
+          <button class="ghost manual-btn" :disabled="busy || loadingLast || selected.length < 2" :title="selected.length < 2 ? 'Select at least two players' : 'Throw for starting order'" @click="startBullOff">Bull-off</button>
         </div>
       </div>
+      <p v-if="bullOffError" class="error" role="alert">{{ bullOffError }}</p>
       <p v-if="store.profiles.length === 0" class="hint">
         No profiles yet &mdash; add one below.
       </p>

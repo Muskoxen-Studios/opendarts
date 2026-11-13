@@ -12,6 +12,41 @@ Drag the selected players by their handles to change the order with a mouse or
 touch, or focus a handle and use the arrow keys. Separate × buttons remove players.
 Shuffling requires at least two selected players and preserves their handicaps.
 
+### Bull-off for starting order
+
+Select at least two players and choose **Bull-off** beside the order controls.
+An ongoing match is kept while the bull-off captures board input. Each player
+throws one dart at bull in the selected lineup order; closest goes first in the new match. Every place is
+ranked, so this works for more than two players. **Use this order** applies the
+result to the lineup; you can review the game settings before starting.
+
+Inner bull beats outer bull. Equal inner bulls, equal outer bulls, and other
+indistinguishable hits tie. Only the tied players throw again, in reverse order;
+already decided places stay fixed. Other known distances are compared to the
+nearest tenth of a millimetre. A bounce-out without a position is retried.
+These rules follow the usual [throw for bull](https://docs.autodarts.com/getting-started/first-game/)
+and [reverse-order rethrow](https://www.ndfpdarts.com/ndfp-manual_rule_book.html) conventions.
+
+Real-board input holds one dart for the current player until takeout. Extra
+detections while it is held are ignored. If takeout gets stuck, clear the board
+and choose **Dart removed**. The virtual board works through the simulator.
+**Undo last dart** also works after a handover, tie-break or final result;
+**Restart bull-off** clears all results. **Cancel** leaves the selected lineup
+and game settings unchanged.
+
+When the source supplies coordinates, bull-off can measure distance automatically.
+Without them, radial zones remain ordered (inner single, triple, outer single,
+double, outside scoring), with equal-zone hits tied. For an exact comparison,
+enter **measured distance** in millimetres instead of a detected dart; undo the
+detection first if necessary. Ordinary game scoring still works independently
+of coordinates.
+
+Bull-off darts are setup input: they do not create matches, change scores, or
+award career statistics or achievements. The session is shared with connected
+browsers and survives a page refresh while the server runs; restarting the
+server discards an unfinished bull-off. Subsequent legs use the game's normal
+starting-player rotation.
+
 ## The live match screen
 
 During play, the header collapses to a compact bar with board status, board
