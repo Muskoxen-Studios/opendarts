@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import ConquestPanel from './ConquestPanel.vue';
 import PlayerAvatar from './PlayerAvatar.vue';
+import TrainingPanel from './TrainingPanel.vue';
+import { gameLabel } from '../gameLabels.ts';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
   gotcha,
@@ -21,6 +23,16 @@ const isShanghai = computed(() => props.view.gameType === 'shanghai');
 const isKiller = computed(() => props.view.gameType === 'killer');
 const isGotcha = computed(() => props.view.gameType === 'gotcha');
 const isEvenOdd = computed(() => props.view.gameType === 'evenodd');
+const isCountUp = computed(() => props.view.gameType === 'countup');
+const isAroundTheClock = computed(() => props.view.gameType === 'aroundtheclock');
+
+function clock(player: View['players'][number]) {
+  return { target: (player.detail.target as number | null) ?? null,
+    completed: Number(player.detail.completed ?? 0), targets: Number(player.detail.targets ?? 20),
+    hitRate: (player.detail.hitRate as number | null) ?? null,
+    sequence: (player.detail.sequence as number[] | undefined) ?? [],
+    hitsRequired: Number(player.detail.hitsRequired ?? 1), hitsOnTarget: Number(player.detail.hitsOnTarget ?? 0) };
+}
 const cricketBoard = ref<HTMLElement | null>(null);
 function revealCricketPlayer(): void {
   const wrap = cricketBoard.value;
@@ -117,6 +129,7 @@ function shanghai(player: View['players'][number]) {
  * matches the partly-eaten heart drawn underneath.
  */
 function scoreText(player: View['players'][number]): string {
+  if (isAroundTheClock.value) return String(player.detail.targetLabel ?? 'DONE');
   if (!isKiller.value) return String(player.score);
   const thirds = killer(player).livesThirds;
   const whole = Math.floor(thirds / 3);
@@ -129,7 +142,7 @@ function scoreText(player: View['players'][number]): string {
 <template>
   <div class="scoreboard">
     <header class="meta">
-      <span class="game">{{ view.gameType.toUpperCase() }}</span>
+      <span class="game">{{ gameLabel(view.gameType) }}</span>
       <span>Leg {{ view.leg }}</span>
       <span v-if="view.set > 1">Set {{ view.set }}</span>
       <span v-if="view.roundLimit">Round {{ view.round }}/{{ view.roundLimit }}</span>
@@ -225,6 +238,24 @@ function scoreText(player: View['players'][number]): string {
           </div>
         </div>
 
+        <div v-if="isCountUp" class="shanghai">
+          <div class="shanghai-line"><span class="round">Round {{ view.round }}/{{ p!.detail.rounds }}</span></div>
+          <div class="card">
+            <span v-for="(visit, i) in (p!.detail.visits as number[])" :key="i" class="cell" :class="visit > 0 ? 'good' : 'blank'" :title="`Round ${i + 1}: ${visit} points`">{{ visit }}</span>
+          </div>
+        </div>
+
+        <div v-if="isAroundTheClock" class="shanghai">
+          <div class="shanghai-line"><span class="round">{{ clock(p!).target === null ? 'Sequence complete' : 'Target to hit' }} · {{ clock(p!).completed }}/{{ clock(p!).targets }} completed</span></div>
+          <div class="card clock-card">
+            <span v-for="(n, index) in clock(p!).sequence" :key="n" class="cell" :class="{ good: index < clock(p!).completed, next: index === clock(p!).completed }">{{ n === 25 ? 'B' : n }}</span>
+          </div>
+          <span class="clock-hit-rate">Hit rate {{ clock(p!).hitRate === null ? '–' : `${Math.round(clock(p!).hitRate! * 100)}%` }}</span>
+          <span v-if="clock(p!).hitsRequired > 1" class="clock-hit-rate">Current target {{ clock(p!).hitsOnTarget }}/{{ clock(p!).hitsRequired }} hits</span>
+        </div>
+
+        <TrainingPanel v-if="['randomcheckout', 'roundtheworld', 'segmenttraining', 'bobs27', '121'].includes(view.gameType)" :player="p!" :game-type="view.gameType" :round="view.round" />
+
         <div v-if="isShanghai" class="shanghai">
           <div class="shanghai-line">
             <span class="round">Round {{ shanghai(p!).round <= shanghai(p!).endRound ? shanghai(p!).round :
@@ -313,13 +344,16 @@ function scoreText(player: View['players'][number]): string {
     </div>
 
     <div class="turn-total">
-      <span class="label">This turn</span>
+      <span class="label">{{ isAroundTheClock ? 'Targets hit this turn' : 'This turn' }}</span>
       <span class="value">{{ view.turn.total }}</span>
     </div>
   </div>
 </template>
 
 <style scoped>
+.clock-card { flex-wrap: wrap; }
+.clock-card .cell.next { border: 1px solid var(--ui-accent); color: var(--ui-accent); }
+.clock-hit-rate { color: var(--ui-secondary); font-size: 0.85rem; }
 .minefield-summary { display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem; align-items: baseline; }
 .minefield-summary > span:last-child { font-size: 0.8rem; color: var(--ui-muted); }
 

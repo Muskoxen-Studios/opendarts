@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PlayerAvatar from './PlayerAvatar.vue';
+import { gameLabel } from '../gameLabels.ts';
 import { computed, ref } from 'vue';
 import Heatmap from './Heatmap.vue';
 import ThrowReplay from './ThrowReplay.vue';
@@ -33,11 +34,28 @@ const standings = computed(() => {
 const isX01 = computed(() => props.report.gameType === 'x01');
 const isGolf = computed(() => props.report.gameType === 'golf');
 const isCricket = computed(() => props.report.gameType === 'cricket');
-const gameName = computed(() => ({ conquest: 'Conquest', x01: 'X01', golf: 'Golf', cricket: 'Cricket', gotcha: 'Gotcha', killer: 'Killer', shanghai: 'Shanghai' })[props.report.gameType] ?? props.report.gameType);
+const isClock = computed(() => props.report.gameType === 'aroundtheclock');
+const isCountUp = computed(() => props.report.gameType === 'countup');
+const gameName = computed(() => gameLabel(props.report.gameType));
 const featured = computed(() => winner.value ?? standings.value[0]);
 const highlights = computed(() => {
   const p = featured.value;
   if (!p) return [];
+  if (isClock.value) return [
+    { label: 'Successful hits', value: p.score, detail: p.name },
+    { label: 'Final leg hit rate', value: Number(p.training?.detail.darts) ? `${Math.round(Number(p.training?.detail.hits) / Number(p.training?.detail.darts) * 100)}%` : '–', detail: `${p.darts} darts thrown in match` },
+    { label: 'Legs won', value: p.legsWon, detail: `${props.report.legsPlayed} legs played` },
+  ];
+  if (p.training) return [
+    { label: p.training.label === 'level' ? 'Final level' : p.training.label === 'legs' ? 'Legs checked out' : `Final leg ${p.training.label}`, value: p.score, detail: p.name },
+    { label: 'Darts thrown', value: p.darts, detail: `${props.report.legsPlayed} legs played` },
+    { label: 'Legs won', value: p.legsWon, detail: props.report.winnerId ? 'Match complete' : 'Practice saved without a win' },
+  ];
+  if (isCountUp.value) return [
+    { label: 'Points scored', value: p.score, detail: p.name },
+    { label: 'Three-dart average', value: fmt(p.average3), detail: `First nine ${fmt(p.first9Average)}` },
+    { label: 'Best visit', value: p.bestTurn ?? '–', detail: `${p.count180} maximums · ${p.darts} darts thrown` },
+  ];
   if (isGolf.value && p.golf) return [
     { label: 'Stableford points', value: p.golf.points, detail: `${signed(p.golf.points - p.golf.parTarget)} against a target of ${p.golf.parTarget}` },
     { label: 'Birdies or better', value: p.golf.birdiesOrBetter, detail: `${p.golf.holed} holes completed` },
@@ -109,7 +127,7 @@ const holeCount = computed(() =>
           </h2>
           <h2 v-else>Match ended</h2>
           <p class="meta">
-            {{ report.gameType.toUpperCase() }}
+            {{ gameName }}
             &middot; {{ report.totalDarts }} darts
             &middot; {{ duration(report.durationMs) }}
             <span v-if="report.endedAt">&middot; {{ when(report.endedAt) }}</span>
@@ -133,7 +151,7 @@ const holeCount = computed(() =>
               <div class="player-heading">
                 <span class="rank">{{ rank + 1 }}</span>
                 <div class="player-name"><strong><PlayerAvatar :player-id="p.playerId" />{{ p.name }}</strong><small>{{ p.darts }} darts<span v-if="report.legsPlayed > 1"> · {{ p.legsWon }} legs won</span></small></div>
-                <div class="player-score"><b>{{ isGolf ? p.golf?.points : isX01 ? fmt(p.average3) : p.score }}</b><small>{{ isGolf ? 'points' : isX01 ? 'average' : isCricket ? 'marks' : 'points' }}</small></div>
+                <div class="player-score"><b>{{ isGolf ? p.golf?.points : isX01 ? fmt(p.average3) : p.score }}</b><small>{{ isGolf ? 'points' : isX01 ? 'average' : isCricket ? 'marks' : p.training?.label ?? (isClock ? 'hits' : 'points') }}</small></div>
               </div>
               <div v-if="p.golf" class="player-details">
                 <div><small>Handicap</small><strong>{{ p.golf.handicap }} <span class="arrow">→</span> {{ p.golf.handicapAfter }}</strong></div>

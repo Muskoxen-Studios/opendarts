@@ -48,6 +48,39 @@ function start(config: GameConfig, roster = ROSTER): Match {
 beforeEach(resetDartIds);
 
 describe('ending a match early', () => {
+  it.each(['roundtheworld', 'segmenttraining'] as const)('ranks successful marks/hits in %s', gameType => {
+    const m = new Match('training-end', ROSTER, { gameType, segment: 1, mode: 'triple' });
+    m.apply({ type: 'START' }); play(m, 'MISS', 'MISS', 'MISS', 'T1');
+    m.apply({ type: 'END_MATCH' }); expect(m.view.winnerId).toBe('bob');
+  });
+  it('ends Random Checkout by actual legs checked out', () => {
+    const m = new Match('random-end', ROSTER, { gameType: 'randomcheckout', checkoutMin: 20, checkoutMax: 20 });
+    m.apply({ type: 'START' }); play(m, 'D10'); m.apply({ type: 'END_MATCH' }); expect(m.view.winnerId).toBe('alice');
+  });
+  it("ends Bob's 27 by the solo score", () => {
+    const m = new Match('bob-end', players('Alice'), { gameType: 'bobs27' });
+    m.apply({ type: 'START' }); play(m, 'D1'); m.apply({ type: 'END_MATCH' }); expect(m.view.winnerId).toBe('alice');
+  });
+  it('ends 121 by final level, recording no win before any progress', () => {
+    const m = new Match('121-end', ROSTER, { gameType: '121' });
+    m.apply({ type: 'START' }); play(m, 'T20', 'T19', 'D2'); m.apply({ type: 'END_MATCH' }); expect(m.view.winnerId).toBe('alice');
+    const blank = new Match('121-blank', ROSTER, { gameType: '121' });
+    blank.apply({ type: 'START' }); blank.apply({ type: 'END_MATCH' }); expect(blank.view.winnerId).toBeNull();
+  });
+  it('gives Count Up to the highest score', () => {
+    const m = new Match('countup-end', ROSTER, { gameType: 'countup' });
+    m.apply({ type: 'START' });
+    play(m, 'S5', 'MISS', 'MISS', 'T20');
+    m.apply({ type: 'END_MATCH' });
+    expect(m.view.winnerId).toBe('bob');
+  });
+  it('gives Around the Clock to the most completed targets rather than board points', () => {
+    const m = new Match('clock-end', ROSTER, { gameType: 'aroundtheclock' });
+    m.apply({ type: 'START' });
+    play(m, 'T20', 'T20', 'T20', 'S1');
+    m.apply({ type: 'END_MATCH' });
+    expect(m.view.winnerId).toBe('bob');
+  });
   it('gives X01 to the lowest remaining score', () => {
     const m = start(X01);
     play(m, 'T20', 'T20', 'T20'); // Alice on 321

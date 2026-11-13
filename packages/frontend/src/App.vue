@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PlayerAvatar from './components/PlayerAvatar.vue';
+import { gameLabel } from './gameLabels.ts';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseSegmentLabel, type Segment } from '@darts/schema';
 import { conquest, minefield } from './gameDetail.ts';
@@ -141,18 +142,26 @@ const correcting = ref(false);
  * actually hit", and suggesting an answer there would be misleading.
  */
 /** Games whose hints name a whole number rather than a specific ring. */
-const WHOLE_NUMBER_HINT_GAMES = new Set(['golf', 'shanghai']);
+const WHOLE_NUMBER_HINT_GAMES = new Set(['golf', 'shanghai', 'roundtheworld']);
+const wholeNumberHints = computed(() => view.value && (WHOLE_NUMBER_HINT_GAMES.has(view.value.gameType) ||
+  (view.value.gameType === 'aroundtheclock' && activePlayer.value?.detail.mode === 'full')));
 
 const hintSegments = computed<Segment[]>(() => {
-  if (!view.value || correcting.value || WHOLE_NUMBER_HINT_GAMES.has(view.value.gameType)) return [];
+  if (!view.value || correcting.value || wholeNumberHints.value) return [];
   return view.value.turn.hints
     .map((h) => parseSegmentLabel(h))
-    .filter((s): s is Segment => s !== null);
+    .filter((s): s is Segment => s !== null)
+    .flatMap((s): Segment[] => {
+      const mode = activePlayer.value?.detail.mode;
+      if (!['aroundtheclock', 'segmenttraining'].includes(view.value!.gameType) || !s.ring.startsWith('SINGLE')) return [s];
+      if (mode === 'outer-single') return [{ number: s.number, ring: 'SINGLE_OUTER' }];
+      return [{ number: s.number, ring: 'SINGLE_INNER' }, { number: s.number, ring: 'SINGLE_OUTER' }];
+    });
 });
 
-/** Golf and Shanghai aim at a whole number rather than a particular ring. */
+/** These games accept any ring of the highlighted target number. */
 const hintNumbers = computed<number[]>(() => {
-  if (!view.value || correcting.value || !WHOLE_NUMBER_HINT_GAMES.has(view.value.gameType)) return [];
+  if (!view.value || correcting.value || !wholeNumberHints.value) return [];
   const hole = Number(view.value.turn.hints[0]);
   return Number.isInteger(hole) ? [hole] : [];
 });
@@ -316,7 +325,7 @@ async function rematch(): Promise<void> {
                   </li>
                 </ul>
               </div>
-              <span>{{ view.players.length }} {{ view.players.length === 1 ? 'player' : 'players' }} · {{ view.gameType === 'evenodd' ? 'Even / Odd' : view.gameType.toUpperCase() }}</span>
+              <span>{{ view.players.length }} {{ view.players.length === 1 ? 'player' : 'players' }} · {{ gameLabel(view.gameType) }}</span>
             </div>
             <PlayerStrip v-if="view.gameType !== 'cricket'" :view="view" fit />
 
@@ -329,6 +338,7 @@ async function rematch(): Promise<void> {
                 <div class="board-stage" :class="shakeClass">
                   <Dartboard
                     :highlight="hintSegments"
+                    :highlight-equally="view.gameType === 'aroundtheclock' || view.gameType === 'segmenttraining'"
                     :highlight-numbers="hintNumbers"
                     :conquest="view.gameType === 'conquest' && view.players[0] ? conquest(view.players[0]).territories : undefined"
                     :conquest-players="view.players"
@@ -367,7 +377,7 @@ async function rematch(): Promise<void> {
                           >&times;</button>
                         </li>
                       </ul>
-                      <p v-if="view.gameType === 'conquest'" class="hint">Conquest homes are fixed; late joins are unavailable.</p>
+                      <p v-if="view.gameType === 'conquest' || view.gameType === 'bobs27'" class="hint">{{ view.gameType === 'bobs27' ? "Bob's 27 is solo-only; late joins are unavailable." : 'Conquest homes are fixed; late joins are unavailable.' }}</p>
                       <div v-else-if="availableToJoin.length" class="join">
                         <button
                           v-for="p in availableToJoin"

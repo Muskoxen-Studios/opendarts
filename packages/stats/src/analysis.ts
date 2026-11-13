@@ -96,6 +96,7 @@ export interface MatchAnalysis {
   shanghai: Record<string, number[]> | null;
   /** True when the match was stopped early and awarded to whoever led. */
   conceded: boolean;
+  training?: Record<string, { score: number; label: string; detail: Record<string, unknown> }>;
 }
 
 /**
@@ -142,6 +143,7 @@ export class MatchAnalyzer {
       golf: null,
       shanghai: null,
       conceded: false,
+      training: {},
     };
 
     for (const cmd of record.commands) this.append(cmd);
@@ -188,6 +190,10 @@ export class MatchAnalyzer {
 
     for (const e of events) {
       switch (e.type) {
+        case 'training.result': {
+          (analysis.training ??= {})[e.playerId] = { score: e.score, label: e.label, detail: e.detail };
+          break;
+        }
         case 'turn.completed': {
           analysis.turns.push({
             playerId: e.playerId,

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import PlayerAvatar from './PlayerAvatar.vue';
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { minefieldHitPoints } from '@darts/schema';
 import { api, store, type GolfHandicap, type ModeHandicap } from '../store.ts';
 import GameManual from './GameManual.vue';
 
 const emit = defineEmits<{ (e: 'started'): void }>();
 
-type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd' | 'minefield' | 'conquest';
+type GameType = 'x01' | 'cricket' | 'gotcha' | 'golf' | 'shanghai' | 'killer' | 'evenodd' | 'minefield' | 'conquest' | 'countup' | 'aroundtheclock' | 'randomcheckout' | 'roundtheworld' | 'segmenttraining' | 'bobs27' | '121';
 
 const GAME_LABELS: Record<GameType, string> = {
   x01: 'X01',
@@ -19,9 +19,41 @@ const GAME_LABELS: Record<GameType, string> = {
   evenodd: 'Even/Odd',
   minefield: 'Minefield',
   conquest: 'Conquest',
+  countup: 'Count Up',
+  aroundtheclock: 'Around the Clock',
+  randomcheckout: 'Random Checkout',
+  roundtheworld: 'Round the World',
+  segmenttraining: 'Segment Training',
+  bobs27: "Bob's 27",
+  '121': '121',
 };
 
 const gameType = ref<GameType>('x01');
+type GameCategory = 'tournament' | 'party' | 'training' | 'experimental';
+const gameCategories: Array<{ id: GameCategory; label: string; games: GameType[] }> = [
+  { id: 'tournament', label: 'Tournament', games: ['x01', 'cricket', 'golf'] },
+  { id: 'party', label: 'Party', games: ['gotcha', 'shanghai', 'killer', 'evenodd'] },
+  { id: 'training', label: 'Training', games: ['countup', 'aroundtheclock', 'randomcheckout', 'roundtheworld', 'segmenttraining', 'bobs27', '121'] },
+  { id: 'experimental', label: 'Experimental', games: ['minefield', 'conquest'] },
+];
+const activeCategory = computed(() => gameCategories.find(c => c.games.includes(gameType.value)) ?? gameCategories[0]!);
+
+function selectCategory(id: GameCategory): void {
+  const category = gameCategories.find(c => c.id === id)!;
+  if (category.id !== activeCategory.value.id) gameType.value = category.games[0]!;
+}
+
+function categoryKey(event: KeyboardEvent, index: number): void {
+  let next = index;
+  if (event.key === 'ArrowRight') next = (index + 1) % gameCategories.length;
+  else if (event.key === 'ArrowLeft') next = (index + gameCategories.length - 1) % gameCategories.length;
+  else if (event.key === 'Home') next = 0;
+  else if (event.key === 'End') next = gameCategories.length - 1;
+  else return;
+  event.preventDefault();
+  selectCategory(gameCategories[next]!.id);
+  document.getElementById(`game-category-${gameCategories[next]!.id}`)?.focus();
+}
 const selected = ref<string[]>([]);
 const playerFilter = ref('');
 const draggedPlayer = ref<string | null>(null);
@@ -107,6 +139,27 @@ const x01History = ref<Record<string, ModeHandicap>>({});
 // Cricket
 const variant = ref<'standard' | 'cutthroat'>('standard');
 
+// Training
+const countUpRounds = ref(8);
+const countUpRoundsValid = computed(() => Number.isInteger(countUpRounds.value) && countUpRounds.value >= 1 && countUpRounds.value <= 100);
+const clockFinishBull = ref(true);
+const clockMode = ref<'full' | 'single' | 'outer-single' | 'double' | 'triple'>('full');
+const clockOrder = ref<'ascending' | 'descending' | 'random'>('ascending');
+const clockHits = ref(1);
+const randomCheckout = reactive({ checkoutMin: 41, checkoutMax: 100, outMode: 'double' as 'straight' | 'double' | 'master', maxRounds: 3, continuous: true });
+const world = reactive({ order: 'ascending' as 'ascending' | 'descending' | 'random', finishBull: true });
+const segmentPractice = reactive({ mode: 'single' as 'single' | 'outer-single' | 'double' | 'triple' | 'random', segment: 20, endsAfter: 'hits' as 'hits' | 'darts', count: 10 });
+const bob = reactive({ allowNegative: false, finishBull: true });
+const climb = reactive({ maxRounds: 10, dartMode: 9 as 6 | 9, onFail: 'soft' as 'soft' | 'hard' | 'safehouse', step: 1 as 1 | 3 | 5, safehouseEvery: 1 as 1 | 2 | 3 | 5 });
+const trainingError = computed(() => {
+  const integer = (value: number, min: number, max: number) => Number.isInteger(value) && value >= min && value <= max;
+  if (gameType.value === 'bobs27' && selected.value.length !== 1) return "Bob's 27 requires exactly one player.";
+  if (gameType.value === 'randomcheckout' && (!integer(randomCheckout.checkoutMin, 2, 180) || !integer(randomCheckout.checkoutMax, randomCheckout.checkoutMin, 180) || !integer(randomCheckout.maxRounds, 1, 100))) return 'Choose a valid checkout range (2–180) and 1–100 visits per leg.';
+  if (gameType.value === 'segmenttraining' && (!integer(segmentPractice.segment, 1, 20) || !integer(segmentPractice.count, 1, 1000))) return 'Choose target 1–20 and a hit/dart count from 1–1000.';
+  if (gameType.value === '121' && !integer(climb.maxRounds, 1, 100)) return 'Choose 1–100 attempts per player.';
+  return null;
+});
+
 // Golf
 const holes = ref(18);
 /**
@@ -171,7 +224,7 @@ const busy = ref(false);
 const loadingLast = ref(false);
 const error = ref<string | null>(null);
 
-const canStart = computed(() => selected.value.length > 0 && !busy.value && !loadingLast.value && (gameType.value !== 'conquest' || conquestRosterValid.value));
+const canStart = computed(() => selected.value.length > 0 && !busy.value && !loadingLast.value && !trainingError.value && (gameType.value !== 'conquest' || conquestRosterValid.value) && (gameType.value !== 'countup' || countUpRoundsValid.value));
 
 function toggle(id: string): void {
   const i = selected.value.indexOf(id);
@@ -304,6 +357,18 @@ async function useLastSettings(): Promise<void> {
     const cfg = setup.config as Record<string, unknown>;
     gameType.value = setup.gameType as GameType;
     selectPreviousPlayers(setup.playerIds);
+    if (setup.gameType === 'countup') countUpRounds.value = Number(cfg.rounds ?? 8);
+    if (setup.gameType === 'aroundtheclock') {
+      clockFinishBull.value = cfg.finishBull !== false;
+      clockMode.value = (cfg.mode as typeof clockMode.value) ?? 'full';
+      clockOrder.value = (cfg.order as typeof clockOrder.value) ?? 'ascending';
+      clockHits.value = Number(cfg.hits ?? 1);
+    }
+    if (setup.gameType === 'randomcheckout') Object.assign(randomCheckout, { checkoutMin: cfg.checkoutMin ?? 41, checkoutMax: cfg.checkoutMax ?? 100, outMode: cfg.outMode ?? 'double', maxRounds: cfg.maxRounds ?? 3, continuous: cfg.continuous !== false });
+    if (setup.gameType === 'roundtheworld') Object.assign(world, { order: cfg.order ?? 'ascending', finishBull: cfg.finishBull !== false });
+    if (setup.gameType === 'segmenttraining') Object.assign(segmentPractice, { mode: cfg.mode ?? 'single', segment: cfg.segment ?? 20, endsAfter: cfg.endsAfter ?? 'hits', count: cfg.count ?? 10 });
+    if (setup.gameType === 'bobs27') Object.assign(bob, { allowNegative: cfg.allowNegative === true, finishBull: cfg.finishBull !== false });
+    if (setup.gameType === '121') Object.assign(climb, { maxRounds: cfg.maxRounds ?? 10, dartMode: cfg.dartMode ?? 9, onFail: cfg.onFail ?? 'soft', step: cfg.step ?? 1, safehouseEvery: cfg.safehouseEvery ?? 1 });
 
     legsToWin.value = Number(cfg.legsToWin ?? 1);
     setsToWin.value = Number(cfg.setsToWin ?? 1);
@@ -393,6 +458,19 @@ function handicapFor(id: string) {
 }
 
 function buildConfig(): unknown {
+  if (gameType.value === 'countup') return {
+    gameType: 'countup', rounds: countUpRounds.value,
+    legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value,
+  };
+  if (gameType.value === 'aroundtheclock') return {
+    gameType: 'aroundtheclock', finishBull: clockFinishBull.value, mode: clockMode.value, order: clockOrder.value, hits: clockHits.value,
+    legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value,
+  };
+  if (gameType.value === 'randomcheckout') return { gameType: 'randomcheckout', ...randomCheckout, legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value };
+  if (gameType.value === 'roundtheworld') return { gameType: 'roundtheworld', ...world, legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value };
+  if (gameType.value === 'segmenttraining') return { gameType: 'segmenttraining', ...segmentPractice, legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value };
+  if (gameType.value === 'bobs27') return { gameType: 'bobs27', ...bob, legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value };
+  if (gameType.value === '121') return { gameType: '121', ...climb, legsToWin: legsToWin.value, setsToWin: setsToWin.value, roundLimit: roundLimitValue.value };
   if (gameType.value === 'conquest') return {
     gameType: 'conquest', defeatMode: conquestDefeat.value,
     comebackFoothold: conquestComeback.value, splitTerritories: conquestSplit.value,
@@ -554,9 +632,17 @@ async function start(): Promise<void> {
           {{ GAME_LABELS[gameType] }} manual
         </button>
       </div>
-      <div class="tabs">
+      <div class="game-categories" role="tablist" aria-label="Game categories">
+        <button v-for="(category, index) in gameCategories" :id="`game-category-${category.id}`" :key="category.id"
+          type="button" role="tab" :aria-selected="activeCategory.id === category.id"
+          :aria-controls="`game-panel-${category.id}`" :tabindex="activeCategory.id === category.id ? 0 : -1"
+          :class="{ on: activeCategory.id === category.id }" @click="selectCategory(category.id)"
+          @keydown="categoryKey($event, index)">{{ category.label }}</button>
+      </div>
+      <div v-for="category in gameCategories" :id="`game-panel-${category.id}`" :key="category.id"
+        v-show="activeCategory.id === category.id" class="tabs" role="tabpanel" :aria-labelledby="`game-category-${category.id}`">
         <button
-          v-for="g in (['x01', 'cricket', 'gotcha', 'golf', 'shanghai', 'killer', 'evenodd', 'minefield', 'conquest'] as GameType[])"
+          v-for="g in category.games"
           :key="g"
           :class="{ on: gameType === g }"
           :aria-pressed="gameType === g"
@@ -888,6 +974,71 @@ async function start(): Promise<void> {
       </p>
     </template>
 
+    <template v-else-if="gameType === 'countup'">
+      <div class="field">
+        <label for="countup-rounds">Rounds per player</label>
+        <input id="countup-rounds" v-model.number="countUpRounds" type="number" min="1" max="100" step="1" :aria-invalid="!countUpRoundsValid" />
+        <p v-if="!countUpRoundsValid" class="hint" role="alert">Choose a whole number from 1 to 100.</p>
+      </div>
+      <p class="hint">Start at zero and add every dart's points. Three darts per turn; highest total after everyone has played all rounds wins. Bulls score 25/50. Ties use player order.</p>
+    </template>
+
+    <template v-else-if="gameType === 'aroundtheclock'">
+      <div class="grid">
+        <div class="field"><label for="clock-mode">Mode</label><select id="clock-mode" v-model="clockMode"><option value="full">Full</option><option value="single">Single</option><option value="outer-single">Outer Single</option><option value="double">Double</option><option value="triple">Triple</option></select></div>
+        <div class="field"><label for="clock-order">Order</label><select id="clock-order" v-model="clockOrder"><option value="ascending">1–20</option><option value="descending">20–1</option><option value="random">Random</option></select></div>
+        <div class="field"><label for="clock-hits">Hits per target</label><select id="clock-hits" v-model.number="clockHits"><option v-for="n in 3" :key="n" :value="n">{{ n }}</option></select></div>
+      </div>
+      <div class="field">
+        <label class="use-handicaps"><input v-model="clockFinishBull" type="checkbox" /> Finish on bull after all numbers</label>
+      </div>
+      <p class="hint">Complete the required hits on each target. Multipliers never skip targets. Three darts per turn; first to finish wins. Bull accepts either ring in Full mode, outer bull in single modes, and inner bull in double/triple modes.</p>
+    </template>
+
+    <template v-else-if="gameType === 'randomcheckout'">
+      <div class="grid">
+        <div class="field"><label for="checkout-min">Checkout minimum</label><input id="checkout-min" v-model.number="randomCheckout.checkoutMin" type="number" min="2" max="180" /></div>
+        <div class="field"><label for="checkout-max">Checkout maximum</label><input id="checkout-max" v-model.number="randomCheckout.checkoutMax" type="number" min="2" max="180" /></div>
+        <div class="field"><label for="checkout-out">Out mode</label><select id="checkout-out" v-model="randomCheckout.outMode"><option value="straight">Straight</option><option value="double">Double</option><option value="master">Master</option></select></div>
+        <div class="field"><label for="checkout-rounds">Visits per leg</label><input id="checkout-rounds" v-model.number="randomCheckout.maxRounds" type="number" min="1" max="100" /></div>
+      </div>
+      <label class="use-handicaps"><input v-model="randomCheckout.continuous" type="checkbox" /> Continuous practice — finish with End game</label>
+      <p class="hint">All players receive the same random target each leg. Busts restore the visit. Failed continuous legs move on after takeout; successful checkouts start a new leg. End game compares legs actually checked out; no checkout means no winner.</p>
+    </template>
+
+    <template v-else-if="gameType === 'roundtheworld'">
+      <div class="field"><label for="world-order">Order</label><select id="world-order" v-model="world.order"><option value="ascending">1–20</option><option value="descending">20–1</option><option value="random">Random</option></select></div>
+      <label class="use-handicaps"><input v-model="world.finishBull" type="checkbox" /> Include final bull</label>
+      <p class="hint">Three darts per target, then move on even on misses. On-target singles/doubles/trebles score 1/2/3 marks; outer/inner bull score 1/2. Everyone plays all targets; most marks wins.</p>
+    </template>
+
+    <template v-else-if="gameType === 'segmenttraining'">
+      <div class="grid">
+        <div class="field"><label for="segment-mode">Mode</label><select id="segment-mode" v-model="segmentPractice.mode"><option value="single">Single</option><option value="outer-single">Outer Single</option><option value="double">Double</option><option value="triple">Triple</option><option value="random">Random</option></select></div>
+        <div v-if="segmentPractice.mode !== 'random'" class="field"><label for="segment-number">Number</label><select id="segment-number" v-model.number="segmentPractice.segment"><option v-for="n in 20" :key="n" :value="n">{{ n }}</option></select></div>
+        <div class="field"><label for="segment-end">Ends after</label><select id="segment-end" v-model="segmentPractice.endsAfter"><option value="hits">Hits</option><option value="darts">Darts</option></select></div>
+        <div class="field"><label for="segment-count">{{ segmentPractice.endsAfter === 'hits' ? 'Hit count' : 'Dart count' }}</label><input id="segment-count" v-model.number="segmentPractice.count" type="number" min="1" max="1000" /></div>
+      </div>
+      <p class="hint">Hit the exact zone. Random draws a new target after a hit. Hits mode races to the goal; Darts mode compares hits after each player's dart budget. Single accepts inner or outer singles.</p>
+    </template>
+
+    <template v-else-if="gameType === 'bobs27'">
+      <label class="use-handicaps"><input v-model="bob.allowNegative" type="checkbox" /> Allow negative score</label>
+      <label class="use-handicaps"><input v-model="bob.finishBull" type="checkbox" /> Include final inner bull</label>
+      <p class="hint">Solo only. Start at 27; take three darts at each double. Each hit adds that double's value. A visit without a hit subtracts it once. Normal mode ends without a win at zero or below.</p>
+    </template>
+
+    <template v-else-if="gameType === '121'">
+      <div class="grid">
+        <div class="field"><label for="climb-rounds">Attempts per player</label><input id="climb-rounds" v-model.number="climb.maxRounds" type="number" min="1" max="100" /></div>
+        <div class="field"><label for="climb-darts">Dart mode</label><select id="climb-darts" v-model.number="climb.dartMode"><option :value="9">9 darts</option><option :value="6">6 darts</option></select></div>
+        <div class="field"><label for="climb-step">Step</label><select id="climb-step" v-model.number="climb.step"><option v-for="n in [1,3,5]" :key="n" :value="n">{{ n }}</option></select></div>
+        <div class="field"><label for="climb-fail">On fail</label><select id="climb-fail" v-model="climb.onFail"><option value="soft">Soft — drop one</option><option value="hard">Hard reset — 121</option><option value="safehouse">Safehouse</option></select></div>
+        <div v-if="climb.onFail === 'safehouse'" class="field"><label for="climb-bank">Safehouse every</label><select id="climb-bank" v-model.number="climb.safehouseEvery"><option v-for="n in [1,2,3,5]" :key="n" :value="n">{{ n }} checkout(s)</option></select></div>
+      </div>
+      <p class="hint">Start at 121 and double out within each attempt. Success raises the target; exhausting the attempt lowers it by the chosen rule. A bust consumes a visit, restoring only that visit. Checking out 170 wins immediately. At the attempt limit, highest final level wins only if someone is above 121.</p>
+    </template>
+
     <template v-else-if="gameType === 'conquest'">
       <div class="grid">
         <div class="field">
@@ -989,7 +1140,8 @@ async function start(): Promise<void> {
       </details>
     </template>
 
-    <div v-if="gameType !== 'golf'" class="grid">
+    <p v-if="trainingError" class="error" role="alert">{{ trainingError }}</p>
+    <div v-if="gameType !== 'golf' && !(gameType === 'randomcheckout' && randomCheckout.continuous)" class="grid">
       <div class="field">
         <label>Legs to win</label>
         <input v-model.number="legsToWin" type="number" min="1" max="21" />
@@ -1040,6 +1192,11 @@ label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; c
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; }
 .hint { margin: 0; font-size: 0.8rem; color: var(--ui-muted); }
 .tabs, .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.game-categories { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--ui-border); margin-bottom: 0.5rem; }
+.game-categories button { flex: 1; padding: 0.65rem 0.5rem; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--ui-muted); font: inherit; font-weight: 650; cursor: pointer; }
+.game-categories button.on { color: var(--ui-accent); border-bottom-color: var(--ui-accent); }
+.game-categories button:hover { color: var(--ui-text); }
+.game-categories button:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; border-radius: 4px; }
 .player-search { width: 100%; box-sizing: border-box; }
 .selected-chips { list-style: none; margin: 0; padding: 0 0 0.5rem; border-bottom: 1px solid var(--ui-border); }
 .selected-player { display: flex; align-items: center; gap: 0.35rem; }
