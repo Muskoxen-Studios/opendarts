@@ -136,6 +136,93 @@ export const ShanghaiConfigSchema = z.object({
 });
 export type ShanghaiConfig = z.infer<typeof ShanghaiConfigSchema>;
 
+export const CountUpConfigSchema = z.object({
+  gameType: z.literal('countup'),
+  rounds: z.number().int().min(1).max(100).default(8),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type CountUpConfig = z.infer<typeof CountUpConfigSchema>;
+
+const TrainingOrderSchema = z.enum(['ascending', 'descending', 'random']);
+const TrainingModeSchema = z.enum(['full', 'outer-single', 'single', 'double', 'triple']);
+const TrainingSeedSchema = z.number().int().min(0).max(0xffffffff).default(() => Math.floor(Math.random() * 0x100000000));
+
+export const AroundTheClockConfigSchema = z.object({
+  gameType: z.literal('aroundtheclock'),
+  finishBull: z.boolean().default(true),
+  mode: TrainingModeSchema.default('full'),
+  order: TrainingOrderSchema.default('ascending'),
+  hits: z.number().int().min(1).max(3).default(1),
+  seed: TrainingSeedSchema,
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type AroundTheClockConfig = z.infer<typeof AroundTheClockConfigSchema>;
+
+export const RandomCheckoutConfigSchema = z.object({
+  gameType: z.literal('randomcheckout'),
+  checkoutMin: z.number().int().min(2).max(180).default(41),
+  checkoutMax: z.number().int().min(2).max(180).default(100),
+  outMode: InOutModeSchema.default('double'),
+  maxRounds: z.number().int().min(1).max(100).default(3),
+  continuous: z.boolean().default(true),
+  seed: TrainingSeedSchema,
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type RandomCheckoutConfig = z.infer<typeof RandomCheckoutConfigSchema>;
+
+export const RoundTheWorldConfigSchema = z.object({
+  gameType: z.literal('roundtheworld'),
+  order: TrainingOrderSchema.default('ascending'),
+  finishBull: z.boolean().default(true),
+  seed: TrainingSeedSchema,
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type RoundTheWorldConfig = z.infer<typeof RoundTheWorldConfigSchema>;
+
+export const SegmentTrainingConfigSchema = z.object({
+  gameType: z.literal('segmenttraining'),
+  mode: z.enum(['single', 'outer-single', 'double', 'triple', 'random']).default('single'),
+  segment: z.number().int().min(1).max(20).default(20),
+  endsAfter: z.enum(['hits', 'darts']).default('hits'),
+  count: z.number().int().min(1).max(1000).default(10),
+  seed: TrainingSeedSchema,
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type SegmentTrainingConfig = z.infer<typeof SegmentTrainingConfigSchema>;
+
+export const Bobs27ConfigSchema = z.object({
+  gameType: z.literal('bobs27'),
+  allowNegative: z.boolean().default(false),
+  finishBull: z.boolean().default(true),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type Bobs27Config = z.infer<typeof Bobs27ConfigSchema>;
+
+export const Training121ConfigSchema = z.object({
+  gameType: z.literal('121'),
+  maxRounds: z.number().int().min(1).max(100).default(10),
+  dartMode: z.union([z.literal(6), z.literal(9)]).default(9),
+  onFail: z.enum(['soft', 'hard', 'safehouse']).default('soft'),
+  step: z.union([z.literal(1), z.literal(3), z.literal(5)]).default(1),
+  safehouseEvery: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5)]).default(1),
+  legsToWin: z.number().int().positive().default(1),
+  setsToWin: z.number().int().positive().default(1),
+  roundLimit: RoundLimitSchema,
+});
+export type Training121Config = z.infer<typeof Training121ConfigSchema>;
+
 export const KillerConfigSchema = z.object({
   gameType: z.literal('killer'),
   startingLives: z.number().int().min(1).max(9).default(3),
@@ -227,11 +314,22 @@ export const GameConfigSchema = z.discriminatedUnion('gameType', [
   GotchaConfigSchema,
   GolfConfigSchema,
   ShanghaiConfigSchema,
+  CountUpConfigSchema,
+  AroundTheClockConfigSchema,
+  RandomCheckoutConfigSchema,
+  RoundTheWorldConfigSchema,
+  SegmentTrainingConfigSchema,
+  Bobs27ConfigSchema,
+  Training121ConfigSchema,
   KillerConfigSchema,
   EvenOddConfigSchema,
   MinefieldConfigSchema,
   ConquestConfigSchema,
-]);
+]).superRefine((cfg, ctx) => {
+  if (cfg.gameType === 'randomcheckout' && cfg.checkoutMin > cfg.checkoutMax) {
+    ctx.addIssue({ code: 'custom', path: ['checkoutMax'], message: 'Checkout maximum must be at least the minimum' });
+  }
+});
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 export type GameType = GameConfig['gameType'];
 
@@ -290,6 +388,7 @@ export type MatchCommand = z.infer<typeof MatchCommandSchema>;
 // ---------------------------------------------------------------------------
 
 export type DomainEvent =
+  | { type: 'training.result'; playerId: string; score: number; label: string; detail: Record<string, unknown> }
   | { type: 'match.started' }
   | { type: 'player.joined'; playerId: string; name: string }
   | { type: 'player.left'; playerId: string }

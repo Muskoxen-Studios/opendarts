@@ -78,6 +78,7 @@ export interface ModeHandicap {
 }
 
 export interface PlayerReport {
+  training?: { label: string; detail: Record<string, unknown> } | null;
   playerId: string;
   name: string;
   color: string;

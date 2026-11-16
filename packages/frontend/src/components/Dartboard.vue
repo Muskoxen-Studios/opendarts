@@ -21,6 +21,8 @@ const props = defineProps<{
    * the turn. The first is the dart to throw now, the rest are the follow-ups.
    */
   highlight?: Segment[];
+  /** Practice targets may accept several zones equally, rather than a route. */
+  highlightEqually?: boolean;
   /** Whole numbers to light up, for games that aim at a number, not a ring. */
   highlightNumbers?: number[];
   /**
@@ -115,7 +117,7 @@ const ranks = computed(() => {
   const map = new Map<string, number>();
   (props.highlight ?? []).forEach((s, i) => {
     const key = keyOf(s);
-    if (!map.has(key)) map.set(key, i);
+    if (!map.has(key)) map.set(key, props.highlightEqually ? 0 : i);
   });
   return map;
 });

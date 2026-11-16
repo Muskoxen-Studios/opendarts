@@ -6,7 +6,7 @@ import { analyzeMatch, MatchAnalyzer, type MatchRecord } from './analysis.ts';
 
 describe('incremental match analysis', () => {
   it.each(GAME_TYPES)('matches corrected-log replay for %s through turns, undo, correction and restart', (gameType) => {
-    const roster = players('Alice', 'Bob', 'Cara', 'Dan');
+    const roster = gameType === 'bobs27' ? players('Alice') : players('Alice', 'Bob', 'Cara', 'Dan');
     const config = GameConfigSchema.parse({ gameType });
     const m = new Match('incremental', roster, config);
     const record: MatchRecord = { matchId: m.matchId, gameType, config, players: roster,

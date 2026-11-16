@@ -178,6 +178,7 @@ export class MatchManager {
 
   start(config: GameConfig, players: Player[]): MatchView {
     if (this.bullOffSession) throw new Error('Finish or cancel the bull-off before starting a match');
+    if (config.gameType === 'bobs27' && players.length !== 1) throw new Error("Bob's 27 requires exactly one player");
     // Close anything still open. Unlock state is derived from finished matches,
     // so an abandoned match left open would have its achievements wiped by the
     // next rebuild -- it counts as played, with no winner.
