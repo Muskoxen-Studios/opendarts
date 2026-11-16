@@ -20,8 +20,9 @@ export const SegmentSchema = z.object({
  * Board-space coordinates of a dart.
  *
  * DELIBERATELY UNUSED BY GAME LOGIC. The frame is settled (recon/FINDINGS.md
- * §3): normalised by 170 -- board millimetres / 170 -- origin at the bull,
- * x right and y UP. Board-sourced throws carry it, but it stays nullable and
+ * §3): board millimetres, origin at the bull, x right and y UP. The Autodarts
+ * adapter converts its raw coordinates (millimetres / 170) into this frame
+ * exactly once. Simulator clicks already use millimetres. It stays nullable and
  * nothing downstream may depend on it: a dart's segment is enough to score it,
  * and the adapter yields null rather than guessing at a payload it cannot parse.
  *

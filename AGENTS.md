@@ -79,8 +79,9 @@ parses strictly and fails loudly — a silent mis-parse would corrupt career sta
 
 **`coords` is nullable and nothing may depend on it.** Engines, stats, scoring and the scoreboard
 must all be correct with `coords: null`; only visualisations read it, and they degrade. The engine
-testkit's `dart()` returns `coords: null` on purpose. Coordinates are normalised by 170, origin at
-the bull, **x right and y up** — the round-trip test in `adapters/autodarts.test.ts` asserts every
+testkit's `dart()` returns `coords: null` on purpose. Internal coordinates are board millimetres,
+origin at the bull, **x right and y up**. Only raw Autodarts coordinates are normalised by 170;
+the adapter converts them once. The round-trip test in `adapters/autodarts.test.ts` asserts every
 segment plots back inside its own wedge *by angle*, because a radius cannot confirm an axis
 direction (this bug shipped once).
 
