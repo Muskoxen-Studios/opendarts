@@ -26,16 +26,23 @@ export function planAudio(old: MatchView | null, next: MatchView | null, events:
   let cue: Cue | undefined;
   if (!next) return { words };
   const win = events.find(e => e.type === 'match.won') ?? events.find(e => e.type === 'leg.won');
+  // Completing the standings is not necessarily winning: Golf compares totals,
+  // and X01 played to places can finish long after the winner checked out.
+  // Use the outgoing turn, since a new leg may already have changed the active player.
+  const finishingPlayer = events.find(e => e.type === 'throw.recorded')?.playerId ??
+    events.find(e => e.type === 'turn.completed')?.playerId ?? old?.activePlayerId;
+  const winningFinish = win && win.playerId === finishingPlayer;
   const checkout = events.find(e => e.type === 'x01.checkout');
+  const firstFinisher = old?.players.find(p => p.detail.place === 1)?.playerId;
   const bust = events.find(e => e.type === 'player.busted');
   const gotcha = events.some(e => e.type === 'gotcha.knockback');
   const explosion = events.some(e => e.type === 'minefield.exploded');
-  if (win && 'playerId' in win) {
+  if (win && winningFinish) {
     words.push(win.type === 'match.won' ? 'Game shot. Match won.' : 'Game shot. Leg won.');
     cue = 'win';
-  } else if (checkout && 'playerId' in checkout) {
+  } else if (checkout && !win) {
     words.push('Checkout.');
-    cue = 'win';
+    if (!firstFinisher || firstFinisher === checkout.playerId) cue = 'win';
   } else if (bust && 'playerId' in bust) {
     words.push('Bust.');
     cue = 'bust';

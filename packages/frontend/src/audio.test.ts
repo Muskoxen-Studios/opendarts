@@ -58,6 +58,57 @@ describe('announcer decisions', () => {
       { type: 'set.won', playerId: 'alice' }, { type: 'match.won', playerId: 'alice' },
     ])).toEqual({ words: ['Game shot. Match won.'], cue: 'win' });
   });
+  it.each(['golf', 'countup', 'roundtheworld'] as const)('does not celebrate a losing final throw in %s', gameType => {
+    const old = view({ gameType, activePlayerId: 'bob' });
+    const next = view({ gameType, status: 'finished', activePlayerId: null, winnerId: 'alice',
+      recent: [{ id: 'last', playerId: 'bob', label: 'S20', value: 20 }] });
+    expect(planAudio(old, next, [
+      { type: 'throw.recorded', playerId: 'bob', dartIndex: 2, value: 3 },
+      { type: 'turn.completed', playerId: 'bob', total: 3, darts: 3, busted: false },
+      { type: 'leg.won', playerId: 'alice', darts: 20 }, { type: 'match.won', playerId: 'alice' },
+    ])).toEqual({ words: ['3.'], cue: undefined, throwConfirmed: true });
+  });
+  it('keeps a final Golf miss and zero score audible without a winning call', () => {
+    const next = view({ gameType: 'golf', status: 'finished', activePlayerId: null, winnerId: 'alice',
+      recent: [{ id: 'last', playerId: 'bob', label: 'MISS', value: 0 }] });
+    expect(planAudio(view({ gameType: 'golf', activePlayerId: 'bob' }), next, [
+      { type: 'throw.recorded', playerId: 'bob', dartIndex: 2, value: 0 },
+      { type: 'turn.completed', playerId: 'bob', total: 0, darts: 3, busted: false },
+      { type: 'match.won', playerId: 'alice' },
+    ])).toEqual({ words: ['Miss.', 'No score.'], cue: undefined });
+  });
+  it.each(['playing', 'finished'] as const)('does not celebrate a later-place X01 checkout when the match is %s', status => {
+    const old = view({ activePlayerId: 'bob' });
+    old.players[0]!.detail = { place: 1 };
+    const events = [
+      { type: 'x01.checkout' as const, playerId: 'bob', score: 501, darts: 20 },
+      { type: 'turn.completed' as const, playerId: 'bob', total: 40, darts: 1, busted: false },
+      ...(status === 'finished' ? [{ type: 'leg.won' as const, playerId: 'alice', darts: 12 },
+        { type: 'match.won' as const, playerId: 'alice' }] : []),
+    ];
+    const plan = planAudio(old, view({ status, activePlayerId: status === 'finished' ? null : 'carol' }), events);
+    expect(plan.words).toEqual([status === 'finished' ? '40.' : 'Checkout.']);
+    expect(plan.cue).toBeUndefined();
+  });
+  it('celebrates the first X01 checkout even when play continues for places', () => {
+    const old = view();
+    const next = view({ activePlayerId: 'bob' });
+    next.players[0]!.detail = { place: 1 };
+    expect(planAudio(old, next, [{ type: 'x01.checkout', playerId: 'alice', score: 501, darts: 12 }]))
+      .toMatchObject({ words: ['Checkout.'], cue: 'win' });
+  });
+  it('still celebrates the outgoing winner when the next leg has already started', () => {
+    expect(planAudio(view(), view({ leg: 2, activePlayerId: 'bob' }), [
+      { type: 'turn.completed', playerId: 'alice', total: 40, darts: 1, busted: false },
+      { type: 'leg.won', playerId: 'alice', darts: 12 },
+    ])).toMatchObject({ words: ['Game shot. Leg won.'], cue: 'win' });
+  });
+  it('does not celebrate a losing Golf finisher when the next leg has already started', () => {
+    expect(planAudio(view({ gameType: 'golf', activePlayerId: 'bob' }), view({ gameType: 'golf', leg: 2 }), [
+      { type: 'turn.completed', playerId: 'bob', total: 2, darts: 1, busted: false },
+      { type: 'leg.won', playerId: 'alice', darts: 20 },
+    ])).toMatchObject({ words: ['2.'], cue: undefined });
+  });
   it('does not call a checkout after undo or correction changes the active player', () => {
     const old = view({ activePlayerId: 'bob', recent: [{ id: 'dart', playerId: 'alice', label: 'S20', value: 20 }] });
     expect(planAudio(old, view(), []).words).toEqual([]);
