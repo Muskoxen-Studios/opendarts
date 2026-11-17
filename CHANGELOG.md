@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.7.0...v0.8.0) (2026-11-17)
+
+
+### Features
+
+* add seven Training games and game category tabs ([#49](https://github.com/Muskoxen-Studios/opendarts/issues/49)) ([cee302e](https://github.com/Muskoxen-Studios/opendarts/commit/cee302ea995d85d5823049da300ae3a5d93cea54))
+* determine player order with a bull-off ([#51](https://github.com/Muskoxen-Studios/opendarts/issues/51)) ([0db6d90](https://github.com/Muskoxen-Studios/opendarts/commit/0db6d906d9ebbaee8930d2a193c7be388f3aa503))
+
+
+### Bug Fixes
+
+* avoid winning calls for non-winning finishers ([#54](https://github.com/Muskoxen-Studios/opendarts/issues/54)) ([6303743](https://github.com/Muskoxen-Studios/opendarts/commit/6303743e3080517dbbc6b5a65d2b90e5b2a2873f))
+
 ## [0.7.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.6.0...v0.7.0) (2026-11-12)
 
 
