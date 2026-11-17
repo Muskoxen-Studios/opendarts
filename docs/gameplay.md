@@ -343,7 +343,10 @@ Reachable from the Settings tab:
 
 - **Sounds & voice** — opt-in spoken turn totals, misses, busts and leg/match wins,
   plus X01 checkout requirements when a player comes to the oche with a legal
-  checkout route. Gotcha knockbacks say “Gotcha!” instead of a sound effect or
+  checkout route. Winning calls and chimes are reserved for the player who actually wins.
+  A losing final turn in Golf or a later finishing place does not get a winning
+  call or sound; ordinary score, miss and checkout announcements still apply.
+  Gotcha knockbacks say “Gotcha!” instead of a sound effect or
   confirmation knock. Separate sound effects cover busts (shattering glass), wins
   and Minefield explosions, with a shared volume slider and test button. Mine
   and blast-zone hits play a short booming explosion; a chain plays one burst.
