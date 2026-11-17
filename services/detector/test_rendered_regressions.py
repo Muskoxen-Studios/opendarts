@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from parameters import DEFAULT_PARAMETERS, DetectionParameters
 from main import Service
-from rendered import CAMERAS, PerspectiveDetector, RenderedSource, changed_pixels, project
+from rendered import CAMERAS, PerspectiveDetector, RenderedSource, changed_pixels, project, shaft_candidates
 from test_rendered import configuration, images, upload
 from vision import confident_segment
 
@@ -53,6 +53,50 @@ class RenderedRegressionTests(unittest.TestCase):
             source.submit(upload(source, frames))
             service.tick()
         self.assertEqual(sum(e['type'] == 'throw.detected' for _, e in service.history), 1)
+
+    def test_default_led_ring_webgl_first_dart_resolves_with_full_envelope(self):
+        # Captured from scripts/test-rendered.mjs after the empty baseline. The
+        # pixels are actual WebGL output; no labels or impact coordinates enter
+        # the detector call.
+        with gzip.open(Path(__file__).parent / 'fixtures/rendered-default-led-ring-first-dart.json.gz', 'rt') as file:
+            fixture = json.load(file)
+        source = RenderedSource.configured(fixture['configuration'])
+        detector = PerspectiveDetector(source, DetectionParameters.from_dict(
+            json.loads((Path(__file__).parent / 'led-ring.parameters.json').read_text())))
+        frames = {k: base64.b64decode(v) for k, v in fixture['images'].items()}
+        self.assertIsNone(detector.observe(frames))
+        self.assertIsNone(detector.observe(frames))
+        points = detector.observe(frames)
+        self.assertEqual(len(points), 1)
+        self.assertLess(math.dist(points[0], fixture['expected']), 1)
+        self.assertTrue(all('reconstructed' in detector.diagnostics[k] for k in CAMERAS))
+
+    def test_disconnected_sections_recover_shaft_without_slicing_a_flight(self):
+        # A vertical shaft and two remote shadow strips share every image row.
+        shaft = [(x + 0.5, y + 0.5) for y in range(60, 121) for x in range(100, 103)]
+        shadows = [(x + 0.5, y + 0.5) for y in range(60, 121)
+                   for x in list(range(40, 49)) + list(range(155, 164))]
+        candidates = shaft_candidates(shaft + shadows)
+        self.assertTrue(any(abs(line[0]*101.5 + line[1]*90.5 + line[2]) < 0.5
+                            and length >= 50 for line, (_, length) in candidates))
+        broad = [(x + 0.5, y + 0.5) for y in range(60, 121) for x in range(80, 125)]
+        # A broad rectangle must not acquire a false central narrow shaft.
+        with self.assertRaisesRegex(ValueError, 'no resolvable narrow shaft run'):
+            shaft_candidates(broad, max_width=14, local_sections=True)
+
+    def test_original_rejection_survives_retries_until_stable_empty(self):
+        source = RenderedSource.configured(configuration())
+        detector = PerspectiveDetector(source)
+        occupied = images(configuration(), [(0, 65, 0, 0)])
+        with patch.object(detector, 'resolve_axis', side_effect=ValueError('no resolvable narrow shaft run')):
+            with self.assertRaisesRegex(ValueError, 'no resolvable narrow shaft run'):
+                detector.observe(occupied)
+        for _ in range(3):
+            with self.assertRaisesRegex(ValueError, 'original rejection: no resolvable narrow shaft run'):
+                detector.observe(occupied)
+        self.assertEqual(self.settle(detector, source.reference), [])
+        self.assertFalse(detector.unresolved_occupancy)
+        self.assertIsNone(detector.unresolved_reason)
 
     @classmethod
     def setUpClass(cls):

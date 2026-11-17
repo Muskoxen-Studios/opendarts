@@ -72,7 +72,7 @@ async function stopBackends() {
 
 async function boot() {
   const nodePath = findNodeRuntime(APP_ROOT);
-  const detector = await detectorConfig(APP_ROOT, { isPackaged: app.isPackaged });
+  const detector = await detectorConfig(APP_ROOT, { isPackaged: app.isPackaged, userDataDir: app.getPath('userData') });
   if (app.isQuitting) throw new Error('Desktop startup cancelled.');
   if (detector?.managed) {
     launchChild(detector.executable, detector.args, {}, 'detector');
@@ -132,8 +132,8 @@ function buildMenu() {
           ...(app.isPackaged ? [{
             label: 'About native detection',
             click: () => void dialog.showMessageBox({
-              type: 'info', message: 'Native detector is not bundled in this installer.',
-              detail: 'Run the detector separately with Python 3.10+ and configure its URL in Settings → Dart source. Development launches from a source checkout start the rendered detector automatically.',
+              type: 'info', message: 'The native detector and v6 model are bundled.',
+              detail: 'Select Native detector in Settings, connect three cameras under USB cameras, and calibrate before playing.',
             }),
           }] : []),
           { type: 'separator' },

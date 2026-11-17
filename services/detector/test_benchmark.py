@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import benchmark
-from parameters import DEFAULT_PARAMETERS
+from parameters import DEFAULT_PARAMETERS, DetectionParameters
 from rendered import RenderedSource
 from test_rendered import configuration, images
 
@@ -43,6 +43,31 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(audit['comparisons'], 1)
         self.assertEqual(audit['outsideBound'], 1)
         self.assertEqual(audit['maxErrorToBoundRatio'], 2)
+
+    def test_boundary_clearance_report_counts_rejected_nonempty_steps(self):
+        rows = [
+            dict(clearanceMm=.5, correct=False, rejected=True, wrongAccept=False,
+                 uncertaintyCalibration=None),
+            dict(clearanceMm=1.5, correct=True, rejected=False, wrongAccept=False,
+                 uncertaintyCalibration={'errorsMm': [.5], 'outsideBound': 0}),
+            dict(clearanceMm=3, correct=False, rejected=False, wrongAccept=True,
+                 uncertaintyCalibration={'errorsMm': [2, 4], 'outsideBound': 1}),
+            dict(clearanceMm=8, correct=True, rejected=False, wrongAccept=False,
+                 uncertaintyCalibration=None),
+            dict(clearanceMm=None, correct=True, rejected=False, wrongAccept=False,
+                 uncertaintyCalibration=None),
+        ]
+        report = benchmark.boundary_report(rows)
+        self.assertEqual(report['0-1mm']['steps'], 1)
+        self.assertEqual(report['0-1mm']['rejected'], 1)
+        self.assertEqual(report['0-1mm']['correct'], 0)
+        self.assertEqual(report['1-2mm']['measuredComparisons'], 1)
+        self.assertEqual(report['1-2mm']['measuredMeanMm'], .5)
+        self.assertEqual(report['2-5mm']['wrongAccept'], 1)
+        self.assertEqual(report['2-5mm']['outsideBound'], 1)
+        self.assertEqual(report['2-5mm']['measuredMaxMm'], 4)
+        self.assertEqual(report['5mm+']['correct'], 1)
+        self.assertEqual(sum(bucket['steps'] for bucket in report.values()), 4)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -104,7 +129,9 @@ class BenchmarkTests(unittest.TestCase):
                    lambda m: m['cases'][0]['steps'][0].update(expected=[[True, 2]]),
                    lambda m: m['cases'][0]['steps'][0].update(toleranceMm=0),
                    lambda m: m['cases'][0]['steps'][0].update(allowReject=1),
-                   lambda m: m['cases'].append(copy.deepcopy(m['cases'][0]))]
+                   lambda m: m['cases'].append(copy.deepcopy(m['cases'][0])),
+                   lambda m: m['cases'].append({**copy.deepcopy(m['cases'][0]),
+                                                 'id': 'cross-split', 'split': 'validation'})]
         for change in changes:
             invalid = copy.deepcopy(manifest)
             change(invalid)
@@ -146,6 +173,32 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(report['summary']['rejected'], 2)
         self.assertEqual(report['summary']['objective'], 0)
         self.assertIn('uncertainty', report['steps'][0]['fault'])
+
+    def test_first_fault_preserves_original_rejection_reason_across_retries(self):
+        class Detector:
+            def __init__(self, source, parameters):
+                self.calls = 0
+                self.uncertainty_mm = 1
+
+            def observe(self, frame):
+                self.calls += 1
+                if self.calls == 1:
+                    raise ValueError('no three-view shaft correspondence')
+                raise ValueError('unresolved prior occupancy; empty board required')
+
+            def clear_pending(self):
+                pass
+
+            def accept(self, frame, points):
+                self.fail('rejected step must not be accepted')
+
+        step = dict(images=self.empty, expected=[[0, 60]], allowReject=True, toleranceMm=3)
+        with patch.object(benchmark, 'PerspectiveDetector', Detector):
+            report = benchmark.evaluate(self.dataset([step]), splits=('train',))
+        row = report['steps'][0]
+        self.assertEqual(row['fault'], 'unresolved prior occupancy; empty board required')
+        self.assertEqual(row['firstFault'], 'no three-view shaft correspondence')
+        self.assertTrue(row['rejected'])
 
     def test_wrong_accept_localization_and_missing(self):
         step = dict(images=self.empty, expected=[[0, 60]], allowReject=True, toleranceMm=3)
@@ -197,6 +250,54 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(full['selected'], resumed['selected'])
         self.assertEqual([{k: v for k, v in t.items() if k != 'validation'} for t in full['trials']],
                          [{k: v for k, v in t.items() if k != 'validation'} for t in resumed['trials']])
+
+    def test_warm_start_resume_preserves_rng_and_trial_sequence(self):
+        values = DEFAULT_PARAMETERS.to_dict()
+        values['min_blob_pixels'] = 9 if values['min_blob_pixels'] != 9 else 10
+        initial = DetectionParameters.from_dict(values)
+
+        def evaluate(dataset, parameters, splits):
+            return {'summary': summary(parameters.min_blob_pixels / 100)}
+
+        with patch.object(benchmark, 'evaluate', evaluate):
+            full = benchmark.tune(self.dataset(), self.root / 'warm-full.json',
+                                  trials=12, seed=78, initial_parameters=initial)
+            benchmark.tune(self.dataset(), self.root / 'warm-resume.json',
+                           trials=3, seed=78, initial_parameters=initial)
+            resumed = benchmark.tune(self.dataset(), self.root / 'warm-resume.json',
+                                     trials=12, seed=78, resume=True, initial_parameters=initial)
+        self.assertEqual(full, resumed)
+        self.assertEqual(full['trials'][0]['parameters'], DEFAULT_PARAMETERS.to_dict())
+        self.assertEqual(full['trials'][1]['parameters'], initial.to_dict())
+        self.assertEqual(full['trials'][1]['phase'], 'warm-start')
+        self.assertEqual(full['trials'][1]['parentTrial'], None)
+
+    def test_warm_start_is_checkpoint_identity_and_validation_finalist(self):
+        values = DEFAULT_PARAMETERS.to_dict()
+        values['min_blob_pixels'] = 9 if values['min_blob_pixels'] != 9 else 10
+        initial = DetectionParameters.from_dict(values)
+        other_values = dict(values, min_blob_pixels=11 if values['min_blob_pixels'] != 11 else 12)
+        other = DetectionParameters.from_dict(other_values)
+        calls = []
+
+        def evaluate(dataset, parameters, splits):
+            calls.append((splits, parameters))
+            return {'summary': summary(parameters.min_blob_pixels / 100)}
+
+        path = self.root / 'warm-identity.json'
+        with patch.object(benchmark, 'evaluate', evaluate):
+            state = benchmark.tune(self.dataset(), path, trials=3, seed=4, shortlist=1,
+                                   initial_parameters=initial)
+            with self.assertRaisesRegex(ValueError, 'incompatible'):
+                benchmark.tune(self.dataset(), path, trials=4, seed=4, shortlist=1,
+                               resume=True, initial_parameters=other)
+        self.assertEqual(state['finalists'], [0, 1])
+        self.assertEqual(state['config']['initialParameters'], initial.to_dict())
+        for index in (0, 1):
+            params = DetectionParameters.from_dict(state['trials'][index]['parameters'])
+            self.assertIn((('train',), params), calls)
+            self.assertIn((('validation',), params), calls)
+        self.assertFalse(any(splits == ('test',) for splits, _ in calls))
 
     def test_resume_incompatible_and_required_splits(self):
         with patch.object(benchmark, 'evaluate', return_value={'summary': summary()}):

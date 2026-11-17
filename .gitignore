@@ -19,3 +19,5 @@ graphify-out/memory/
 graphify-out/reflections/
 graphify-out/.graphify_*
 graphify-out/????-??-??/
+# Local Python environments
+.venv/

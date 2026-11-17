@@ -12,28 +12,30 @@ import { detectionScenarios, random, SCENARIO_SEED, SCENARIO_VERSION, SCENARIO_H
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function options(args) {
-  let output = join(root, 'build/rendered-benchmark'), small = false;
+  let output = join(root, 'build/rendered-benchmark'), small = false, suite = 'all';
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--small') small = true;
+    else if (args[i] === '--suite' && ['all', 'boundary', 'legacy'].includes(args[i + 1])) suite = args[++i];
     else if (args[i] === '--output' && args[i + 1] && !args[i + 1].startsWith('--')) output = resolve(args[++i]);
     else if (args[i] === '--help') {
-      console.log('Usage: node scripts/generate-detection-dataset.mjs [--output DIRECTORY] [--small]\nRequires installed Electron, Vite and (Linux) xvfb-run. Reuses a verified complete cache.');
+      console.log('Usage: node scripts/generate-detection-dataset.mjs [--output DIRECTORY] [--small] [--suite all|boundary|legacy]\nRequires installed Electron, Vite and (Linux) xvfb-run. Reuses a verified complete cache.');
       process.exit(0);
     } else throw new Error(`Unknown or incomplete argument: ${args[i]}`);
   }
-  return { output, small };
+  return { output, small, suite };
 }
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function json(path, value) { await writeFile(path, JSON.stringify(value) + '\n'); }
+const DEFAULT_LIGHTING = { radius: 270, forward: 180, intensity: 1, ambient: 0.35, rotation: 0 };
 
 const html = `<!doctype html><html><body><canvas id="overview"></canvas><canvas id="cam0"></canvas><canvas id="cam1"></canvas><canvas id="cam2"></canvas><script type="module">
-import { CameraRig3D, DEFAULT_RIG, DEFAULT_DART, validDart, validRig } from '/packages/frontend/src/cameraRig3d.ts';
+import { CameraRig3D, DEFAULT_RIG, DEFAULT_DART, DEFAULT_LIGHTING, validDart, validRig } from '/packages/frontend/src/cameraRig3d.ts';
 window.rigReady = (async () => {
   const renderer = new CameraRig3D(document.getElementById('overview'), ['cam0','cam1','cam2'].map(id => document.getElementById(id)), DEFAULT_RIG);
   window.rigTest = {
-    configure(rig) {
+    configure(rig, lighting) {
       if (!validRig(rig)) throw new Error('Invalid scenario rig');
-      renderer.setDarts([]); renderer.setRig(rig);
+      renderer.setDarts([]); renderer.setRig(rig); renderer.setLighting(lighting ?? DEFAULT_LIGHTING);
       const config = renderer.configuration();
       for (const camera of Object.values(config.cameras)) {
         if (new Set(atob(camera.reference)).size < 20) throw new Error('Blank WebGL reference');
@@ -67,11 +69,12 @@ function perturb(images, effect, previous) {
   return result;
 }
 
-async function generate({ output, small }) {
-  const scenarios = detectionScenarios({ small });
-  const fingerprint = createHash('sha256').update(JSON.stringify({ small, seed: SCENARIO_SEED, version: SCENARIO_VERSION }));
+async function generate({ output, small, suite }) {
+  const scenarios = detectionScenarios({ small, suite });
+  const fingerprint = createHash('sha256').update(JSON.stringify({ small, suite, seed: SCENARIO_SEED, version: SCENARIO_VERSION }));
   for (const file of ['scripts/generate-detection-dataset.mjs', 'scripts/detection-scenarios.mjs',
-    'scripts/rendered-browser.cjs', 'packages/frontend/src/cameraRig3d.ts', 'packages/frontend/src/boardGeometry.ts', 'package-lock.json']) {
+    'scripts/rendered-browser.cjs', 'packages/frontend/src/cameraRig3d.ts', 'packages/frontend/src/boardGeometry.ts',
+    'packages/schema/src/board.ts', 'package-lock.json']) {
     fingerprint.update(await readFile(join(root, file)));
   }
   const key = fingerprint.digest('hex');
@@ -91,7 +94,7 @@ async function generate({ output, small }) {
 
   let vite, browser, logs = '', ready = false, serial = 0, failure;
   const pending = new Map();
-  const deadline = Date.now() + 80_000;
+  const deadline = Date.now() + 600_000;
   function kill(signal) {
     if (!browser?.pid) return;
     try { if (process.platform === 'win32') browser.kill(signal); else process.kill(-browser.pid, signal); } catch { /* Already exited. */ }
@@ -102,14 +105,14 @@ async function generate({ output, small }) {
     pending.clear();
   }
   const interrupt = () => { fail(new Error('Generation interrupted')); kill('SIGTERM'); };
-  const watchdog = setTimeout(() => { fail(new Error('Generation exceeded 80 seconds')); kill('SIGKILL'); }, 80_000);
+  const watchdog = setTimeout(() => { fail(new Error('Generation exceeded 600 seconds')); kill('SIGKILL'); }, 600_000);
   process.on('SIGINT', interrupt); process.on('SIGTERM', interrupt);
   function alive() { if (failure) throw failure; if (Date.now() >= deadline) throw new Error('Generation deadline exceeded'); }
   function rpc(method, args = []) {
     alive();
     const id = ++serial;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`RPC ${method} timed out`)); }, Math.min(15_000, deadline - Date.now()));
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`RPC ${method} timed out`)); }, Math.min(60_000, deadline - Date.now()));
       pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
       browser.stdin.write(JSON.stringify({ id, method, args }) + '\n', error => { if (error) fail(error); });
     });
@@ -126,7 +129,7 @@ async function generate({ output, small }) {
     const electron = join(root, 'node_modules/electron/dist', process.platform === 'win32' ? 'electron.exe'
       : process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron' : 'electron');
     await access(electron);
-    const args = ['--no-sandbox', ...(process.platform === 'linux' ? ['--ozone-platform=x11'] : []), 'scripts/rendered-browser.cjs', `--url=http://127.0.0.1:${vite.httpServer.address().port}/__dataset`];
+    const args = ['--no-sandbox', ...(process.platform === 'linux' ? ['--ozone-platform=x11'] : []), 'scripts/rendered-browser.cjs', '--timeout-ms=600000', `--url=http://127.0.0.1:${vite.httpServer.address().port}/__dataset`];
     browser = spawn(process.platform === 'linux' ? (process.env.XVFB_RUN ?? 'xvfb-run') : electron,
       process.platform === 'linux' ? ['-a', '-s', '-screen 0 1400x1100x24', electron, ...args] : args,
       { cwd: root, detached: process.platform !== 'win32', env: { ...process.env, ELECTRON_RUN_AS_NODE: '' }, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -145,22 +148,39 @@ async function generate({ output, small }) {
         }
       } catch (error) { fail(error); }
     });
-    const readyDeadline = Date.now() + 25_000;
+    const readyDeadline = Date.now() + 60_000;
     while (!ready) { alive(); if (Date.now() > readyDeadline) throw new Error('Electron readiness timed out'); await sleep(50); }
     const manifest = { version: 1, cases: [] }, files = {};
     async function save(relative, value) {
       await json(join(staging, relative), value);
       files[relative] = hash(await readFile(join(staging, relative)));
     }
+    let activeSceneKey = null, activeConfiguration = null, rawFrameSets = new Map();
     for (const [index, scenario] of scenarios.entries()) {
       alive();
       const folder = `case-${index}`; await mkdir(join(staging, folder));
-      const configuration = await rpc('configure', [scenario.rig]);
+      const sceneKey = JSON.stringify([scenario.rig, scenario.lighting ?? DEFAULT_LIGHTING]);
+      if (sceneKey !== activeSceneKey) {
+        // Scenarios are grouped by family/scene. Keep only this scene's raw
+        // renders so cache memory stays bounded across the full dataset.
+        activeSceneKey = sceneKey;
+        activeConfiguration = await rpc('configure', [scenario.rig, scenario.lighting]);
+        const emptyFrames = Object.fromEntries(Object.entries(activeConfiguration.cameras)
+          .map(([id, camera]) => [id, camera.reference]));
+        rawFrameSets = new Map([[JSON.stringify([]), emptyFrames]]);
+      }
+      const configuration = activeConfiguration;
       await save(`${folder}/configuration.json`, configuration);
       let previous = Object.fromEntries(Object.entries(configuration.cameras).map(([id, camera]) => [id, camera.reference]));
       const steps = [];
       for (const [i, step] of scenario.steps.entries()) {
-        const images = perturb(await rpc('frames', [step.darts]), step.effect, previous);
+        const specsKey = JSON.stringify(step.darts);
+        let rawImages = rawFrameSets.get(specsKey);
+        if (!rawImages) {
+          rawImages = await rpc('frames', [step.darts]);
+          rawFrameSets.set(specsKey, rawImages);
+        }
+        const images = perturb(rawImages, step.effect, previous);
         for (const [id, pixels] of Object.entries(images)) {
           if (!['cam0', 'cam1', 'cam2'].includes(id) || Buffer.from(pixels, 'base64').length !== configuration.width * configuration.height) throw new Error('Invalid rendered image');
         }
@@ -169,7 +189,7 @@ async function generate({ output, small }) {
         steps.push({ images: relative, expected: step.darts.map(d => [d.x, d.y]), allowReject: step.allowReject, toleranceMm: 3 });
         previous = images;
       }
-      manifest.cases.push({ id: scenario.id, family: scenario.family, split: scenario.split, configuration: `${folder}/configuration.json`, steps });
+      manifest.cases.push({ id: scenario.id, family: scenario.family, split: scenario.split, configuration: `${folder}/configuration.json`, rendering: { rig: scenario.rig, lighting: scenario.lighting ?? DEFAULT_LIGHTING }, steps });
       console.log(`Rendered ${scenario.id}: ${steps.length} steps (${scenario.split})`);
     }
     await rpc('dispose');
@@ -177,7 +197,7 @@ async function generate({ output, small }) {
     await json(join(staging, 'generator-cache.json'), { version: SCENARIO_VERSION, key, seed: SCENARIO_SEED,
       rendering: { width: 1280, height: 720, horizontalFov: SCENARIO_HORIZONTAL_FOV,
         verticalFov: SCENARIO_VERTICAL_FOV, calibration: 'provisional, not measured hardware',
-        pixels: 'top-down grayscale', mounting: 'per-case varied geometry' }, files });
+        lighting: '12-sample LED ring with PCF shadows and ambient fill; representative dimensions', antialiasSamples: 4, pixels: 'top-down grayscale', mounting: 'per-case varied geometry' }, files });
     for (const entry of await readdir(staging)) if (entry !== 'dataset.json' && entry !== 'generator-cache.json') await rename(join(staging, entry), join(output, entry));
     await rename(join(staging, 'dataset.json'), join(output, 'dataset.json'));
     await rename(join(staging, 'generator-cache.json'), join(output, 'generator-cache.json'));

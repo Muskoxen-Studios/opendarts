@@ -184,3 +184,28 @@ export function normalizeThrow(raw: unknown, ts: string = new Date().toISOString
     source: 'board' as const,
   };
 }
+
+/** Normalize a state snapshot's entire reported occupancy without making
+ * those historical darts new throw events. Keep original board coordinates
+ * alongside the schema's millimetre conversion for capture provenance. */
+export function normalizeReportedOccupancy(raw: unknown) {
+  const state = z.object({ connected: z.boolean().optional(), running: z.boolean().optional(),
+    status: z.unknown().optional(), throws: z.array(z.unknown()).optional() }).passthrough().safeParse(raw);
+  if (!state.success) throw new ThrowShapeError('Unrecognised board state snapshot.', raw);
+  return {
+    connected: state.data.connected ?? null,
+    running: state.data.running ?? null,
+    status: state.data.status === undefined ? null : normalizeStatus(state.data.status),
+    throws: (state.data.throws ?? []).map((entry) => {
+      const parsed = CompatibleThrowSchema.safeParse(entry);
+      if (!parsed.success) throw new ThrowShapeError('Unrecognised throw in board occupancy snapshot.', entry);
+      const coords = RawCoordsSchema.safeParse(parsed.data.coords);
+      return {
+        segment: toSegment(parsed.data.segment),
+        value: segmentValue(toSegment(parsed.data.segment)),
+        coords: toCoords(parsed.data.coords),
+        reportedPosition: coords.success ? { x: coords.data.x, y: coords.data.y } : null,
+      };
+    }),
+  };
+}

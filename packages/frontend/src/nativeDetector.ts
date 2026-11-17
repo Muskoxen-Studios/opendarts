@@ -9,8 +9,9 @@ export interface RenderFrameBatch {
 
 export interface NativeState {
   session: string;
-  source: 'synthetic' | 'replay' | 'rendered';
+  source: 'synthetic' | 'replay' | 'rendered' | 'usb';
   renderSession?: string | null;
+  model?: { name: string; sha256: string | null; diagnostics: unknown };
   diagnostics?: Record<string, unknown>;
   running: boolean;
   status: string;
@@ -32,7 +33,7 @@ function integer(value: unknown): value is number {
 export function parseNativeState(value: unknown): NativeState {
   const s = record(value);
   const p = record(s.pending);
-  if (typeof s.session !== 'string' || !s.session || (s.source !== 'synthetic' && s.source !== 'replay' && s.source !== 'rendered') ||
+  if (typeof s.session !== 'string' || !s.session || (s.source !== 'synthetic' && s.source !== 'replay' && s.source !== 'rendered' && s.source !== 'usb') ||
       (s.renderSession !== undefined && s.renderSession !== null && (typeof s.renderSession !== 'string' || !s.renderSession)) ||
       (s.diagnostics !== undefined && (!s.diagnostics || typeof s.diagnostics !== 'object' || Array.isArray(s.diagnostics))) ||
       typeof s.running !== 'boolean' || typeof s.status !== 'string' || !integer(s.occupancy) ||
@@ -52,6 +53,9 @@ export function parseNativeState(value: unknown): NativeState {
   return {
     session: s.session, source: s.source as NativeState['source'], running: s.running, status: s.status,
     occupancy: s.occupancy, cameras, faults: s.faults as string[],
+    ...(s.model && typeof s.model === 'object' && !Array.isArray(s.model) && typeof (s.model as Record<string, unknown>).name === 'string' &&
+      (typeof (s.model as Record<string, unknown>).sha256 === 'string' || (s.model as Record<string, unknown>).sha256 === null)
+      ? { model: s.model as NativeState['model'] } : {}),
     ...(s.renderSession !== undefined ? { renderSession: s.renderSession as string | null } : {}),
     ...(s.diagnostics !== undefined ? { diagnostics: s.diagnostics as Record<string, unknown> } : {}),
     pending: { stableFrames: p.stableFrames, requiredFrames: p.requiredFrames, adoptingBaseline: p.adoptingBaseline },

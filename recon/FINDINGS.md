@@ -172,6 +172,28 @@ Number order: `20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5`
 3 cameras (indices `["0","1","3"]`, addressed as 0/1/2 in the API), 1280×720 @ 30fps,
 auto-calibrate on start enabled, motion standby 15 min.
 
+### Board Manager 2.1.1 calibration discovery (2026-11-16)
+
+Confirmed with read-only requests against the current board: **GET `/api/system`**
+returns `calibration`, including `calibrated`, `numCams`, `useUndistorted` and
+`cams[]`. Each camera includes `k` (3×3 intrinsics), `d` (five distortion
+coefficients), `homography`, `homographyUndistorted`, image dimensions and
+`errorPx`. All three cameras reported calibrated at 1280×720; fit errors were
+approximately 0.69, 0.81 and 0.66 pixels. These are board-reported calibration
+fit errors, not measured dart localization errors. The response also contains
+configuration/auth fields; retain the calibration subset rather than publishing
+the whole response. No explicit camera `R`/`t` is present; homography direction,
+board coordinates and distortion conventions need verification before native use.
+
+GET `/api/config/calibration` returns 404 on this version. GET
+`/api/config/calibration/ellipses` returned `{}` on an earlier read and later
+returned per-camera bull positions, fitted ellipses and wire intersection points;
+an empty response alone does not establish that calibration is unavailable.
+GET `/api/config/pipeline` exposes board image regions. A passive websocket at
+`/api/events/system` exposes statistics and pipeline telemetry. Discovery used
+GET requests and passive websocket connections only; no detection, calibration,
+reset, freeze/thaw or other control commands were sent.
+
 ---
 
 ## Next step

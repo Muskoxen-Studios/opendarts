@@ -197,7 +197,7 @@ const server = createServer(async (req, res) => {
   if (req.url?.startsWith('/native/')) {
     const config = manager.config;
     const renderUpload = ['/native/render/configure', '/native/render/frames'].includes(req.url ?? '');
-    const limit = renderUpload ? MAX_RENDER_BODY : req.url === '/native/render/reset' ? 4096 : Infinity;
+    const limit = renderUpload ? MAX_RENDER_BODY : (req.url === '/native/render/reset' || (req.url?.startsWith('/native/calibration/') || req.url?.startsWith('/native/usb/'))) ? 4096 : Infinity;
     const body = req.method === 'POST' ? await readBody(req, limit) : undefined;
     if (body === BODY_TOO_LARGE) return json(res, 413, { error: 'render body too large' });
     if (await nativeProxy(req, res, config, body)) return;

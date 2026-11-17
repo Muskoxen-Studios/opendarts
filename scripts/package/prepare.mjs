@@ -141,7 +141,8 @@ async function fetchRuntime(version) {
 
 async function stage() {
   log(`staging into ${OUT}`);
-  await rm(join(REPO, 'build'), { recursive: true, force: true });
+  // Preserve benchmarks, trained models, and other user data under build/.
+  await rm(OUT, { recursive: true, force: true });
   await mkdir(OUT, { recursive: true });
 
   log('building the frontend');
@@ -198,6 +199,11 @@ async function stage() {
   }
 
   await cp(join(REPO, 'packages/frontend/dist'), join(OUT, 'packages/frontend/dist'), { recursive: true });
+
+  // The detector bundle includes Python, dependencies and the selected checkpoint.
+  await cp(join(REPO, 'build/detector-runtime/darts-detector'), join(OUT, 'runtime/detector'), { recursive: true, verbatimSymlinks: true });
+  await mkdir(join(OUT, 'services/detector'), { recursive: true });
+  await copyFile(join(REPO, 'services/detector/led-ring.parameters.json'), join(OUT, 'services/detector/led-ring.parameters.json'));
   /*
    * electron-builder is run with --projectDir build/app, so its config has to
    * be in there with it -- plus the Electron version, which it would otherwise

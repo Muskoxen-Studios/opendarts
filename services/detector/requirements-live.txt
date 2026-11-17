@@ -1,0 +1,5 @@
+# Experimental USB inference; choose a suitable PyTorch wheel for the host.
+torch>=2.14,<2.16
+numpy
+Pillow
+opencv-python-headless

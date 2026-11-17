@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -73,6 +74,43 @@ await writeFile(
 try {
   execFileSync(node, [probe], { cwd: app, stdio: 'pipe' });
   log('the packed app resolves and runs its own backend outside the repo');
+  const detector = join(app, 'runtime', 'detector', process.platform === 'win32' ? 'darts-detector.exe' : 'darts-detector');
+  const frame = join(away, 'camera.pgm');
+  await writeFile(frame, Buffer.concat([Buffer.from('P5\n1280 720\n255\n'), Buffer.alloc(1280 * 720, 180)]));
+  const manifest = join(away, 'frames.json');
+  await writeFile(manifest, JSON.stringify([{ cam0: 'camera.pgm', cam1: 'camera.pgm', cam2: 'camera.pgm' }]));
+  const selfTest = execFileSync(detector, ['--source', 'usb', '--camera-config', join(away, 'rig.json'),
+    '--mock-cameras', manifest, '--self-test'], { cwd: away, encoding: 'utf8', timeout: 60000 });
+  if (!selfTest.includes('v6 self-test ok bc5b45538ae8d4308874b910f870aa11d4171ccba500dc2739a4694b045a1588')) {
+    throw new Error('bundled detector inference self-test failed');
+  }
+  const probePort = await new Promise((resolvePort, reject) => {
+    const server = createServer(); server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolvePort(port)); });
+  });
+  const child = spawn(detector, ['--source', 'usb', '--camera-config', join(away, 'rig.json'),
+    '--mock-cameras', manifest, '--port', String(probePort)], { cwd: away, stdio: ['ignore', 'pipe', 'pipe'] });
+  let diagnostic = '';
+  child.stderr.on('data', (data) => { diagnostic += data.toString(); });
+  try {
+    const deadline = Date.now() + 45000;
+    let state;
+    while (Date.now() < deadline) {
+      if (child.exitCode !== null) throw new Error(`detector exited: ${diagnostic}`);
+      try {
+        const response = await fetch(`http://127.0.0.1:${probePort}/state`, { signal: AbortSignal.timeout(1000) });
+        if (response.ok) { state = await response.json(); break; }
+      } catch { /* process is starting */ }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+    }
+    if (state?.source !== 'usb' || state?.model?.sha256 !== 'bc5b45538ae8d4308874b910f870aa11d4171ccba500dc2739a4694b045a1588') {
+      throw new Error(`bundled model did not load: ${diagnostic}`);
+    }
+    log('the packed detector loads its bundled v6 model and mock cameras');
+  } finally {
+    child.kill();
+    await new Promise((resolveExit) => { if (child.exitCode !== null) resolveExit(); else child.once('exit', resolveExit); });
+  }
 } catch (err) {
   const detail = String(err.stderr ?? err.stdout ?? err);
   throw new Error(

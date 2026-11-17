@@ -1,4 +1,4 @@
-"""Local native detector proof-of-pipeline, entirely stdlib.
+"""Local native detector with simulated, replay, rendered and USB camera sources.
 
 Rendered sources can explicitly load --parameters PATH: a plain (possibly partial)
 DetectionParameters JSON object. For benchmark tune artifacts, export only
@@ -7,7 +7,13 @@ configuration is discovered or loaded automatically.
 """
 
 import argparse
+import hashlib
+import glob
+import sys
 import json
+import os
+import pickle
+import tempfile
 import struct
 import threading
 import time
@@ -22,6 +28,10 @@ from typing import cast
 from parameters import DEFAULT_PARAMETERS, DetectionParameters
 from sources import ReplaySource, synthetic
 from rendered import CAMERAS, RenderedSource, PerspectiveDetector, exact
+from camera_source import CameraSource
+from calibration import calibrate
+from live_model import LiveModel, board_point
+from stability import StableFrames
 from vision import ImageDetector, confident_segment, occupancy_changes
 
 
@@ -47,11 +57,17 @@ def png(pixels, width, height):
 
 
 class Service:
-    def __init__(self, source, history_size=512, parameters=DEFAULT_PARAMETERS):
+    def __init__(self, source, history_size=512, parameters=DEFAULT_PARAMETERS, live_model=None, camera_config=None, model_path=None):
         self.parameters = parameters
+        self.camera_config = Path(camera_config) if camera_config else None
+        self.model_path = model_path
         self.source = source
+        self.live_model = live_model
+        self.rgb_accepted = None
+        self.stabilizer = StableFrames() if isinstance(source, CameraSource) else None
+        self.model_diagnostics = None
         self.width, self.height = getattr(source, 'width', 480), getattr(source, 'height', 480)
-        self.detector = (PerspectiveDetector(source, self.parameters) if isinstance(source, RenderedSource) else
+        self.detector = (PerspectiveDetector(source, self.parameters) if isinstance(source, (RenderedSource, CameraSource)) else
                          ImageDetector(source.calibrations, source.reference, self.width, self.height))
         self.condition = threading.Condition(threading.RLock())
         # Frame receipt must remain responsive while the worker fits shafts.
@@ -60,7 +76,8 @@ class Service:
         self.session = uuid.uuid4().hex
         self.counter = 0
         self.history = deque(maxlen=history_size)
-        self.running = True
+        self.running = not isinstance(source, CameraSource) or bool(source.calibrations)
+        self.calibration_snapshot = None
         self.status = 'Starting'
         self.occupancy = []
         self.faults = []
@@ -87,16 +104,26 @@ class Service:
     def tick(self):
         with self.condition:
             try:
-                if not isinstance(self.source, RenderedSource):
+                if not isinstance(self.source, (RenderedSource, CameraSource)):
                     self.images = {}
                 with self.acquisition:
                     try:
                         frame = self.source.capture()
                     finally:
                         self.acquisition.notify_all()
+                if frame is not None and self.stabilizer is not None and self.source.calibrations:
+                    stable = self.stabilizer.observe(frame, self.source.rgb)
+                    if stable is None:
+                        frame = None
+                    else:
+                        frame, self.source.rgb = stable
                 if frame is not None:
                     self.images = frame
-                    points = self.detector.observe(frame)
+                    points = (None if isinstance(self.source, CameraSource) and not self.source.calibrations
+                              else self.detector.observe(frame))
+                    if isinstance(self.source, CameraSource) and not self.source.calibrations:
+                        self.faults = []
+                        self.set_status('Setup')
                 else:
                     points = None
                 if self.review_fault:
@@ -114,6 +141,8 @@ class Service:
                             raise
                     if isinstance(self.detector, PerspectiveDetector):
                         self.detector.accept(self.images, points)
+                        if isinstance(self.source, CameraSource):
+                            self.rgb_accepted = dict(self.source.rgb)
                     self.faults = []
                     self.set_status('Stopped' if not self.running else (
                         'Takeout in progress' if self.taking_out else
@@ -121,6 +150,10 @@ class Service:
             # Acquisition/processing boundary: preserve unexpected source failures
             # as visible faults rather than killing capture and heartbeat silently.
             except Exception as exc:
+                if isinstance(self.source, CameraSource):
+                    self.images = {}
+                    if self.stabilizer is not None:
+                        self.stabilizer.reset()
                 if isinstance(self.source, RenderedSource) and 'reset required' in str(exc):
                     self.review_fault = str(exc)
                 self.faults = list(dict.fromkeys(filter(None, (self.review_fault, str(exc)))))
@@ -143,6 +176,22 @@ class Service:
         # Validate every proposed score before emitting any event or changing state.
         scored = [(point, confident_segment(point[0], point[1], self.detector.uncertainty_mm))
                   for point in added]
+        if added and isinstance(self.source, CameraSource):
+            if self.live_model is None or self.rgb_accepted is None:
+                raise ValueError('v6 model or previous RGB frame unavailable; reset required')
+            try:
+                results = self.live_model.infer(self.source.rgb, self.rgb_accepted, self.width, self.height)
+                self.model_diagnostics = results
+                expected = scored[0][1]
+                for key in CAMERAS:
+                    item = results[key]
+                    if item['probability'] < 0.5:
+                        raise ValueError(f'{key}: v6 presence below 0.5')
+                    x, y = board_point(self.detector.calibrations[key], item['pixel'])
+                    if confident_segment(x, y, 3.0) != expected:
+                        raise ValueError(f'{key}: v6 keypoint disagrees with geometric score')
+            except Exception as exc:
+                raise ValueError(f'v6 rejected throw: {exc}; reset required') from exc
         if removed and not self.taking_out:
             self.emit({'type': 'takeout.started'})
             self.taking_out = True
@@ -155,6 +204,90 @@ class Service:
                 'ts': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
                 'segment': seg, 'value': value, 'coords': {'x': x/170, 'y': y/170}, 'source': 'board'}})
         self.occupancy = new
+
+    def camera_devices(self):
+        if sys.platform.startswith('linux'):
+            stable = sorted(glob.glob('/dev/v4l/by-id/*-video-index0'))
+            return stable if stable else sorted(glob.glob('/dev/video[0-9]*'))
+        # OpenCV uses numeric indices on Windows/macOS; availability is checked on connect.
+        return [str(i) for i in range(10)]
+
+    def connect_cameras(self, devices):
+        if self.camera_config is None or self.model_path is None:
+            raise ValueError('camera setup is not configured for this detector')
+        if (not isinstance(devices, list) or len(devices) != 3 or
+                any(not isinstance(d, str) for d in devices) or len(set(devices)) != 3 or
+                any(d not in self.camera_devices() for d in devices)):
+            raise ValueError('select three distinct available camera devices')
+        with self.condition, self.acquisition:
+            if self.running:
+                raise ValueError('stop detection before changing cameras')
+            if self.review_fault:
+                raise ValueError('resolve the review fault before changing cameras')
+            # Device order is part of the calibration: never reuse a rig for another mapping.
+            digest = hashlib.sha256(json.dumps(devices, separators=(',', ':')).encode()).hexdigest()[:16]
+            config = self.camera_config.with_name(f'{self.camera_config.stem}-{digest}.json')
+            if isinstance(self.source, CameraSource):
+                raise ValueError('restart the detector before changing an existing USB connection')
+            source = CameraSource(config, devices=devices, width=1280, height=720)
+            try:
+                if (source.width, source.height) != (1280, 720):
+                    raise ValueError('v6 requires a 1280×720 camera rig')
+                model = LiveModel(self.model_path)
+            except Exception as exc:
+                source.close()
+                raise ValueError(f'cannot initialize camera model: {exc}') from exc
+            selection = self.camera_config.with_name(self.camera_config.stem + '-selection.json')
+            temporary = None
+            try:
+                selection.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(mode='w', dir=selection.parent, delete=False) as file:
+                    temporary = file.name
+                    json.dump({'devices': devices}, file)
+                os.replace(temporary, selection)
+            except OSError as exc:
+                source.close()
+                raise ValueError(f'cannot save camera selection: {exc}') from exc
+            finally:
+                if temporary and os.path.exists(temporary):
+                    os.unlink(temporary)
+            self.source, self.live_model = source, model
+            self.width, self.height = source.width, source.height
+            self.detector = PerspectiveDetector(source, self.parameters)
+            self.stabilizer = StableFrames()
+            self.rgb_accepted = None
+            self.images = {}
+            self.occupancy = []
+            self.adopt = True
+            self.taking_out = False
+            self.calibration_snapshot = None
+            self.faults = []
+            self.set_status('Starting' if source.calibrations else 'Setup')
+
+    def disconnect_cameras(self):
+        with self.condition, self.acquisition:
+            if self.running:
+                raise ValueError('stop detection before disconnecting cameras')
+            if self.review_fault:
+                raise ValueError('resolve the review fault before changing cameras')
+            if not isinstance(self.source, CameraSource):
+                raise ValueError('USB cameras are not connected')
+            selection = self.camera_config.with_name(self.camera_config.stem + '-selection.json') if self.camera_config else None
+            try:
+                if selection:
+                    selection.unlink(missing_ok=True)
+            except OSError as exc:
+                raise ValueError(f'cannot clear camera selection: {exc}') from exc
+            self.source.close()
+            self.source = RenderedSource()
+            self.width, self.height = self.source.width, self.source.height
+            self.detector = PerspectiveDetector(self.source, self.parameters)
+            self.stabilizer = None
+            self.rgb_accepted = None
+            self.images = {}
+            self.occupancy = []
+            self.adopt = True
+            self.set_status('Stopped')
 
     def configure_rendered(self, body):
         # Validate the entire rig before replacing anything. SSE history/session survives.
@@ -189,12 +322,18 @@ class Service:
 
     def control(self, action):
         with self.condition, self.acquisition:
+            if action == 'start' and isinstance(self.source, CameraSource) and not self.source.calibrations:
+                raise ValueError('camera calibration required before starting detection')
             # Only reset resolves review faults; re-arm must not bypass a rejected impact.
             if action == 'reset':
                 self.review_fault = None
                 self.faults = []
             # Re-arm and reset establish a new stable occupancy baseline, never a takeout.
             if action in ('start', 'reset'):
+                self.calibration_snapshot = None
+                self.rgb_accepted = None
+                if self.stabilizer is not None:
+                    self.stabilizer.reset()
                 if action == 'start':
                     self.running = True
                 self.adopt = True
@@ -216,17 +355,21 @@ class Service:
     def snapshot(self):
         with self.condition, self.acquisition:
             rendered = isinstance(self.source, RenderedSource)
-            result = {'session': self.session, 'source': 'rendered' if rendered else (
+            perspective = isinstance(self.source, (RenderedSource, CameraSource))
+            result = {'session': self.session, 'source': 'usb' if isinstance(self.source, CameraSource) else 'rendered' if rendered else (
                         'synthetic' if hasattr(self.source, 'throw') else 'replay'),
                     'running': self.running, 'status': self.status,
                     'cameras': [{'id': k, 'calibrated': k in self.detector.calibrations,
                                  'available': k in self.images, 'frameUrl': f'/cameras/{k}/frame'}
-                                for k in (CAMERAS if rendered else self.detector.calibrations)],
+                                for k in (CAMERAS if perspective else self.detector.calibrations)],
                     'occupancy': len(self.occupancy),
                     'pending': {'stableFrames': self.detector.stable_frames, 'requiredFrames': 3,
                                 'adoptingBaseline': self.adopt,
                                 'reviewRequired': self.review_fault is not None,
                                 'uncertaintyMm': self.detector.uncertainty_mm}, 'faults': list(self.faults)}
+            if isinstance(self.source, CameraSource):
+                result['model'] = {'name': 'v6', 'sha256': self.live_model.sha256 if self.live_model else None,
+                                   'diagnostics': self.model_diagnostics}
             if rendered:
                 result.update(renderSession=self.source.render_session, width=self.width, height=self.height,
                               sequence=self.source.sequence, timestampMs=self.source.timestamp_ms,
@@ -270,6 +413,8 @@ class Service:
             self.condition.notify_all()
         if self.thread:
             self.thread.join(timeout=3)
+        if isinstance(self.source, CameraSource):
+            self.source.close()
 
 
 class Server(ThreadingHTTPServer):
@@ -285,6 +430,15 @@ class Handler(BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
         self.connection.settimeout(5)
+
+    def handle(self):
+        # Preview requests and keep-alive clients can disappear after a proxy
+        # timeout or a source switch. This is a transport close, not a fault
+        # in acquisition or scoring; leave other exceptions visible.
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def log_message(self, format, *args):
         pass
@@ -307,12 +461,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, {'ok': True, 'session': service.session})
         if self.path == '/state':
             return self.respond(200, service.snapshot())
+        if self.path == '/usb/devices':
+            return self.respond(200, {'ok': True, 'devices': service.camera_devices()})
         if self.path == '/events':
             return self.events()
         parts = self.path.split('/')
+        if len(parts) == 4 and parts[1] == 'calibration' and parts[2] == 'frame':
+            with service.condition:
+                snapshot = service.calibration_snapshot
+                if snapshot is None or parts[3] not in snapshot['images']:
+                    return self.respond(404, {'ok': False, 'error': 'no frozen calibration frame'})
+                data = png(snapshot['images'][parts[3]], service.width, service.height)
+            return self.respond(200, data, 'image/png')
         if len(parts) == 4 and parts[1] == 'cameras' and parts[3] == 'frame':
             with service.condition, service.acquisition:
-                if parts[2] not in service.detector.calibrations:
+                if parts[2] not in (CAMERAS if isinstance(service.source, CameraSource) else service.detector.calibrations):
                     return self.respond(404, {'ok': False, 'error': 'unknown camera'})
                 pixels = (service.source.latest.get(parts[2], service.images.get(parts[2]))
                           if isinstance(service.source, RenderedSource) else service.images.get(parts[2]))
@@ -342,7 +505,61 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise TypeError('expected JSON object')
             parts = self.path.split('/')
-            if self.path == '/render/frames':
+            if self.path == '/usb/connect':
+                exact(body, ('devices',))
+                service.connect_cameras(body['devices'])
+                return self.respond(200, {'ok': True})
+            elif self.path == '/usb/disconnect':
+                if body:
+                    raise ValueError('expected empty body')
+                service.disconnect_cameras()
+                return self.respond(200, {'ok': True})
+            elif self.path == '/calibration/freeze':
+                if body:
+                    raise ValueError('expected empty body')
+                with service.condition, service.acquisition:
+                    if not isinstance(service.source, CameraSource):
+                        raise ValueError('calibration requires USB source')
+                    if service.running:
+                        raise ValueError('stop detection before calibration')
+                    if service.faults:
+                        raise ValueError('resolve camera faults before calibration')
+                    if set(service.images) != set(CAMERAS):
+                        raise ValueError('all three camera frames must be available')
+                    token = uuid.uuid4().hex
+                    service.calibration_snapshot = {'token': token, 'images': dict(service.images)}
+                    return self.respond(200, {'ok': True, 'token': token, 'width': service.width, 'height': service.height})
+            elif self.path == '/calibration/apply':
+                exact(body, ('token', 'landmarks', 'fov'))
+                with service.condition, service.acquisition:
+                    if not isinstance(service.source, CameraSource) or service.running:
+                        raise ValueError('stop USB detection before calibration')
+                    snap = service.calibration_snapshot
+                    if snap is None or body['token'] != snap['token']:
+                        raise ValueError('calibration snapshot expired; capture again')
+                    if not isinstance(body['landmarks'], dict) or not isinstance(body['fov'], dict):
+                        raise ValueError('expected camera landmark and field-of-view maps')
+                    config, errors = calibrate(service.width, service.height, snap['images'], body['landmarks'], body['fov'])
+                    rig = RenderedSource.configured(config)
+                    target = service.source.config_path
+                    temp = None
+                    try:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        with tempfile.NamedTemporaryFile(mode='w', dir=target.parent, delete=False) as file:
+                            temp = file.name
+                            json.dump(config, file, allow_nan=False)
+                        os.replace(temp, target)
+                    except OSError as exc:
+                        raise ValueError(f'cannot save camera calibration: {exc}') from exc
+                    finally:
+                        if temp and os.path.exists(temp):
+                            os.unlink(temp)
+                    service.source.calibrations, service.source.reference = rig.calibrations, rig.reference
+                    service.detector = PerspectiveDetector(service.source, service.parameters)
+                    service.calibration_snapshot = None
+                    service.control('reset')
+                    return self.respond(200, {'ok': True, 'rms': errors})
+            elif self.path == '/render/frames':
                 with service.acquisition:
                     if not isinstance(service.source, RenderedSource):
                         return self.respond(409, {'ok': False, 'error': 'render routes require rendered source'})
@@ -429,7 +646,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--source', choices=('synthetic', 'replay', 'rendered'), default='synthetic')
+    parser.add_argument('--source', choices=('synthetic', 'replay', 'rendered', 'usb'), default='synthetic')
+    parser.add_argument('--self-test', action='store_true', help='load USB mock frames and run one v6 inference, then exit')
+    parser.add_argument('--model', default=str(Path(__file__).resolve().parent / 'models' / 'presence-v6.pt'), help='v6 checkpoint for USB inference')
+    parser.add_argument('--camera-width', type=int, default=1280)
+    parser.add_argument('--camera-height', type=int, default=720)
+    parser.add_argument('--camera-config', default='data/native-camera-rig.json', help='camera rig file or base path for UI-selected devices')
+    parser.add_argument('--device', action='append', help='USB camera device path, in cam0/cam1/cam2 order (repeat three times)')
+    parser.add_argument('--mock-cameras', help='JSON list of three-camera PGM frame maps')
     parser.add_argument('--replay', help='image-only replay manifest')
     parser.add_argument('--parameters', metavar='PATH',
                         help='rendered only: plain partial DetectionParameters JSON object; '
@@ -437,7 +661,7 @@ def main():
     parser.add_argument('--cameras', choices=(2, 3), type=int, default=3)
     parser.add_argument('--port', type=int, default=8091)
     args = parser.parse_args()
-    if args.parameters is not None and args.source != 'rendered':
+    if args.parameters is not None and args.source not in ('rendered', 'usb'):
         parser.error('--parameters requires --source rendered')
     parameters = DEFAULT_PARAMETERS
     if args.parameters is not None:
@@ -447,11 +671,44 @@ def main():
             parser.error(f'cannot load --parameters {args.parameters!r}: {exc}; '
                          'expected a plain DetectionParameters JSON object '
                          '(export selected.parameters from a tune artifact)')
+    if args.source == 'usb' and not (64 <= args.camera_width <= 1280 and 64 <= args.camera_height <= 720):
+        parser.error('camera dimensions must be within 64..1280 by 64..720')
+    if args.source == 'usb' and not args.camera_config:
+        parser.error('--camera-config required for usb source')
     if args.source == 'replay' and not args.replay:
         parser.error('--replay required for replay source')
     source = (synthetic(args.cameras) if args.source == 'synthetic' else
-              ReplaySource(args.replay) if args.source == 'replay' else RenderedSource())
-    service = Service(source, parameters=parameters)
+              ReplaySource(args.replay) if args.source == 'replay' else
+              CameraSource(args.camera_config, args.device, args.mock_cameras, width=args.camera_width, height=args.camera_height) if args.source == 'usb' else RenderedSource())
+    if isinstance(source, CameraSource) and (source.width, source.height) != (1280, 720):
+        source.close()
+        parser.error('v6 requires a 1280×720 camera rig')
+    try:
+        model = LiveModel(args.model) if args.source == 'usb' else None
+    except (OSError, ValueError, RuntimeError, KeyError, pickle.UnpicklingError) as exc:
+        if isinstance(source, CameraSource):
+            source.close()
+        parser.error(f'cannot load v6 model: {exc}')
+    if args.self_test:
+        if not isinstance(source, CameraSource) or source.mock is None:
+            parser.error('--self-test requires --source usb and --mock-cameras')
+        try:
+            source.capture()
+            model.infer(source.rgb, source.rgb, source.width, source.height)
+            print(f'v6 self-test ok {model.sha256}', flush=True)
+        finally:
+            source.close()
+        return
+    service = Service(source, parameters=parameters, live_model=model, camera_config=args.camera_config, model_path=args.model)
+    if args.source == 'rendered' and args.camera_config:
+        selection = Path(args.camera_config).with_name(Path(args.camera_config).stem + '-selection.json')
+        if selection.exists():
+            try:
+                devices = strict_json(selection.read_bytes())['devices']
+                service.control('stop')
+                service.connect_cameras(devices)
+            except Exception as exc:
+                print(f'could not restore USB cameras: {exc}', flush=True)
     server = Server(('127.0.0.1', args.port), service)
     service.start_worker()
     print(f'detector ({args.source}) http://127.0.0.1:{server.server_port}', flush=True)

@@ -102,3 +102,47 @@ export async function boardState(baseUrl: string): Promise<BoardCommandResult & 
     return { ok: false, error: describeFetchError(err, base) };
   }
 }
+
+/** Read only the calibration subtree from the board's system endpoint. */
+export async function boardCalibrationSnapshot(baseUrl: string, fetcher: typeof fetch = fetch) {
+  const base = baseUrl.replace(/\/$/, '');
+  const url = `${base}/api/system`;
+  try {
+    const res = await fetcher(url, { signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
+    if (!res.ok) throw new Error(`board returned ${res.status} for /api/system`);
+    const system: unknown = await res.json();
+    if (!system || typeof system !== 'object' || !('calibration' in system) ||
+        !system.calibration || typeof system.calibration !== 'object') {
+      throw new Error('board /api/system response has no calibration object');
+    }
+    return structuredClone(system.calibration);
+  } catch (err) {
+    const message = err instanceof Error && err.message !== 'fetch failed'
+      ? err.message : describeFetchError(err, base);
+    throw new Error(message, { cause: err });
+  }
+}
+
+/** Still-frame URL derived from the Board Manager UI's confirmed camera stream
+ * URL by replacing `streams` with `img`. The exact still endpoint is inferred
+ * from the captured UI bundle and remains unverified against current hardware. */
+export async function boardCameraSnapshot(baseUrl: string, camera: 0 | 1 | 2, fetcher: typeof fetch = fetch) {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/img/cams/${camera}`;
+  const response = await fetcher(url, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
+  if (!response.ok) throw new Error(`camera ${camera} snapshot returned HTTP ${response.status}`);
+  const contentType = (response.headers.get('content-type') ?? '').split(';', 1)[0]!.trim().toLowerCase();
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+    await response.body?.cancel();
+    throw new Error(`camera ${camera} snapshot returned non-image content (${contentType || 'unknown'})`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const signatures = {
+    'image/png': bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+    'image/jpeg': bytes[0] === 0xff && bytes[1] === 0xd8 && bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9,
+    'image/webp': bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP',
+  };
+  if (!bytes.length || !signatures[contentType as keyof typeof signatures]) {
+    throw new Error(`camera ${camera} snapshot has an invalid ${contentType} image signature`);
+  }
+  return { bytes, contentType, receivedAt: new Date().toISOString() };
+}

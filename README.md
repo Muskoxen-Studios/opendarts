@@ -148,10 +148,7 @@ Repository guidance for coding agents lives in [AGENTS.md](AGENTS.md).
 
 ## Experimental native detection
 
-A native image detector and 3D camera playground are available for development
-and simulation. They require Python 3.10+ and are not bundled in desktop
-installers or Docker services. Real-board play currently uses Autodarts;
-native detection has no live camera acquisition or hardware accuracy guarantee.
+The native image detector and 3D camera playground are included in desktop installers. Native detection supports experimental USB cameras; real-board accuracy remains unverified. Standalone and Docker deployments require a separately started detector.
 
 See the [playground setup](docs/native-detection.md) and
 [detector documentation](services/detector/README.md) for details.

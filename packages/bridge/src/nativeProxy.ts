@@ -1,5 +1,5 @@
+import { z } from 'zod';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { SourceConfig } from './sourceConfig.ts';
 import { NativeSimThrowSchema, NativeSimTakeoutSchema, NativeSimResetSchema, nativeRequest } from './nativeControl.ts';
@@ -15,10 +15,13 @@ export async function nativeProxy(
 ): Promise<boolean> {
   const path = req.url ?? '';
   const frame = /^\/native\/cameras\/([a-zA-Z0-9_-]+)\/frame$/.test(path);
-  const get = req.method === 'GET' && (path === '/native/state' || path === '/native/health' || frame);
+  const calibrationFrame = /^\/native\/calibration\/frame\/cam[0-2]$/.test(path);
+  const get = req.method === 'GET' && (path === '/native/state' || path === '/native/health' || path === '/native/usb/devices' || frame || calibrationFrame);
   const post = req.method === 'POST' && [
       '/native/sim/throw', '/native/sim/takeout', '/native/sim/reset',
       '/native/render/configure', '/native/render/frames', '/native/render/reset',
+      '/native/calibration/freeze', '/native/calibration/apply',
+      '/native/usb/connect', '/native/usb/disconnect',
     ].includes(path);
   if (!get && !post) return false;
   const json = (code: number, value: unknown): void => {
@@ -41,6 +44,19 @@ export async function nativeProxy(
       return true;
     }
     payload = parsed.data;
+  } else if (post && path.startsWith('/native/usb/')) {
+    const schema = path.endsWith('/connect') ? z.object({ devices: z.array(z.string().min(1).max(512)).length(3) }).strict() : z.object({}).strict();
+    const parsed = schema.safeParse(body ?? {});
+    if (!parsed.success) { json(400, { error: 'invalid USB camera request' }); return true; }
+    payload = parsed.data;
+  } else if (post && path.startsWith('/native/calibration/')) {
+    const point = z.tuple([z.number().finite().nonnegative().max(1280), z.number().finite().nonnegative().max(720)]);
+    const keys = z.object({ cam0: z.array(point).length(9), cam1: z.array(point).length(9), cam2: z.array(point).length(9) }).strict();
+    const fov = z.object({ cam0: z.number().finite().min(30).max(150), cam1: z.number().finite().min(30).max(150), cam2: z.number().finite().min(30).max(150) }).strict();
+    const schema = path.endsWith('/freeze') ? z.object({}).strict() : z.object({ token: z.string().regex(/^[a-f0-9]{32}$/), landmarks: keys, fov }).strict();
+    const parsed = schema.safeParse(body ?? {});
+    if (!parsed.success) { json(400, { ok: false, error: 'invalid calibration request' }); return true; }
+    payload = parsed.data;
   } else if (path === '/native/sim/throw') {
     const parsed = NativeSimThrowSchema.safeParse(body);
     if (!parsed.success) {
@@ -58,8 +74,8 @@ export async function nativeProxy(
     payload = parsed.data;
   }
   try {
-    const upstream = await nativeRequest(config.url, path.slice('/native'.length), req.method, payload);
-    if (frame && upstream.ok && !upstream.headers.get('content-type')?.startsWith('image/')) {
+    const upstream = await nativeRequest(config.url, path.slice('/native'.length), req.method, payload, path === '/native/usb/connect' ? 55000 : 4000);
+    if ((frame || calibrationFrame) && upstream.ok && !upstream.headers.get('content-type')?.startsWith('image/')) {
       await upstream.body?.cancel();
       json(502, { error: 'detector camera did not return an image' });
       return true;
@@ -70,7 +86,21 @@ export async function nativeProxy(
       'cache-control': 'no-store',
     });
     if (upstream.body) {
-      await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream), res);
+      // Read through the web reader directly. A Node Readable adapter can emit
+      // a delayed unhandled error when fetch aborts during proxy teardown.
+      const reader = upstream.body.getReader();
+      await pipeline((async function* () {
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) return;
+            yield chunk.value;
+          }
+        } finally {
+          await reader.cancel().catch(() => {});
+          reader.releaseLock();
+        }
+      })(), res);
     } else res.end();
   } catch (err) {
     if (res.headersSent) res.destroy();

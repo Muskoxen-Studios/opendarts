@@ -201,7 +201,11 @@ async function recompute(): Promise<void> {
           <span>Detector URL</span>
           <input v-model="nativeUrl" aria-label="Native detector URL" autocomplete="off" data-1p-ignore />
         </label>
-        <p class="hint">Server-side address, not your browser's localhost. Synthetic image proof-of-pipeline only; not a production detector or live camera capture.</p>
+        <button v-if="settings" class="secondary" @click="nativeUrl = settings.runtime.detectorUrl; testResult = null">
+          Use startup detector URL
+        </button>
+        <p v-if="settings" class="hint">Startup detector: {{ settings.runtime.detectorUrl }}</p>
+        <p class="hint">Address as seen by the server. The native detector supports USB cameras and simulated images. USB detection requires camera setup and calibration; hardware accuracy is still being validated.</p>
         <button class="secondary" :disabled="testing" @click="testBoard">{{ testing ? 'Testing…' : 'Test connection' }}</button>
         <p v-if="testResult" class="result" :class="{ bad: !testResult.ok }">{{ testResult.text }}</p>
       </template>

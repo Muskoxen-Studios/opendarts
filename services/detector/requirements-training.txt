@@ -1,0 +1,6 @@
+# Optional offline-training dependencies; never install into the app runtime.
+# Select a torch wheel index separately (CPU or CUDA, see detector README), then:
+#   python -m pip install --index-url https://pypi.org/simple -r requirements-training.txt
+torch>=2.14,<2.16
+numpy
+Pillow

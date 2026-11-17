@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue';
 const CameraRig3D = defineAsyncComponent(() => import('./CameraRig3D.vue'));
+import CameraCalibration from './CameraCalibration.vue';
+import UsbCameras from './UsbCameras.vue';
 import { api } from '../store.ts';
 import { nativeFrameUrl, parseNativeState, validImpact, validRemoveCount, type NativeState } from '../nativeDetector.ts';
 
@@ -51,6 +53,11 @@ async function refresh(): Promise<void> {
     if (!stopped) timer = setTimeout(poll, 2000);
   }
 }
+function refreshNow(): void {
+  clearTimeout(timer);
+  snapshot.value = null;
+  void refresh();
+}
 function poll(): void {
   if (document.hidden) {
     snapshot.value = null;
@@ -99,14 +106,16 @@ onUnmounted(() => {
   <div class="group">
     <h3>Native detector · camera diagnostics</h3>
     <p class="hint">
-      Experimental image proof-of-pipeline, not a production dart detector. No live camera acquisition,
-      automatic calibration or hardware accuracy is claimed. Image replay is also supported.
+      Experimental image detector. USB capture is supported; automatic calibration and hardware accuracy are not yet established. Image replay is also supported.
       No browser camera permission is needed. Previews and controls use the server proxy only.
     </p>
+    <UsbCameras v-if="snapshot && (snapshot.source === 'rendered' || snapshot.source === 'usb')" :key="snapshot.source" :connected="snapshot.source === 'usb'" @changed="refreshNow" />
+    <CameraCalibration v-if="snapshot?.source === 'usb'" />
     <p v-if="error" class="bad" role="status">Detector unavailable: {{ error }}</p>
     <template v-if="snapshot">
       <p>Process {{ health ? 'alive' : 'unavailable' }} · {{ snapshot.source }} · {{ snapshot.status }} ·
         {{ snapshot.running ? 'armed' : 'stopped' }} · {{ snapshot.occupancy }} detected darts</p>
+      <p v-if="snapshot.model" class="hint">Model: {{ snapshot.model.name }} · SHA-256 {{ snapshot.model.sha256 ?? 'unavailable' }}</p>
       <p class="hint">Stable frames: {{ snapshot.pending.stableFrames }}/{{ snapshot.pending.requiredFrames }} ·
         {{ snapshot.pending.adoptingBaseline ? 'adopting baseline — wait' : 'baseline adopted' }}</p>
       <ul v-if="snapshot.faults.length" class="bad"><li v-for="fault in snapshot.faults" :key="fault">{{ fault }}</li></ul>
@@ -139,7 +148,7 @@ onUnmounted(() => {
           Reset simulator clears images and adopts a baseline without takeout events.</p>
       </div>
       <CameraRig3D v-else-if="snapshot.source === 'rendered'" :snapshot="snapshot" />
-      <p v-else class="hint">Image replay source: synthetic controls unavailable. For the 3D simulator,
+      <p v-else-if="snapshot.source === 'replay'" class="hint">Image replay source: synthetic controls unavailable. For the 3D simulator,
         restart the detector service with source rendered; source is startup configuration, not a browser toggle.</p>
     </template>
     <p v-else-if="!error" class="hint">Waiting for detector state…</p>
@@ -161,6 +170,16 @@ label { font-size: 0.82rem; }
 input { width: 5rem; background: var(--ui-surface-deep); border: 1px solid var(--ui-border); color: var(--ui-text); border-radius: 6px; padding: 0.35rem; }
 button { background: #232936; border: 1px solid var(--ui-border); color: var(--ui-text); border-radius: 8px; padding: 0.5rem; cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Child components use scoped styles, so give their shared Settings controls the same treatment here. */
+:deep(.secondary) { background: var(--ui-surface-raised); border: 1px solid var(--ui-border); color: var(--ui-text);
+  border-radius: 10px; padding: .7rem 1rem; font: inherit; font-size: .82rem; cursor: pointer; }
+:deep(.secondary:not(:disabled):hover) { border-color: var(--ui-accent); background: #20445a; }
+:deep(.secondary:disabled) { opacity: .5; cursor: not-allowed; }
+:deep(.calibration .secondary[aria-pressed="true"]) { background: #56cfff1a; border-color: var(--ui-accent);
+  color: var(--ui-accent); }
+:deep(.calibration input[type="number"]) { background: var(--ui-surface-deep); border: 1px solid var(--ui-border);
+  color: var(--ui-text); border-radius: 8px; padding: .6rem; font: inherit; max-width: 10rem; }
 
 .group { grid-column: 1 / -1; border-radius: 16px; background: var(--ui-surface-deep); border-color: var(--ui-border); box-shadow: var(--ui-shadow); }
 

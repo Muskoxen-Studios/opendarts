@@ -32,7 +32,11 @@ async function detector() {
     else if (req.url === '/sim/takeout' && req.method === 'POST') physicalDarts = numThrows = 0;
     else if (req.url === '/sim/reset' && req.method === 'POST') physicalDarts = numThrows = 0;
     else if (req.url === '/sim/throw' && req.method === 'POST') { physicalDarts++; numThrows++; }
-    else if (req.url === '/cameras/cam-1/frame' && req.method === 'GET') {
+    else if (req.url === '/usb/devices' && req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ devices: ['0', '1', '2'] })); return;
+    } else if (req.url === '/usb/connect' && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); return;
+    } else if ((req.url === '/cameras/cam-1/frame' || req.url === '/calibration/frame/cam0') && req.method === 'GET') {
       res.writeHead(200, { 'content-type': cameraType });
       res.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       return;
@@ -155,6 +159,18 @@ describe('native-only proxy routes', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
   });
+  it('forwards camera discovery, selection and frozen calibration frames', async () => {
+    const d = await detector();
+    const base = await proxy(d.url);
+    expect(await (await fetch(`${base}/native/usb/devices`)).json()).toEqual({ devices: ['0', '1', '2'] });
+    const connected = await fetch(`${base}/native/usb/connect`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ devices: ['0', '1', '2'] }) });
+    expect(connected.status).toBe(200);
+    expect(d.calls.at(-1)).toEqual({ method: 'POST', path: '/usb/connect', body: { devices: ['0', '1', '2'] } });
+    const frame = await fetch(`${base}/native/calibration/frame/cam0`);
+    expect(frame.status).toBe(200);
+    expect(frame.headers.get('content-type')).toBe('image/png');
+    expect(new Uint8Array(await frame.arrayBuffer())).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  });
   it('rejects non-image camera responses and preserves upstream failures', async () => {
     const d = await detector();
     const base = await proxy(d.url);
@@ -180,5 +196,44 @@ describe('native-only proxy routes', () => {
       expect((await fetch(`${base}${path}`)).status).toBe(404);
     }
     expect(d.calls).toEqual([]);
+  });
+});
+
+
+describe('native preview stream failure', () => {
+  it('contains an upstream body timeout and keeps serving requests', async () => {
+    let fail!: (reason: unknown) => void;
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) { fail = reason => controller.error(reason); },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(upstream, {
+      headers: { 'content-type': 'image/png' },
+    })));
+    const server = createServer((req, res) => {
+      if (req.url === '/health') { res.end('alive'); return; }
+      void nativeProxy(req, res, { kind: 'native', url: 'http://localhost:8091' });
+    });
+    servers.push(server);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address() as import('node:net').AddressInfo;
+    const { get } = await import('node:http');
+    const closed = new Promise<void>(resolve => {
+      const request = get(`http://127.0.0.1:${address.port}/native/cameras/cam0/frame`, response => {
+        response.on('error', () => resolve());
+        response.on('close', () => resolve());
+        response.resume();
+      });
+      request.on('error', () => resolve());
+    });
+    await vi.waitFor(() => expect(upstream.locked).toBe(true));
+    fail(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await closed;
+    await new Promise<void>((resolve, reject) => {
+      get(`http://127.0.0.1:${address.port}/health`, response => {
+        let body = '';
+        response.on('data', chunk => { body += String(chunk); });
+        response.on('end', () => { expect(body).toBe('alive'); resolve(); });
+      }).on('error', reject);
+    });
   });
 });

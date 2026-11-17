@@ -10,7 +10,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from main import Server, Service
+from main import Handler, Server, Service
 from rendered import CAMERAS, RenderedSource, reconstruct
 
 WIDTH, HEIGHT = 640, 480
@@ -446,6 +446,21 @@ class RenderHTTPTests(unittest.TestCase):
         bad = upload(self.service.source, images(configuration(), []))
         bad['coords'] = [0, 65]
         self.assertEqual(self.request('/render/frames', bad)[0], 400)
+
+
+class ClientDisconnectTests(unittest.TestCase):
+    def test_transport_disconnects_are_contained(self):
+        for error in (ConnectionResetError('peer reset'), BrokenPipeError('peer closed')):
+            handler = object.__new__(Handler)
+            with patch('http.server.BaseHTTPRequestHandler.handle', side_effect=error):
+                handler.handle()
+            self.assertTrue(handler.close_connection)
+
+    def test_unexpected_handler_failures_remain_visible(self):
+        handler = object.__new__(Handler)
+        with patch('http.server.BaseHTTPRequestHandler.handle', side_effect=RuntimeError('bug')):
+            with self.assertRaisesRegex(RuntimeError, 'bug'):
+                handler.handle()
 
 
 if __name__ == '__main__':

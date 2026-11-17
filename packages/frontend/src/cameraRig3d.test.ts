@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { BOARD_MM } from '@darts/schema';
 import { cameraCalibration, DEFAULT_DART, DEFAULT_RIG, dartMesh, disposeObject, FRAME_HEIGHT, FRAME_WIDTH,
-  boardImpact, boardWires, BOARD_WIRE, WIRE_RADII, wireSpokes, placementProblem, DEFAULT_PENETRATION, impactMarkers, grayBase64, rgbaToGray, rigCameras, validDart, validRig } from './cameraRig3d.ts';
+  boardImpact, boardWires, BOARD_WIRE, WIRE_RADII, wireSpokes, placementProblem, DEFAULT_PENETRATION, impactMarkers, grayBase64, rgbaToGray, rigCameras, validDart, validRig,
+  DEFAULT_LIGHTING, ringLighting, validLighting } from './cameraRig3d.ts';
 
 import { placementClick, renderedResults, type NativeState } from './nativeDetector.ts';
 
@@ -128,6 +129,56 @@ describe('rendered camera calibration', () => {
   });
 });
 
+describe('rendering lighting', () => {
+  it('places the ring around the bull with evenly spaced, calibrated camera-visible lights', () => {
+    const rig = ringLighting(DEFAULT_LIGHTING);
+    const lights = rig.children.filter((child): child is THREE.SpotLight => child instanceof THREE.SpotLight);
+    expect(lights).toHaveLength(12);
+    const lightDisposals = lights.map(light => vi.spyOn(light, 'dispose'));
+    for (let i = 0; i < lights.length; i++) {
+      const light = lights[i];
+      const angle = Math.atan2(light.position.y, light.position.x);
+      expect(Math.hypot(light.position.x, light.position.y)).toBeCloseTo(DEFAULT_LIGHTING.radius);
+      expect(light.position.z).toBe(DEFAULT_LIGHTING.forward);
+      expect(light.layers.isEnabled(0)).toBe(true);
+      expect(light.castShadow).toBe(false);
+      const next = lights[(i + 1) % lights.length];
+      const delta = (Math.atan2(next.position.y, next.position.x) - angle + 2 * Math.PI) % (2 * Math.PI);
+      expect(delta).toBeCloseTo(2 * Math.PI / lights.length);
+    }
+    const shadowLights = ringLighting({ ...DEFAULT_LIGHTING, shadows: true }).children
+      .filter((child): child is THREE.SpotLight => child instanceof THREE.SpotLight);
+    expect(shadowLights).toHaveLength(12);
+    expect(shadowLights.every(light => light.castShadow)).toBe(true);
+    const overview = new THREE.Layers(); overview.enable(1);
+    const outline = rig.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
+    const geometryDisposal = vi.spyOn(outline.geometry, 'dispose');
+    const materialDisposal = vi.spyOn(outline.material as THREE.Material, 'dispose');
+    expect(outline.layers.test(overview)).toBe(true);
+    expect(outline.layers.isEnabled(0)).toBe(false);
+    disposeObject(rig);
+    for (const disposal of lightDisposals) expect(disposal).toHaveBeenCalledTimes(1);
+    expect(geometryDisposal).toHaveBeenCalledTimes(1);
+    expect(materialDisposal).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts configured limits and rejects invalid, non-finite or out-of-range lighting', () => {
+    expect(validLighting(DEFAULT_LIGHTING)).toBe(true);
+    expect(validLighting({ ...DEFAULT_LIGHTING, radius: 230, forward: 60, intensity: 0.2, ambient: 0, rotation: -360 })).toBe(true);
+    expect(validLighting({ ...DEFAULT_LIGHTING, radius: 450, forward: 350, intensity: 3, ambient: 2, rotation: 360 })).toBe(true);
+    expect(validLighting({ ...DEFAULT_LIGHTING, shadows: true })).toBe(true);
+    for (const bad of [
+      { radius: 229, forward: 180, intensity: 1, ambient: 0.35, rotation: 0 },
+      { radius: 270, forward: 351, intensity: 1, ambient: 0.35, rotation: 0 },
+      { radius: 270, forward: 180, intensity: 0, ambient: 0.35, rotation: 0 },
+      { radius: 270, forward: 180, intensity: 1, ambient: -0.1, rotation: 0 },
+      { radius: 270, forward: 180, intensity: 1, ambient: 0.35, rotation: Infinity },
+      { ...DEFAULT_LIGHTING, shadows: 'yes' as unknown as boolean },
+    ]) expect(validLighting(bad)).toBe(false);
+    expect(() => ringLighting({ ...DEFAULT_LIGHTING, intensity: 4 })).toThrow('Invalid LED ring lighting');
+  });
+});
+
 describe('raised board wires and optional placement', () => {
   it('uses schema ring radii and 20 wedge boundaries with raised solid geometry', () => {
     const wires = boardWires();
@@ -193,6 +244,9 @@ describe('dart mesh and resource ownership', () => {
             const plane = (object.material as THREE.MeshStandardMaterial).clippingPlanes![0];
             expect(plane.normal.toArray()).toEqual([0, 0, 1]);
             expect(plane.constant).toBe(0);
+            expect((object.material as THREE.MeshStandardMaterial).clipShadows).toBe(true);
+            expect(object.castShadow).toBe(true);
+            expect(object.receiveShadow).toBe(true);
             expect(plane.distanceToPoint(entry.clone().addScaledVector(direction, 1))).toBeGreaterThan(0);
           }
         });

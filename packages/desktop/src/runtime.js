@@ -119,18 +119,38 @@ function checkPythonRuntime(runtime) {
   }
 }
 
-async function detectorConfig(appRoot, { isPackaged = false, env = process.env, platform = process.platform } = {}) {
+async function detectorConfig(appRoot, { isPackaged = false, env = process.env, platform = process.platform, userDataDir = appRoot } = {}) {
   if (env.DETECTOR_URL) return { url: env.DETECTOR_URL, managed: false };
-  if (isPackaged || env.DARTS_DETECTOR === 'off') return null;
+  if (env.DARTS_DETECTOR === 'off') return null;
+  const mode = env.DARTS_DETECTOR_SOURCE || 'rendered';
+  if (!['rendered', 'usb'].includes(mode)) throw new Error('DARTS_DETECTOR_SOURCE must be rendered or usb');
+  const port = await findFreePort();
+  const common = ['--source', mode, '--port', String(port)];
+  if (mode === 'usb') {
+    let devices;
+    try { devices = JSON.parse(env.DARTS_CAMERA_DEVICES || 'null'); } catch { /* reported below */ }
+    if (!Array.isArray(devices) || devices.length !== 3 || devices.some((device) => typeof device !== 'string' || !device) || new Set(devices).size !== 3) {
+      throw new Error('Set DARTS_CAMERA_DEVICES to a JSON array of three distinct USB camera device paths or indices.');
+    }
+    common.push('--camera-config', join(userDataDir, 'camera-rig.json'));
+    for (const device of devices) common.push('--device', device);
+  } else {
+    common.push('--parameters', join(appRoot, 'services', 'detector', 'led-ring.parameters.json'),
+      '--camera-config', join(userDataDir, 'camera-rig.json'));
+  }
+  if (isPackaged) {
+    const executable = join(appRoot, 'runtime', 'detector', platform === 'win32' ? 'darts-detector.exe' : 'darts-detector');
+    if (!existsSync(executable)) throw new Error(`Bundled native detector is missing: ${executable}`);
+    return { url: `http://127.0.0.1:${port}`, managed: true, executable, args: common };
+  }
   const runtime = findPythonRuntime(appRoot, { env, platform });
   checkPythonRuntime(runtime);
   const entry = join(appRoot, 'services', 'detector', 'main.py');
   if (!existsSync(entry)) throw new Error(`Native detector entry point is missing: ${entry}. Restore the source checkout or set DARTS_DETECTOR=off.`);
-  const port = await findFreePort();
   return {
     url: `http://127.0.0.1:${port}`, managed: true,
     executable: runtime.executable,
-    args: [...runtime.args, '-u', entry, '--source', 'rendered', '--port', String(port)],
+    args: [...runtime.args, '-u', entry, ...common],
   };
 }
 
