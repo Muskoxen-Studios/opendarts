@@ -530,16 +530,16 @@ class Handler(BaseHTTPRequestHandler):
                     service.calibration_snapshot = {'token': token, 'images': dict(service.images)}
                     return self.respond(200, {'ok': True, 'token': token, 'width': service.width, 'height': service.height})
             elif self.path == '/calibration/apply':
-                exact(body, ('token', 'landmarks', 'fov'))
+                exact(body, ('token', 'landmarks'))
                 with service.condition, service.acquisition:
                     if not isinstance(service.source, CameraSource) or service.running:
                         raise ValueError('stop USB detection before calibration')
                     snap = service.calibration_snapshot
                     if snap is None or body['token'] != snap['token']:
                         raise ValueError('calibration snapshot expired; capture again')
-                    if not isinstance(body['landmarks'], dict) or not isinstance(body['fov'], dict):
-                        raise ValueError('expected camera landmark and field-of-view maps')
-                    config, errors = calibrate(service.width, service.height, snap['images'], body['landmarks'], body['fov'])
+                    if not isinstance(body['landmarks'], dict):
+                        raise ValueError('expected camera landmark map')
+                    config, errors = calibrate(service.width, service.height, snap['images'], body['landmarks'])
                     rig = RenderedSource.configured(config)
                     target = service.source.config_path
                     temp = None

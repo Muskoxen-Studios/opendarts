@@ -70,18 +70,45 @@ def estimate(points, width, height, fov):
               't': [v*scale*170 for v in c3]}
     errors = [math.dist(project(camera, (x, y, 0)), p) for (x, y), p in zip(BOARD_POINTS, points)]
     rms = math.sqrt(sum(e*e for e in errors)/len(errors))
-    if rms > 8 or max(errors) > 16:
-        raise ValueError(f'landmarks do not fit this pinhole lens (RMS {rms:.1f} px, worst {max(errors):.1f} px); check points and field of view')
     return camera, rms
 
 
-def calibrate(width, height, references, landmarks, fovs):
+def estimate_automatic(points, width, height):
+    # Search the allowed focal length range for the pose with the lowest
+    # reprojection error. The fitted camera remains an ideal pinhole model.
+    candidates = []
+    for i in range(121):
+        fov = 30 + i
+        try:
+            camera, error = estimate(points, width, height, fov)
+        except ValueError:
+            continue
+        candidates.append((error, fov, camera))
+    if not candidates:
+        raise ValueError("cannot estimate camera pose from these points")
+    _, best, _ = min(candidates, key=lambda item: item[0])
+    lo, hi = max(30., best - 1), min(150., best + 1)
+    for _ in range(30):
+        a, b = lo + (hi-lo)/3, hi - (hi-lo)/3
+        def score(fov):
+            try:
+                return estimate(points, width, height, fov)[1]
+            except ValueError:
+                return float("inf")
+        if score(a) < score(b):
+            hi = b
+        else:
+            lo = a
+    return estimate(points, width, height, (lo+hi)/2)
+
+
+def calibrate(width, height, references, landmarks):
     import base64
-    if set(landmarks) != set(CAMERAS) or set(fovs) != set(CAMERAS):
+    if set(landmarks) != set(CAMERAS):
         raise ValueError('all three cameras are required')
     cameras, errors = {}, {}
     for key in CAMERAS:
-        camera, errors[key] = estimate(landmarks[key], width, height, fovs[key])
+        camera, errors[key] = estimate_automatic(landmarks[key], width, height)
         camera['reference'] = base64.b64encode(references[key]).decode('ascii')
         cameras[key] = camera
     config = {'width': width, 'height': height, 'cameras': cameras}
