@@ -10,7 +10,6 @@ const labels = ['Bull centre', 'Outer double wire: left edge of 20', 'Outer doub
   'Outer double wire: right edge of 3', 'Outer double wire: left edge of 3',
   'Outer double wire: lower edge of 11', 'Outer double wire: upper edge of 11'];
 const points = ref<Record<Camera, Point[]>>({ cam0: [], cam1: [], cam2: [] });
-const fov = ref<Record<Camera, number | null>>({ cam0: null, cam1: null, cam2: null });
 const selected = ref<Camera>('cam0');
 const frozen = ref<{ token: string; width: number; height: number } | null>(null);
 const busy = ref(false);
@@ -25,8 +24,7 @@ const guidePoint = computed(() => {
   return i === 0 ? [100, 100] : [100 + 80 * Math.cos(angle), 100 + 80 * Math.sin(angle)];
 });
 const errors = ref<Record<Camera, number> | null>(null);
-const complete = computed(() => cameras.every(id => points.value[id].length === labels.length &&
-  typeof fov.value[id] === 'number' && Number.isFinite(fov.value[id]) && fov.value[id]! >= 30 && fov.value[id]! <= 150));
+const complete = computed(() => cameras.every(id => points.value[id].length === labels.length));
 
 async function freeze(): Promise<void> {
   busy.value = true; message.value = ''; errors.value = null; frozen.value = null;
@@ -76,7 +74,7 @@ async function apply(): Promise<void> {
   try {
     const response = await fetch('/api/native/calibration/apply', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: frozen.value.token, landmarks: points.value, fov: fov.value }),
+      body: JSON.stringify({ token: frozen.value.token, landmarks: points.value }),
     });
     const data = await response.json();
     if (!response.ok || data.ok !== true) throw new Error(data.error ?? 'Calibration failed');
@@ -92,15 +90,12 @@ async function apply(): Promise<void> {
   <details class="calibration">
     <summary>Calibrate USB cameras</summary>
     <p>Remove all darts and hands, keep the board and lights still, then capture all three cameras. Detection stops during calibration. A reset or calibration does not correct match scores.</p>
-    <p>Enter each camera’s measured horizontal field of view for this resolution. This estimates a pinhole pose and assumes negligible lens distortion; an inaccurate field of view or distorted lens can give incorrect scores even when the fit looks good.</p>
+    <p>Camera geometry is estimated from the selected points. Lens distortion can affect scoring accuracy.</p>
     <button class="secondary" :disabled="busy" @click="freeze">{{ frozen ? 'Capture new images' : 'Stop detection and capture images' }}</button>
     <template v-if="frozen">
       <div class="camera-tabs">
         <button v-for="id in cameras" :key="id" class="secondary" :aria-pressed="selected === id" @click="selected = id; draft = null">{{ id }} · {{ points[id].length }}/9</button>
       </div>
-      <label> {{ selected }} horizontal field of view (degrees)
-        <input v-model.number="fov[selected]" type="number" min="30" max="150" step="0.1" placeholder="Measured FOV" />
-      </label>
       <p v-if="points[selected].length < 9">Click {{ points[selected].length + 1 }} of 9: <strong>{{ labels[points[selected].length] }}</strong></p>
       <p v-else>All points selected for {{ selected }}. Check their positions, then select the next camera.</p>
       <svg v-if="points[selected].length < 9" class="guide" viewBox="0 0 200 200" role="img" :aria-label="`Board diagram showing ${labels[points[selected].length]}`">
