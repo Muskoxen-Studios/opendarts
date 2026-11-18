@@ -6,7 +6,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from calibration import BOARD_POINTS, estimate
+from calibration import BOARD_POINTS, estimate, estimate_automatic
 from main import Server, Service
 from rendered import CAMERAS, RenderedSource, project
 from test_rendered import configuration
@@ -26,6 +26,15 @@ class CalibrationTests(unittest.TestCase):
         # Check an off-plane point too: the shaft direction depends on pose.
         expected = RenderedSource.configured(configuration()).calibrations['cam0']
         self.assertLess(math.dist(project(camera, (10, 20, 70)), project(expected, (10, 20, 70))), 1e-6)
+
+    def test_automatic_fov_and_imperfect_landmarks(self):
+        points = landmarks()["cam0"]
+        camera, error = estimate_automatic(points, 640, 480)
+        self.assertLess(error, 0.01)
+        self.assertAlmostEqual(camera["K"][0], 400, delta=0.1)
+        points[1][0] += 35
+        _, error = estimate_automatic(points, 640, 480)
+        self.assertGreater(error, 8)
 
     def test_degenerate_landmarks_rejected(self):
         with self.assertRaises(ValueError):
@@ -58,8 +67,7 @@ class CalibrationTests(unittest.TestCase):
             try:
                 status, frozen = post('/calibration/freeze', {})
                 self.assertEqual(status, 200)
-                body = {'token': frozen['token'], 'landmarks': landmarks(),
-                        'fov': {k: math.degrees(2*math.atan(640/800)) for k in CAMERAS}}
+                body = {'token': frozen['token'], 'landmarks': landmarks()}
                 status, result = post('/calibration/apply', body)
                 self.assertEqual(status, 200, result)
                 self.assertTrue((root / 'rig.json').exists())

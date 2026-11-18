@@ -52,8 +52,7 @@ export async function nativeProxy(
   } else if (post && path.startsWith('/native/calibration/')) {
     const point = z.tuple([z.number().finite().nonnegative().max(1280), z.number().finite().nonnegative().max(720)]);
     const keys = z.object({ cam0: z.array(point).length(9), cam1: z.array(point).length(9), cam2: z.array(point).length(9) }).strict();
-    const fov = z.object({ cam0: z.number().finite().min(30).max(150), cam1: z.number().finite().min(30).max(150), cam2: z.number().finite().min(30).max(150) }).strict();
-    const schema = path.endsWith('/freeze') ? z.object({}).strict() : z.object({ token: z.string().regex(/^[a-f0-9]{32}$/), landmarks: keys, fov }).strict();
+    const schema = path.endsWith('/freeze') ? z.object({}).strict() : z.object({ token: z.string().regex(/^[a-f0-9]{32}$/), landmarks: keys }).strict();
     const parsed = schema.safeParse(body ?? {});
     if (!parsed.success) { json(400, { ok: false, error: 'invalid calibration request' }); return true; }
     payload = parsed.data;
