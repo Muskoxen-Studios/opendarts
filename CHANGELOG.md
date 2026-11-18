@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/Muskoxen-Studios/opendarts/compare/v0.9.1...v0.9.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* tolerate camera noise while starting detection ([#61](https://github.com/Muskoxen-Studios/opendarts/issues/61)) ([9e66bf1](https://github.com/Muskoxen-Studios/opendarts/commit/9e66bf11d1c38c673553c693037af740cad55db5))
+
 ## [0.9.1](https://github.com/Muskoxen-Studios/opendarts/compare/v0.9.0...v0.9.1) (2026-11-18)
 
 
