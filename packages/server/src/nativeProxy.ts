@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 // Three 720p grayscale base64 images plus bounded calibration/JSON overhead.
@@ -14,12 +13,15 @@ export async function proxyNative(
 ): Promise<void> {
   const path = new URL(req.url ?? '/', 'http://localhost').pathname;
   const get = req.method === 'GET' && (
-    path === '/api/native/health' || path === '/api/native/state' ||
-    /^\/api\/native\/cameras\/[a-zA-Z0-9_-]+\/frame$/.test(path)
+    path === '/api/native/health' || path === '/api/native/state' || path === '/api/native/usb/devices' ||
+    /^\/api\/native\/cameras\/[a-zA-Z0-9_-]+\/frame$/.test(path) ||
+    /^\/api\/native\/calibration\/frame\/cam[0-2]$/.test(path)
   );
   const post = req.method === 'POST' && [
     '/api/native/sim/throw', '/api/native/sim/takeout', '/api/native/sim/reset',
     '/api/native/render/configure', '/api/native/render/frames', '/api/native/render/reset',
+    '/api/native/calibration/freeze', '/api/native/calibration/apply',
+    '/api/native/usb/connect', '/api/native/usb/disconnect',
   ].includes(path);
   const json = (code: number, value: unknown): void => {
     res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
@@ -34,7 +36,7 @@ export async function proxyNative(
     return;
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), path === '/api/native/usb/connect' ? 60000 : 5000);
   const cancel = (): void => { if (!res.writableFinished) controller.abort(); };
   res.on('close', cancel);
   try {
@@ -44,7 +46,7 @@ export async function proxyNative(
       ...(post ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) } : {}),
     });
     const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
-    if (get && path.endsWith('/frame') && upstream.ok && !contentType.startsWith('image/')) {
+    if (get && (path.endsWith('/frame') || path.includes('/calibration/frame/')) && upstream.ok && !contentType.startsWith('image/')) {
       await upstream.body?.cancel();
       json(502, { ok: false, error: 'detector camera did not return an image' });
       return;
@@ -55,7 +57,21 @@ export async function proxyNative(
       'access-control-allow-origin': '*',
     });
     if (upstream.body) {
-      await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream), res);
+      // Read through the web reader directly. A Node Readable adapter can emit
+      // a delayed unhandled error when fetch aborts during proxy teardown.
+      const reader = upstream.body.getReader();
+      await pipeline((async function* () {
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) return;
+            yield chunk.value;
+          }
+        } finally {
+          await reader.cancel().catch(() => {});
+          reader.releaseLock();
+        }
+      })(), res);
     } else res.end();
   } catch (err) {
     if (res.headersSent) res.destroy();

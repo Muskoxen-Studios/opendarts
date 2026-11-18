@@ -13,7 +13,9 @@ app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-dev-shm-usage');
 let window;
-const watchdog = setTimeout(() => { console.error('Electron 90-second timeout'); app.exit(1); }, 90_000);
+const timeoutMs = Number(process.argv.find(arg => arg.startsWith('--timeout-ms='))?.slice(13) ?? 90000);
+if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600000) throw new Error('Invalid browser timeout');
+const watchdog = setTimeout(() => { console.error('Electron watchdog timeout'); app.exit(1); }, timeoutMs);
 function reply(value) { process.stdout.write(`RIGTEST ${JSON.stringify(value)}\n`); }
 app.whenReady().then(async () => {
   if (!url) throw new Error('--url required');

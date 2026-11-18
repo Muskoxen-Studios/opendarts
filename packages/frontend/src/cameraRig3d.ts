@@ -11,6 +11,43 @@ export const CAMERA_IDS = ['cam0', 'cam1', 'cam2'] as const;
 export interface RigSettings { radius: number; forward: number; rotation: number; vfov: number }
 // Representative reference-style mounting, not measured hardware calibration.
 export const DEFAULT_RIG: RigSettings = { radius: 260, forward: 220, rotation: 60, vfov: DEFAULT_VERTICAL_FOV };
+export interface RingLighting { radius: number; forward: number; intensity: number; ambient: number; rotation: number; shadows?: boolean }
+// A sampled continuous LED ring. Dimensions/output are representative, not hardware measurements.
+export const DEFAULT_LIGHTING: RingLighting = { radius: 270, forward: 180, intensity: 1, ambient: 0.35, rotation: 0 };
+export function validLighting(s: RingLighting): boolean {
+  return [s.radius, s.forward, s.intensity, s.ambient, s.rotation].every(Number.isFinite) &&
+    (s.shadows === undefined || typeof s.shadows === 'boolean') && s.radius >= 230 && s.radius <= 450 &&
+    s.forward >= 60 && s.forward <= 350 && s.intensity >= 0.2 && s.intensity <= 3 &&
+    s.ambient >= 0 && s.ambient <= 2 && Math.abs(s.rotation) <= 360;
+}
+
+export function ringLighting(settings: RingLighting): THREE.Group {
+  if (!validLighting(settings)) throw new Error('Invalid LED ring lighting');
+  const group = new THREE.Group();
+  group.add(new THREE.AmbientLight('#ffffff', settings.ambient));
+  for (let i = 0; i < 12; i++) {
+    const angle = (settings.rotation + i * 30) * Math.PI / 180;
+    // Inverse-square attenuation uses scene units (mm); split power across the ring.
+    const light = new THREE.SpotLight('#fff5e8', 24000 * settings.intensity, 0, Math.PI / 3, 1, 2);
+    light.position.set(settings.radius * Math.cos(angle), settings.radius * Math.sin(angle), settings.forward);
+    // Shadows are a separate image change from dart occupancy and currently fall
+    // outside the detector's physical dart envelope. Keep them opt-in for the
+    // default detector-facing render; lighting and material shading remain active.
+    light.castShadow = settings.shadows ?? false;
+    light.shadow.mapSize.set(512, 512);
+    light.shadow.camera.near = 5;
+    light.shadow.camera.far = 1000;
+    light.shadow.normalBias = 0.15;
+    group.add(light, light.target);
+  }
+  // The outline illustrates the light placement; it is not calibrated housing geometry.
+  const outline = new THREE.Mesh(new THREE.TorusGeometry(settings.radius, 3, 8, 128),
+    new THREE.MeshBasicMaterial({ color: '#fff5e8' }));
+  outline.position.z = settings.forward;
+  outline.layers.set(1);
+  group.add(outline);
+  return group;
+}
 export interface DartSpec {
   x: number; y: number; tiltX: number; tiltY: number; roll: number;
   point: number; barrel: number; barrelDiameter: number; shaft: number;
@@ -171,6 +208,9 @@ export function dartMesh(d: DartSpec): THREE.Group {
       if (object instanceof THREE.Mesh) {
         const m = object.material as THREE.MeshStandardMaterial;
         m.clippingPlanes = [new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)];
+        m.clipShadows = true;
+        object.castShadow = true;
+        object.receiveShadow = true;
       }
     });
   return dart;
@@ -206,6 +246,12 @@ function boardMesh(): THREE.Group {
   board.add(new THREE.Mesh(new THREE.RingGeometry(BOARD_MM.BULL_INNER, BOARD_MM.BULL_OUTER, 64), material('#22754a')));
   board.add(new THREE.Mesh(new THREE.CircleGeometry(BOARD_MM.BULL_INNER, 48), material('#b5312f')));
   board.add(boardWires());
+  board.traverse(object => {
+    if (object instanceof THREE.Mesh && object.layers.isEnabled(0)) {
+      object.castShadow = true;
+      object.receiveShadow = true;
+    }
+  });
   return board;
 }
 
@@ -227,6 +273,7 @@ export function disposeObject(root: THREE.Object3D): void {
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
   root.traverse(object => {
+    if (object instanceof THREE.SpotLight) object.dispose();
     if (!(object instanceof THREE.Mesh)) return;
     geometries.add(object.geometry);
     for (const m of Array.isArray(object.material) ? object.material : [object.material]) {
@@ -262,23 +309,26 @@ export class CameraRig3D {
   private scene = new THREE.Scene();
   private overview = new THREE.PerspectiveCamera(50, FRAME_WIDTH / FRAME_HEIGHT, 1, 2500);
   private controls?: OrbitControls;
-  private targets = CAMERA_IDS.map(() => new THREE.WebGLRenderTarget(FRAME_WIDTH, FRAME_HEIGHT, { depthBuffer: true }));
+  private targets = CAMERA_IDS.map(() => new THREE.WebGLRenderTarget(FRAME_WIDTH, FRAME_HEIGHT, { depthBuffer: true, samples: 4 }));
   private pixels = new Uint8Array(FRAME_WIDTH * FRAME_HEIGHT * 4);
   private darts = new THREE.Group();
   private mounts = new THREE.Group();
   private markers = new THREE.Group();
+  private lights = new THREE.Group();
   private cameras: THREE.PerspectiveCamera[] = [];
   private disposed = false;
 
   constructor(canvas: HTMLCanvasElement, private previews: HTMLCanvasElement[], settings: RigSettings) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: false });
     this.renderer.localClippingEnabled = true;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
         this.renderer.setPixelRatio(1); this.renderer.setSize(FRAME_WIDTH, FRAME_HEIGHT, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene.background = new THREE.Color('#343941');
     this.scene.add(boardMesh(), this.darts, this.mounts, this.markers);
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#727888', 2));
-    const light = new THREE.DirectionalLight('#ffffff', 2.5); light.position.set(-180, 280, 500); this.scene.add(light);
+    this.setLighting(DEFAULT_LIGHTING);
     this.overview.position.set(450, 320, 650); this.overview.lookAt(0, 0, 0); this.overview.layers.enable(1);
     this.setRig(settings);
   }
@@ -300,9 +350,16 @@ export class CameraRig3D {
       lens.quaternion.premultiply(camera.quaternion); lens.layers.set(1); this.mounts.add(lens);
     });
   }
+  setLighting(settings: RingLighting): void {
+    const lights = ringLighting(settings);
+    disposeObject(this.lights); this.scene.remove(this.lights);
+    this.lights = lights; this.scene.add(lights);
+    this.renderer.shadowMap.needsUpdate = true;
+  }
   setDarts(specs: readonly DartSpec[]): void {
     disposeObject(this.darts); this.darts.clear();
     specs.forEach(spec => this.darts.add(dartMesh(spec)));
+    this.renderer.shadowMap.needsUpdate = true;
   }
   pickImpact(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();

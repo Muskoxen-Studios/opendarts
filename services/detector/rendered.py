@@ -284,7 +284,7 @@ def blobs(image, reference, width, height, parameters=DEFAULT_PARAMETERS):
     return result
 
 
-def shaft_candidates(blob, max_width=None, cores=False, parameters=DEFAULT_PARAMETERS):
+def shaft_candidates(blob, max_width=None, cores=False, parameters=DEFAULT_PARAMETERS, local_sections=False):
     """Hough proposal, then narrow cross-section centers; never whole-flight PCA."""
     max_width = parameters.max_shaft_width_px if max_width is None else max_width
     sample = blob[::max(1, len(blob)//parameters.hough_sample_target)]
@@ -341,6 +341,18 @@ def shaft_candidates(blob, max_width=None, cores=False, parameters=DEFAULT_PARAM
         run, runs, gaps = [], [], 0
         for index in range(min(bins), max(bins)+1):
             pixels = bins.get(index, [])
+            # Separate disconnected transverse intervals before measuring width.
+            # Keep each interval whole: clipping to a narrow window would turn
+            # a broad flight into a false shaft. Remote shadows must not widen
+            # an otherwise isolated shaft at the same longitudinal coordinate.
+            if local_sections:
+                intervals = []
+                for pixel in sorted(pixels, key=lambda p: p[1]):
+                    if not intervals or pixel[1] - intervals[-1][-1][1] > 2.0:
+                        intervals.append([])
+                    intervals[-1].append(pixel)
+                if intervals:
+                    pixels = min(intervals, key=lambda group: abs((group[0][1] + group[-1][1])/2 - rho))
             values = [r for s, r in pixels]
             # Flight/barrel cross-sections are excluded; narrow shaft supplies the axis.
             if values and max(values)-min(values) <= max_width and abs((max(values)+min(values))/2-rho) <= parameters.section_center_tolerance_px:
@@ -381,6 +393,8 @@ def shaft_candidates(blob, max_width=None, cores=False, parameters=DEFAULT_PARAM
     if cores:
         candidates = core_candidates
     if not candidates:
+        if not cores and not local_sections:
+            return shaft_candidates(blob, max_width, cores, parameters, local_sections=True)
         raise ValueError('no resolvable narrow shaft run')
     candidates.sort(reverse=True)
     unique = []
@@ -422,6 +436,7 @@ class PerspectiveDetector:
         self.accepted = None
         self.accepted_points = []
         self.unresolved_occupancy = False
+        self.unresolved_reason = None
         self.cached_points = None
         self.resolved_signature = None
         self.resolved_points = []
@@ -533,11 +548,12 @@ class PerspectiveDetector:
                 self.stable_frames += 1
                 if self.stable_frames >= 3 and self.cached_points == []:
                     self.unresolved_occupancy = False
+                    self.unresolved_reason = None
                 return self.cached_points if self.stable_frames >= 3 else None
             self.clear_pending()
             if signature == self.resolved_signature:
                 if self.unresolved_occupancy and self.resolved_points:
-                    raise ValueError('unresolved prior occupancy; empty board required')
+                    raise ValueError(f'unresolved prior occupancy; empty board required (original rejection: {self.unresolved_reason})')
                 points = list(self.resolved_points)
                 self.uncertainty_mm = self.resolved_uncertainty
             else:
@@ -547,7 +563,7 @@ class PerspectiveDetector:
                     points = []
                 else:
                     if self.unresolved_occupancy:
-                        raise ValueError('unresolved prior occupancy; empty board required')
+                        raise ValueError(f'unresolved prior occupancy; empty board required (original rejection: {self.unresolved_reason})')
                     if not all(current.values()):
                         raise ValueError('views disagree on occupancy; possible occlusion')
                     baseline = self.accepted if self.accepted is not None else self.reference
@@ -579,9 +595,11 @@ class PerspectiveDetector:
                 self.resolved_uncertainty = self.uncertainty_mm
             self.pending, self.stable_frames, self.cached_points = signature, 1, points
             return None
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
             # A rejected scene may contain unseen darts. Do not later bootstrap
             # that accumulated scene as a single new impact without an empty frame.
+            if not self.unresolved_occupancy:
+                self.unresolved_reason = str(exc)
             self.unresolved_occupancy = True
             self.clear_pending()
             raise

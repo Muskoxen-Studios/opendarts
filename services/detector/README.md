@@ -1,11 +1,9 @@
 # Native detector vertical slice
 
-A Python 3 stdlib service, binding **only 127.0.0.1:8091** by default. This is an
-image-based proof-of-pipeline, **not a production dart detector**. Synthetic and
+A local Python 3 service, binding **only 127.0.0.1:8091** by default. USB detection is experimental and hardware accuracy is not yet established. Synthetic and
 replay sources retain their planar marker detector. The `rendered` source accepts
 browser grayscale images and validated pinhole calibration, and reconstructs
-perspective shaft axes using only those pixels. No numpy/OpenCV, live camera
-acquisition, or automatic calibration is required or implemented. Bridge/proxy,
+perspective shaft axes using only those pixels. The synthetic and rendered paths need no numpy/OpenCV. Experimental USB acquisition uses OpenCV; manual board-point pose calibration is available in Settings. Lens distortion calibration is not implemented. Bridge/proxy,
 desktop lifecycle, and the browser renderer are separate concerns.
 
 From the repository root:
@@ -41,30 +39,126 @@ npm run detector:evaluate -- build/rendered-benchmark/dataset.json --output buil
 npm run detector:tune -- build/rendered-benchmark/dataset.json --output build/rendered-benchmark/tuning.json --trials 100 --seconds 1800 --seed 1
 # Continue toward a total of 200 trials:
 npm run detector:tune -- build/rendered-benchmark/dataset.json --output build/rendered-benchmark/tuning.json --trials 200 --seconds 1800 --seed 1 --resume
+# Generate only the independent scoring-boundary suite:
+npm run detector:generate -- --suite boundary --output build/rendered-boundaries
+# Start from a previous candidate (repeat this option when resuming):
+npm run detector:tune -- build/rendered-benchmark/dataset.json --output build/rendered-benchmark/tuning.json --initial-parameters build/rendered-benchmark/candidate.json --trials 100 --seconds 1800 --seed 1
 ```
 
-Omit `--small` for 66 cases rather than 33 (264 versus 132 steps). Ordinary
-impacts have at least 10 mm scoring-boundary clearance; near-wire cases remain
-explicitly difficult. Independent single-dart cases supplement sequences so one
-latched fault does not conceal all later models. Cases cover perpendicular/tilted darts,
-shallow supported angles, dimensions, clustered occlusion, near-wire impacts,
-noise/exposure, frozen camera views, and sequential additions/removals. Images
-come from the actual Three.js meshes and cameras, not analytic line fixtures.
-Exposure/noise variants are sensor-level transformations. Current dart validation
-limits tilt to 45° per axis; this is not an exhaustive near-parallel-angle suite.
+The default `all` suite contains 156 cases (66 previous scenario designs, 3
+default-mount training regressions and 87 boundary cases); `--small` contains 75
+(33 plus 3 plus 39). `--suite boundary` generates
+only the 87 full or 39 small boundary cases. `--suite legacy` retains the previous
+scenario designs but renders them with current lighting. Previous designs include
+independent single-dart cases so one latched fault does not conceal later models.
+They cover perpendicular/tilted darts, shallow supported angles, dimensions,
+clustered occlusion, near-wire impacts, noise/exposure, frozen camera views, and
+sequential additions/removals. Ordinary impacts in those cases have at least 10 mm
+scoring-boundary clearance; near-wire cases remain explicitly difficult.
+
+Boundary cases independently render an empty board, one dart, then an empty board.
+The full suite tests both sides of all six application scoring radii (7, 17, 97,
+107, 160, 170 mm) and a wedge spoke, at 0.6 mm and 3 mm clearance. The small suite
+keeps 97 mm, 170 mm, and spoke boundaries. Cases use separate train, validation,
+and test scene families with different camera mounts, dart tilts, and lighting.
+These distances follow the application's scoring model; they are not certified
+real-board measurements. The report's `byBoundaryClearance` section includes
+correct, rejected, and wrong-accept counts, plus measured localization comparisons
+for each clearance band.
+
+Images come from actual Three.js meshes and cameras, not analytic line fixtures.
+The representative default LED ring uses twelve spot lights at radius 270 mm and
+forward offset 180 mm, intensity 1, and ambient intensity 0.35. Each light casts a
+512×512 PCF shadow; calibrated render targets use 4× MSAA and shadows are reused
+until a scene mutation. These illustrative dimensions and output are not a measured
+hardware setup. Sensor exposure/noise variants remain image transformations and do
+not simulate changing scene lights. Current dart validation limits tilt to 45° per
+axis; this is not an exhaustive near-parallel-angle suite.
+
 Generation is seeded and hash-cached; use a new output directory for a new corpus.
-Scenario/cache version 4 changes pixels: 1280×720, an explicit provisional
-100° horizontal baseline (about 67.67° vertical) replacing custom 95° vertical rigs.
-Cache provenance records resolution, FOV, grayscale orientation and the provisional
-calibration status; benchmark mounts remain varied per case. 8 mm axial point penetration is explicit,
-board-entry `(x,y,0)` labels are unchanged, and board number labels are excluded
-from detector cameras. Raised wires already existed and now share geometry with
-an optional conservative browser placement filter. Offline scenarios intentionally
-remain unrestricted (including near-wire overlaps); no bounce physics is modeled.
-Version-2/3 caches/results and previously tuned parameters are historical, not evidence
-for this rendering: regenerate into a new directory and reevaluate before reuse.
-Do not automatically generate datasets, resume old tuning, or promote parameters.
-The geometry is representative rather than a physical-accuracy claim.
+Scenario/cache version 6 renders 1280×720 with an explicit provisional 100°
+horizontal baseline (about 67.67° vertical), replacing custom 95° vertical rigs.
+Cache provenance records resolution, FOV, grayscale orientation and provisional
+calibration status; mounts are varied per case. 8 mm axial point penetration is
+explicit, board-entry `(x,y,0)` labels are unchanged, and board number labels are
+excluded from detector cameras. Raised wires share geometry with an optional
+conservative browser placement filter. Offline scenarios remain unrestricted,
+including near-wire overlaps; no bounce physics is modeled. Version-2/3/4/5 caches
+and results and previously tuned parameters are historical, not evidence for this
+rendering: regenerate into a new directory and reevaluate before reuse. Generation
+has a 600-second timeout. Do not automatically generate datasets, resume old
+tuning, or promote parameters. The geometry is representative rather than a
+physical-accuracy claim.
+
+### Retrospective Board Manager calibration import
+
+`import_board_calibration.py` validates a read-only Board Manager calibration
+snapshot against separately observed bull centers and double-outer ellipse
+points, then exports `build/real-board-calibration.json` with normalized
+image-to-board homographies and an approximate pinhole pose (`K`, `R`, `t`).
+The pose decomposes the undistorted homography using reported intrinsics; the
+exporter checks positive depth, similar first-column norms, near-orthogonality,
+and ring reprojection RMS (the current snapshot is about 1.6–2.5 px). This is an
+approximate geometric initialization, not a surveyed camera pose.
+
+The mapping uses the bull as board origin, x right, y up, and assigns the
+double-outer radius to 170 mm. Bull/ring geometry does not independently verify
+wedge orientation or score mapping. The pose is valid only for undistorted
+pixels using supplied distortion coefficients and intrinsics. The source
+snapshot was captured after the existing JPEGs; retrospective camera stability
+and per-capture calibration association are unverified. This import enables
+exploratory 3D analysis, not full real-camera acceptance or scoring claims. Do
+not apply a planar homography directly to elevated shaft pixels.
+
+```sh
+python3 services/detector/import_board_calibration.py
+```
+
+The command reads the captured calibration JSON and independent bull/ring
+ellipse points, and writes only the ignored local `build/` artifact.
+
+### Offline model training and evaluation
+
+The historical keypoint trainers are available in Git history. Shared data and model code remains for v6 presence retraining; see [presence training](../../docs/native-presence-training.md). Install the isolated dependencies in `requirements-training.txt` and a suitable PyTorch build before training.
+
+`report_real_keypoints.py --predictions <run>/predictions.json --output <run>`
+reports retrospective board-plane diagnostics from saved predictions without
+new inference. It uses the raw homography for raw pixel coordinates and checks
+that each projected target agrees with the frozen board label. Earlier reports
+used the undistorted homography on raw pixels; use regenerated metrics when
+comparing runs. Correct reported scores do not establish visibility of a dart
+in every camera, so large errors need image inspection as well as score review.
+
+`prepare_empty_pairs.py` builds a separate presence challenge from distinct
+empty-board captures referenced by the frozen development/validation visits.
+It verifies endpoint manifests and image hashes, pairs nearby captures within
+the same split, and preserves whether calibration is known. All current pairs
+span visits with recorded throws between them: both endpoints report empty,
+but this does not establish continuous empty occupancy. They are a challenge
+for camera and lighting differences, not measured live false-alarm rates.
+
+```sh
+python3 services/detector/prepare_empty_pairs.py \
+  --output build/real-empty-pairs-v1-final/manifest.json
+build/detector-training-env/bin/python services/detector/evaluate_empty_pairs.py \
+  --allow-retrospective-labels --device cpu
+```
+
+The evaluator scores validation pairs only, using the older image as reference
+and newer image as current, with a fixed presence threshold of 0.5. It verifies
+the model source, dataset, images, and split assignments and refuses to overwrite
+an existing report. No command above controls the physical board.
+
+
+Captures with no dart visible in all three views can be excluded with a
+hash-bound `_visibility/<captureId>.json` sidecar under the capture directory.
+These annotations are separate from reported-position reviews: correct board
+coordinates need not imply a usable positive image. Both the dataset exporter
+and presence trainer validate source image hashes before skipping positives;
+malformed or stale annotations fail loudly. Raw images, score reviews and frozen
+historical datasets remain available. Visibility curation after inspecting
+validation errors must be disclosed, and comparisons must use the same curated
+cohort for both models.
 
 `dataset.json` holds labels and split assignments separately from calibration and
 image JSON files. The detector receives only calibration and synchronized pixels.
@@ -103,8 +197,11 @@ The shaft envelope measures axial length (not board-normal height); its 217 mm
 default covers the renderer's maximum supported dart extent without enlarging
 flight radius or weakening ambiguity checks.
 
-The baseline always joins validation finalists, and completed validation results
-are retained across resume. Selection requires positive nonempty coverage and zero
+Default parameters are always evaluated as trial 0 and join validation finalists;
+completed validation results are retained across resume. `--initial-parameters`
+is tune-only and reevaluates a previous candidate as trial 1; repeat the same
+option on `--resume` so the tuning configuration matches its checkpoint.
+Selection requires positive nonempty coverage and zero
 wrong acceptances, phantom/duplicate detections, and removal errors. Checkpoint
 `status` is `validation_pending`, `selected`, or `no_acceptable_candidate`, with an
 explanatory `reason`; an unsafe finalist never becomes a selected candidate merely
@@ -249,7 +346,7 @@ receives full-resolution grayscale bytes, not color or resized display canvases.
 720p has three times the pixels of 640x480. Pure-Python processing, framebuffer
 readback, base64 transport and capture copies can cost more latency/memory; no
 real-time or hardware accuracy claim is implied. Synthetic/replay defaults remain
-unchanged. Reevaluate old tuning on version-4 pixels before reuse or promotion;
+unchanged. Reevaluate old tuning on version-6 pixels before reuse or promotion;
 no expensive corpus generation, tuning or promotion is automatic.
 No compressed image formats or data-URL prefixes are accepted. Pixels are one
 unsigned byte per pixel, row-major, top row first, with exact decoded size.
@@ -308,7 +405,8 @@ SSE retain their existing safety semantics.
 
 ### Pixel-only algorithm and known limits
 
-1. Difference each image against its empty reference (24 gray levels). Reject
+1. Difference each image against its empty reference (2 gray levels with generic defaults;
+   8 with the development desktop LED-ring profile). Reject
    large lighting changes, edge clipping, tiny/unresolved regions and too many
    disconnected silhouettes.
 2. Connected changed regions propose Hough line directions. Fit centers of a
@@ -316,6 +414,10 @@ SSE retain their existing safety semantics.
    this is not PCA of the whole flight or a tip-centroid detector. The tip need
    not be visible. Runs need roughly 21 pixels of usable length, and changed
    shaft widths up to nine pixels. This constrains observability, not mesh shape.
+   When no ordinary narrow run resolves, a fallback separates disconnected transverse
+   intervals and fits the complete interval nearest each Hough proposal. It never
+   crops a broad flight to manufacture a narrow shaft. Three-view correspondence,
+   ambiguity, full changed-pixel envelope and scoring uncertainty checks still apply.
 3. Back-project image line `l` to the world plane with normal `R^T K^T l` and
    offset `(K^T l) dot t`. Fit the three planes' shaft axis, intersect with z=0,
    require well-conditioned geometry, and check reprojection in all three views.
@@ -394,3 +496,34 @@ only proves this constrained pipeline. Before hardware use: calibrated lens/pers
 acquisition, robust temporal/noise thresholds, shaft/tip geometry, occlusion
 handling, and captured-camera validation are necessary. No hardware accuracy is
 claimed.
+
+
+The development desktop now explicitly loads `services/detector/led-ring.parameters.json`
+for the ring-lit renderer. This checked-in experimental profile retains the prior tuned
+shaft parameters and uses an 8-gray-level change threshold to suppress faint shadows.
+Standalone detector defaults and explicitly supplied parameter files retain their behavior.
+The rendered end-to-end smoke uses the same profile. New code invalidates prior tuning
+checkpoints; old caches are still usable for regression evaluation.
+
+## Real camera keypoint targets
+
+`python3 services/detector/prepare_real_keypoints.py` projects the frozen
+`reviewed-real-v1` board-plane labels into raw camera image coordinates, using
+only capture-linked raw homographies. It writes `build/real-keypoints-v1/` with
+one sample per camera, the throw image plus its empty-board and exact occupancy
+prefix references, image/calibration hashes, frozen split, and label provenance.
+The default currently has no development samples because none of the development
+visits has a linked calibration; it contains 26 validation and 68 historical test
+captures (three camera samples per capture).
+
+To prepare exploratory targets for the earlier development visits, explicitly run
+`python3 services/detector/prepare_real_keypoints.py --allow-retrospective`. This
+writes separately under `build/real-keypoints-retrospective-v1/`, using the saved
+system calibration captured at `2026-11-16T13:58:04Z` for records without a linked
+calibration. Its report and each sample mark that mapping as retrospective. The
+development-only contact sheet is an overlay audit; inspect it and the original
+frames before training. A target is a projected board-plane impact point, not a
+hand-annotated visible shaft tip. Out-of-view pixels are retained and marked; they
+are never clamped. These weak labels and the historical calibration do not
+establish detector or hardware accuracy, and the historical test split is not
+untouched.

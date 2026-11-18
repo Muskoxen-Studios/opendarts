@@ -46,9 +46,8 @@ test('missing Python gives an actionable startup error', () => {
     /Python 3\.10\+.*DETECTOR_PYTHON.*DARTS_DETECTOR=off/s);
 });
 
-test('external URL and opt-out never discover or spawn Python; packaged never auto-starts', async () => {
+test('external URL and opt-out do not start a detector', async () => {
   const env = { DETECTOR_PYTHON: '/missing/python' };
-  assert.equal(await detectorConfig(root, { env, isPackaged: true }), null);
   assert.equal(await detectorConfig(root, { env: { ...env, DARTS_DETECTOR: 'off' } }), null);
   for (const isPackaged of [true, false]) {
     assert.deepEqual(await detectorConfig(root, {
@@ -63,8 +62,26 @@ test('development plan uses a dynamic loopback URL and rendered mode', async () 
   const url = new URL(config.url);
   assert.equal(url.hostname, '127.0.0.1');
   assert.ok(Number(url.port) > 0);
-  assert.deepEqual(config.args.slice(-5), [join(root, 'services/detector/main.py'),
-    '--source', 'rendered', '--port', url.port]);
+  assert.deepEqual(config.args.slice(-9), [join(root, 'services/detector/main.py'),
+    '--source', 'rendered', '--port', url.port,
+    '--parameters', join(root, 'services/detector/led-ring.parameters.json'),
+    '--camera-config', join(root, 'camera-rig.json')]);
+});
+
+test('packaged detector uses bundled executable and USB camera configuration', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'darts-detector-'));
+  try {
+    const exe = join(dir, 'runtime', 'detector', 'darts-detector');
+    mkdirSync(join(dir, 'runtime', 'detector'), { recursive: true });
+    writeFileSync(exe, '');
+    const config = await detectorConfig(dir, { isPackaged: true, platform: 'linux', userDataDir: '/user/data',
+      env: { DARTS_DETECTOR_SOURCE: 'usb', DARTS_CAMERA_DEVICES: '["0","1","2"]' } });
+    assert.equal(config.executable, exe);
+    assert.deepEqual(config.args.slice(4), ['--camera-config', join('/user/data', 'camera-rig.json'),
+      '--device', '0', '--device', '1', '--device', '2']);
+    await assert.rejects(detectorConfig(dir, { isPackaged: true, platform: 'linux',
+      env: { DARTS_DETECTOR_SOURCE: 'usb', DARTS_CAMERA_DEVICES: '["0","0","2"]' } }), /three distinct/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('spawn errors are observed rather than unhandled', async () => {

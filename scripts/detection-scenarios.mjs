@@ -1,6 +1,6 @@
 // Families, rather than individual frames or variants, own their split permanently.
 export const SCENARIO_SEED = 20261001;
-export const SCENARIO_VERSION = 4;
+export const SCENARIO_VERSION = 6;
 // Same provisional horizontal baseline as the browser, with varied mounting geometry.
 export const SCENARIO_HORIZONTAL_FOV = 100;
 export const SCENARIO_VERTICAL_FOV = 2 * Math.atan(Math.tan(SCENARIO_HORIZONTAL_FOV * Math.PI / 360) * 720 / 1280) * 180 / Math.PI;
@@ -9,7 +9,8 @@ export function random(seed) {
   return () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
 }
 
-export function detectionScenarios({ small = false } = {}) {
+export function detectionScenarios({ small = false, suite = 'all' } = {}) {
+  if (!['all', 'boundary', 'legacy'].includes(suite)) throw new Error('Unknown scenario suite');
   const rng = random(SCENARIO_SEED);
   const families = [
     ['perpendicular', 'train'], ['dimensions', 'train'], ['empty-noise', 'train'],
@@ -59,6 +60,58 @@ export function detectionScenarios({ small = false } = {}) {
         cases.push({ id: `${family}-${variant}-single-${i}`, family, split, rig,
           steps: [steps[0], { ...steps[i + 1], darts: [dart] }, steps.at(-1)] });
       });
+    }
+  }
+  return suite === 'legacy' ? cases : suite === 'boundary' ? boundaryScenarios({ small }) : [...cases, ...defaultMountScenarios(), ...boundaryScenarios({ small })];
+}
+
+// Regression scenes at the application's default desktop mount. Keep these out
+// of the historical suite so old benchmark comparisons remain reproducible.
+export function defaultMountScenarios() {
+  const family = 'default-mount';
+  const split = 'train';
+  const rig = { radius: 260, forward: 220, rotation: 60, vfov: SCENARIO_VERTICAL_FOV };
+  const dart = (x, y, roll = 0) => ({ x, y, roll, penetration: 8 });
+  const first = dart(0, 102);
+  const second = dart(28, 111, 37);
+  const third = dart(-24, 84, 91);
+  return [
+    { id: 'default-mount-interior', family, split, rig,
+      steps: [{ darts: [], allowReject: false }, { darts: [dart(0, 70)], allowReject: false }, { darts: [], allowReject: false }] },
+    { id: 'default-mount-first-dart', family, split, rig,
+      steps: [{ darts: [], allowReject: false }, { darts: [first], allowReject: false }, { darts: [], allowReject: false }] },
+    { id: 'default-mount-sequence-removal', family, split, rig,
+      steps: [{ darts: [], allowReject: false }, { darts: [first], allowReject: false },
+        { darts: [first, second], allowReject: false }, { darts: [first, second, third], allowReject: false },
+        { darts: [second, third], allowReject: false }, { darts: [third], allowReject: false },
+        { darts: [], allowReject: false }] },
+  ];
+}
+
+// Matched difficulty strata in each split, with disjoint scene families/mounts/tilts.
+// No variants of a scene cross splits. These use the application's scoring radii.
+export function boundaryScenarios({ small = false } = {}) {
+  const cases = [];
+  for (const [index, split] of ['train', 'validation', 'test'].entries()) {
+    const family = `boundary-${split}`;
+    const rig = { radius: 290 + index * 23, forward: 210 - index * 17,
+      rotation: 37 + index * 29, vfov: SCENARIO_VERTICAL_FOV };
+    const lighting = { radius: 270 + index * 12, forward: 180 - index * 15,
+      intensity: [1, 0.8, 1.2][index], ambient: [0.35, 0.25, 0.45][index], rotation: index * 7 };
+    const dart = { penetration: 8, tiltX: [8, -17, 23][index], tiltY: [-5, 11, -19][index], roll: 13 + index * 31 };
+    const add = (id, x, y, allowReject) => cases.push({ id: `${family}-${id}`, family, split, rig, lighting,
+      steps: [{ darts: [], allowReject: false }, { darts: [{ ...dart, x, y }], allowReject },
+        { darts: [], allowReject: false }] });
+    add('interior', 0, 70, false);
+    const boundaries = small ? [97, 170, 'spoke'] : [7, 17, 97, 107, 160, 170, 'spoke'];
+    for (const boundary of boundaries) for (const margin of [0.6, 3]) for (const side of [-1, 1]) {
+      // Rotate radial cases between independent wedge centres; signed normal offsets
+      // put spoke entries exactly margin mm from the same physical wire.
+      const angle = (index * 3 + (boundary === 'spoke' ? 0.5 : 0)) * Math.PI / 10;
+      const radius = boundary === 'spoke' ? 75 : boundary + side * margin;
+      const x = radius * Math.sin(angle) + (boundary === 'spoke' ? side * margin * Math.cos(angle) : 0);
+      const y = radius * Math.cos(angle) - (boundary === 'spoke' ? side * margin * Math.sin(angle) : 0);
+      add(`${boundary}-${margin}-${side}`, x, y, margin < 1);
     }
   }
   return cases;

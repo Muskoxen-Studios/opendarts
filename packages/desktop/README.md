@@ -12,7 +12,19 @@ in `@darts/server` instead.
 ## Running it
 
 Requires Node 24+ and **Python 3.10+** for automatic development detection.
-The Python backend uses the standard library; no Python package install is needed.
+Rendered simulation uses the Python standard library. USB cameras also require
+OpenCV, NumPy, Pillow and PyTorch. Create a repository `.venv` with a Python
+version supported by your PyTorch wheel before starting the desktop app:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.14,<2.16'
+.venv/bin/python -m pip install -r services/detector/requirements-live.txt
+```
+
+On Windows use `.venv\Scripts\python.exe` instead. To use an existing
+compatible environment, set `DETECTOR_PYTHON` to its Python executable. Restart
+`dev:desktop` after installing dependencies.
 
 ```bash
 npm run build       # first launch, and after frontend changes
@@ -30,7 +42,8 @@ The database is `app.getPath('userData')/darts.db`, and the name is pinned to
 ## Development detector lifecycle
 
 An unpackaged launch starts `services/detector/main.py --source rendered --port <free-port>`
-on loopback, then waits up to 30 seconds for `/health` before starting the Node
+with `--parameters services/detector/led-ring.parameters.json` (the experimental
+LED-ring rendering profile) on loopback, then waits up to 30 seconds for `/health` before starting the Node
 backends. Health means the service is available, **not** that cameras already have
 frames: renderer configuration/frame submission happens after the scoreboard loads.
 The standalone detector's synthetic default is unchanged.
@@ -54,14 +67,17 @@ Overrides (set in the environment of the desktop process):
 |---|---|
 | `DETECTOR_URL` | Use this externally managed URL unchanged. Never start or stop a detector for it. |
 | `DETECTOR_PYTHON` | Override the Python executable for the managed detector. |
-| `DARTS_DETECTOR=off` | Disable automatic development detector startup. |
+| `DARTS_DETECTOR=off` | Disable automatic detector startup. |
+| `DARTS_DETECTOR_SOURCE` | `rendered` (default) or `usb`. |
+| `DARTS_CAMERA_DEVICES` | JSON array of three distinct USB device paths or indices for USB mode. |
 | `SOURCE` | An explicit value is preserved; otherwise development with a detector defaults to `native`. |
 
 A saved source choice remains authoritative: starting the detector must not switch
 an existing Autodarts/simulator/replay installation to native. With automatic
 startup disabled and no external URL, the normal backend source fallback applies.
-Packaged builds never auto-start Python (the detector files/runtime are not bundled).
-The packaged **Darts → About native detection** menu explains external setup.
+Packaged builds start the bundled detector executable with its Python runtime,
+dependencies and v6 checkpoint; Python is not required on the target machine.
+They default to rendered mode. Select Native detector in Settings, then use **USB cameras** to choose three devices and connect them. The calibration panel appears after connection. Camera selection and rigs are saved in the application data directory and restored on restart. The USB mode uses v6 and requires 1280×720 capture. Existing saved source choices still take precedence. Environment variables remain available for starting directly in USB mode.
 
 ### Server/frontend integration contract
 
@@ -72,8 +88,7 @@ For a managed detector, desktop passes the **same actual dynamic URL**:
 - `SOURCE=native` to both only in development when `SOURCE` is not explicitly set.
 
 For an external `DETECTOR_URL`, it passes that URL unchanged and sets the server's
-`MANAGED_DETECTOR_URL` to an empty string; disabled/packaged automatic startup also
-clears that flag. The flag must not be treated as active when empty.
+`MANAGED_DETECTOR_URL` to an empty string; disabled automatic startup also clears that flag. The flag must not be treated as active when empty.
 
 The server must expose `DETECTOR_URL` as `settings.runtime.detectorUrl` so the frontend
 can default its native URL input to the actual endpoint instead of fixed port 8091.

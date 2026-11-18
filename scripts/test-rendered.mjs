@@ -17,7 +17,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const picturesOnly = process.argv.includes('--pictures');
 const children = [], events = [], pending = new Map();
 const deadline = Date.now() + 90_000;
-let temporary, vite, socket, browser, failure, serial = 0;
+let temporary, vite, socket, browser, failure, players, serial = 0;
 const watchdog = setTimeout(() => { failure = 'overall 90-second timeout'; for (const child of children) child.process.kill('SIGTERM'); }, 90_000);
 const interrupt = () => { failure = 'interrupted'; for (const child of children) child.process.kill('SIGTERM'); };
 process.on('SIGINT', interrupt); process.on('SIGTERM', interrupt);
@@ -106,7 +106,7 @@ try {
   const [detectorPort, bridgePort, serverPort, vitePort] = await ports();
   const detector = `http://127.0.0.1:${detectorPort}`, bridge = `http://127.0.0.1:${bridgePort}`, server = `http://127.0.0.1:${serverPort}`;
   if (!picturesOnly) {
-  launch('Python rendered detector', 'python3', ['-B', 'services/detector/main.py', '--source', 'rendered', '--port', String(detectorPort)]);
+  launch('Python rendered detector', 'python3', ['-B', 'services/detector/main.py', '--source', 'rendered', '--parameters', 'services/detector/led-ring.parameters.json', '--port', String(detectorPort)]);
   await poll('Python health', async () => (await request(detector, '/health')).ok);
   launch('native bridge', process.execPath, ['packages/bridge/src/main.ts'], { SOURCE: 'native', DETECTOR_URL: detector, BRIDGE_PORT: String(bridgePort) });
   await poll('bridge health', async () => (await request(bridge, '/health')).source === 'native');
@@ -116,7 +116,7 @@ try {
   await poll('observer connected', () => events.some(event => event.type === 'board.connected'));
   launch('server', process.execPath, ['packages/server/src/main.ts'], { HOST: '127.0.0.1', PORT: String(serverPort), DB_FILE: join(temporary, 'test.db'), BRIDGE_HTTP: bridge, BRIDGE_WS: `ws://127.0.0.1:${bridgePort}/events`, WEB_ROOT: '' });
   await poll('server board online', async () => (await request(server, '/api/state')).boardOnline);
-  const players = await Promise.all(['Rendered A', 'Rendered B'].map(name => request(server, '/api/profiles', 'POST', {name}, 201)));
+  players = await Promise.all(['Rendered A', 'Rendered B'].map(name => request(server, '/api/profiles', 'POST', {name}, 201)));
   await request(server, '/api/matches', 'POST', { config: { gameType:'x01', startScore:501, inMode:'straight', outMode:'straight', legsToWin:1, setsToWin:1 }, playerIds:players.map(player => player.id) }, 201);
   }
   vite = await createServer({ root, configFile: false, server: { host:'127.0.0.1', port:vitePort, strictPort:true, proxy: { '/api': { target:server, changeOrigin:true } } },

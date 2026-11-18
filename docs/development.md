@@ -70,6 +70,7 @@ Simulated darts are posted to the **bridge**, not straight into the game server,
 so they travel the same path real darts will.
 
 For native detector setup and camera experiments, see [Native detection playground](native-detection.md).
+For a background service that stores board-reported throws and camera frames, see [Board data collector](board-data-collector.md).
 
 ### The fake board
 
@@ -153,14 +154,19 @@ Node, which is currently Node 20. That is not caution — the backend runs
 TypeScript by type stripping and stores data through `node:sqlite`, and Node 20
 has neither.
 
+The build host also needs a Python environment with `torch`, `numpy`, `Pillow`,
+`opencv-python-headless` and `pyinstaller`. Use CPU PyTorch to keep the installer
+smaller; the selected checkpoint runs on CPU. Set `DETECTOR_BUILD_PYTHON` to that
+environment's Python executable if it is not the default `python3` (or `python`
+on Windows). Build separately on each target platform.
+
 ```bash
 npm run dev:desktop    # run the shell against the working tree
-npm run package        # stage, then build an installer into build/release
+npm run package        # bundle the detector, stage, then build an installer
 ```
 
 `scripts/package/prepare.mjs` assembles a self-contained app in `build/app`:
-backend sources, the built frontend, third-party dependencies, and a checksummed
-Node runtime downloaded from nodejs.org. `scripts/package/verify-package.mjs`
+backend sources, the built frontend, third-party dependencies, the frozen detector with its v6 checkpoint, and a checksummed Node runtime downloaded from nodejs.org. It cleans only `build/app`, preserving detector training artifacts. `scripts/package/verify-package.mjs`
 then runs the *packed* app from a temporary directory outside this repo — which
 matters more than it sounds, because Node resolves bare imports by walking up
 parent directories, so a packed app sitting inside the workspace will find

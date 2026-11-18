@@ -27,10 +27,10 @@ export const NativeSimThrowSchema = z.object({
 export const NativeSimTakeoutSchema = z.object({ count: z.number().int().positive().optional() }).strict();
 export const NativeSimResetSchema = z.object({}).strict();
 
-export async function nativeRequest(baseUrl: string, path: string, method = 'GET', body?: unknown): Promise<Response> {
+export async function nativeRequest(baseUrl: string, path: string, method = 'GET', body?: unknown, timeoutMs = 4000): Promise<Response> {
   return fetch(`${baseUrl.replace(/\/+$/, '')}${path}`, {
     method,
-    signal: AbortSignal.timeout(4000),
+    signal: AbortSignal.timeout(timeoutMs),
     ...(body !== undefined ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
   });
 }

@@ -1,3 +1,4 @@
+import { managedSourceConfig } from './managedDetector.ts';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
@@ -445,7 +446,7 @@ route('DELETE', '/api/leaderboard/archives/:id', (_req, res, params) => {
  * either process. It is pushed to the bridge on every reconnect.
  */
 function storedSourceConfig(): unknown {
-  return store.getSetting<unknown>('bridgeSource', null);
+  return managedSourceConfig(store.getSetting<unknown>('bridgeSource', null), process.env.MANAGED_DETECTOR_URL);
 }
 
 async function pushSourceToBridge(config: unknown): Promise<{ ok: boolean; error?: string }> {
@@ -485,7 +486,7 @@ route('GET', '/api/bridge/source', async (_req, res) => {
 });
 
 route('PUT', '/api/bridge/source', async (_req, res, _p, body) => {
-  const config = (body as { config?: unknown })?.config;
+  const config = managedSourceConfig((body as { config?: unknown })?.config, process.env.MANAGED_DETECTOR_URL);
   if (!config || typeof config !== 'object') {
     return json(res, 400, { error: 'expected { config }' });
   }
@@ -519,12 +520,14 @@ route('POST', '/api/bridge/test', async (_req, res, _p, body) => {
 
 // Diagnostic images are streamed separately from scoring events. Query strings
 // only bust the browser cache; the proxy sends allowlisted paths to the bridge.
-for (const path of ['/api/native/health', '/api/native/state', '/api/native/cameras/:id/frame']) {
+for (const path of ['/api/native/health', '/api/native/state', '/api/native/cameras/:id/frame', '/api/native/calibration/frame/:id', '/api/native/usb/devices']) {
   route('GET', path, (req, res) => proxyNative(req, res, BRIDGE_HTTP));
 }
 for (const path of [
   '/api/native/sim/throw', '/api/native/sim/takeout', '/api/native/sim/reset',
   '/api/native/render/configure', '/api/native/render/frames', '/api/native/render/reset',
+  '/api/native/calibration/freeze', '/api/native/calibration/apply',
+  '/api/native/usb/connect', '/api/native/usb/disconnect',
 ]) {
   route('POST', path, (req, res, _params, body) => proxyNative(req, res, BRIDGE_HTTP, body));
 }
@@ -645,7 +648,7 @@ const server = createServer(async (req, res) => {
       params[k] = decodeURIComponent(match[i + 1] ?? '');
     });
     const renderUpload = ['/api/native/render/configure', '/api/native/render/frames'].includes(url.pathname);
-    const limit = renderUpload ? MAX_RENDER_BODY : url.pathname === '/api/native/render/reset' ? 4096 : Infinity;
+    const limit = renderUpload ? MAX_RENDER_BODY : (url.pathname === '/api/native/render/reset' || (url.pathname.startsWith('/api/native/calibration/') || url.pathname.startsWith('/api/native/usb/'))) ? 4096 : Infinity;
     const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req, limit);
     if (body === BODY_TOO_LARGE) return json(res, 413, { error: 'render body too large' });
     if (body === null) return json(res, 400, { error: 'invalid JSON body' });
