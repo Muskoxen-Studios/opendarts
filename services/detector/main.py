@@ -64,7 +64,7 @@ class Service:
         self.source = source
         self.live_model = live_model
         self.rgb_accepted = None
-        self.stabilizer = StableFrames() if isinstance(source, CameraSource) else None
+        self.stabilizer = StableFrames(width=source.width, height=source.height) if isinstance(source, CameraSource) else None
         self.model_diagnostics = None
         self.width, self.height = getattr(source, 'width', 480), getattr(source, 'height', 480)
         self.detector = (PerspectiveDetector(source, self.parameters) if isinstance(source, (RenderedSource, CameraSource)) else
@@ -111,6 +111,8 @@ class Service:
                         frame = self.source.capture()
                     finally:
                         self.acquisition.notify_all()
+                if frame is not None and isinstance(self.source, CameraSource):
+                    self.images = frame
                 if frame is not None and self.stabilizer is not None and self.source.calibrations:
                     stable = self.stabilizer.observe(frame, self.source.rgb)
                     if stable is None:
@@ -140,7 +142,7 @@ class Service:
                             self.review_fault = str(exc)
                             raise
                     if isinstance(self.detector, PerspectiveDetector):
-                        self.detector.accept(self.images, points)
+                        self.detector.accept(frame, points)
                         if isinstance(self.source, CameraSource):
                             self.rgb_accepted = dict(self.source.rgb)
                     self.faults = []
@@ -254,7 +256,7 @@ class Service:
             self.source, self.live_model = source, model
             self.width, self.height = source.width, source.height
             self.detector = PerspectiveDetector(source, self.parameters)
-            self.stabilizer = StableFrames()
+            self.stabilizer = StableFrames(width=source.width, height=source.height)
             self.rgb_accepted = None
             self.images = {}
             self.occupancy = []
