@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/Muskoxen-Studios/opendarts/compare/v0.9.0...v0.9.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* estimate camera field of view during calibration ([#59](https://github.com/Muskoxen-Studios/opendarts/issues/59)) ([28f199e](https://github.com/Muskoxen-Studios/opendarts/commit/28f199e970e4ffe906c39035083f9fef57159d36))
+
 ## [0.9.0](https://github.com/Muskoxen-Studios/opendarts/compare/v0.8.0...v0.9.0) (2026-11-18)
 
 
