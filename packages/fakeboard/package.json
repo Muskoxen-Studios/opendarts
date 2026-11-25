@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@darts/schema": "*",
-    "ws": "^8.22.2"
+    "ws": "^8.23.0"
   }
 }
